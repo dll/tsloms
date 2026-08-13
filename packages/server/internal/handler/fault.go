@@ -65,7 +65,7 @@ func ListFaults(c *gin.Context) {
 		Find(&faults)
 
 	ok(c, gin.H{
-		"faults":    faults,
+		"list":      faults,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,

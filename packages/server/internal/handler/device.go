@@ -48,7 +48,7 @@ func ListDevices(c *gin.Context) {
 		Find(&devices)
 
 	ok(c, gin.H{
-		"devices":   devices,
+		"list":      devices,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,

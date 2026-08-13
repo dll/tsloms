@@ -66,10 +66,10 @@ func ListWorkOrders(c *gin.Context) {
 		Find(&orders)
 
 	ok(c, gin.H{
-		"work_orders": orders,
-		"total":       total,
-		"page":        page,
-		"page_size":   pageSize,
+		"list":      orders,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
