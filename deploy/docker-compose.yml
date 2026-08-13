@@ -1,0 +1,68 @@
+version: '3.8'
+
+# TSLOMS 开发环境 Docker Compose
+# 包含 MySQL、Redis、EMQX 及后端服务，一键启动完整开发环境
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: tsloms-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: tsloms
+      MYSQL_CHARSET: utf8mb4
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7.0
+    container_name: tsloms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  emqx:
+    image: emqx/emqx:5.0
+    container_name: tsloms-emqx
+    ports:
+      - "1883:1883"    # MQTT TCP 端口
+      - "18083:18083"  # EMQX Dashboard 管理端口
+    volumes:
+      - emqx_data:/opt/emqx/data
+
+  server:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile
+    container_name: tsloms-server
+    ports:
+      - "8093:8093"
+    environment:
+      SERVER_PORT: "8093"
+      APP_ENV: development
+      DB_DRIVER: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: tsloms
+      REDIS_ADDR: redis:6379
+      REDIS_DB: "1"
+      JWT_SECRET: tsloms-dev-secret
+      MQTT_BROKER: tcp://emqx:1883
+      MQTT_CLIENT_ID: tsloms-server
+      MQTT_TOPIC_PREFIX: trafficLight
+      LOG_LEVEL: debug
+    depends_on:
+      - mysql
+      - redis
+      - emqx
+
+volumes:
+  mysql_data:
+  redis_data:
+  emqx_data:

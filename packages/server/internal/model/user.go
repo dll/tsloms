@@ -1,0 +1,26 @@
+package model
+
+import "time"
+
+// User 用户表
+// role: admin-管理员 operator-运维人员 viewer-查看人员
+type User struct {
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	Username     string    `json:"username" gorm:"uniqueIndex;size:64;comment:用户名"`
+	PasswordHash string    `json:"-" gorm:"size:255;comment:密码哈希(bcrypt)"`
+	Role         string    `json:"role" gorm:"size:16;default:viewer;comment:角色(admin/operator/viewer)"`
+	Phone        string    `json:"phone" gorm:"size:20;comment:手机号"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// TableName 指定表名
+func (User) TableName() string {
+	return "users"
+}
+
+// 用户角色常量
+const (
+	RoleAdmin    = "admin"
+	RoleOperator = "operator"
+	RoleViewer   = "viewer"
+)

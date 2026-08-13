@@ -1,0 +1,41 @@
+[Unit]
+Description=TSLOMS Server
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=tsloms
+Group=tsloms
+WorkingDirectory=/opt/tsloms/packages/server
+ExecStart=/opt/tsloms/packages/server/server
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tsloms/packages/server
+
+# 环境变量配置
+Environment=SERVER_PORT=8093
+Environment=APP_ENV=production
+Environment=DB_DRIVER=mysql
+Environment=DB_HOST=localhost
+Environment=DB_PORT=3306
+Environment=DB_USER=tsloms
+Environment=DB_PASSWORD=${DB_PASSWORD}
+Environment=DB_NAME=tsloms
+Environment=REDIS_ADDR=localhost:6379
+Environment=REDIS_PASS=
+Environment=REDIS_DB=1
+Environment=JWT_SECRET=${JWT_SECRET}
+Environment=MQTT_BROKER=tcp://localhost:1883
+Environment=MQTT_USERNAME=${MQTT_USERNAME}
+Environment=MQTT_PASSWORD=${MQTT_PASSWORD}
+Environment=MQTT_CLIENT_ID=tsloms-server
+Environment=MQTT_TOPIC_PREFIX=trafficLight
+Environment=LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target

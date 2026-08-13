@@ -1,0 +1,43 @@
+version: '3.8'
+
+# TSLOMS 生产环境 Docker Compose
+# 仅启动基础设施服务（MySQL、Redis、EMQX），后端服务通过 systemd 直接运行
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: tsloms-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: tsloms
+      MYSQL_CHARSET: utf8mb4
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7.0
+    container_name: tsloms-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  emqx:
+    image: emqx/emqx:5.0
+    container_name: tsloms-emqx
+    restart: always
+    ports:
+      - "1883:1883"    # MQTT TCP 端口
+      - "18083:18083"  # EMQX Dashboard 管理端口
+    volumes:
+      - emqx_data:/opt/emqx/data
+
+volumes:
+  mysql_data:
+  redis_data:
+  emqx_data:
