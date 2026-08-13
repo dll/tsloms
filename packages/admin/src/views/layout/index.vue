@@ -12,7 +12,7 @@
         :collapse-transition="false"
         router
         background-color="#001529"
-        text-color="#rgba(255,255,255,0.65)"
+        text-color="rgba(255, 255, 255, 0.65)"
         active-text-color="#fff"
       >
         <el-menu-item index="/dashboard">
@@ -158,6 +158,19 @@ onMounted(async () => {
 
 .sidebar .el-menu {
   border-right: none;
+}
+
+/* 菜单项可读性优化：提升非激活项对比度，激活项底色高亮 */
+.sidebar .el-menu-item {
+  font-size: 14px;
+}
+
+.sidebar .el-menu-item:hover {
+  background-color: rgba(64, 158, 255, 0.15) !important;
+}
+
+.sidebar .el-menu-item.is-active {
+  background-color: #409eff !important;
 }
 
 .header {
