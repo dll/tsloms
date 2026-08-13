@@ -9,23 +9,23 @@ import (
 // Config 全局配置结构体
 // 通过环境变量读取，sync.Once 缓存进程内单例
 type Config struct {
-	ServerPort       string // 后端服务端口
-	AppEnv           string // 运行环境（development/production/test）
-	DBDriver         string // 数据库驱动（mysql/sqlite）
-	DBHost           string // MySQL 主机
-	DBPort           string // MySQL 端口
-	DBUser           string // 数据库用户名
-	DBPassword       string // 数据库密码
-	DBName           string // 数据库名（tsloms，与 EQS 的 eqs 隔离）
-	RedisAddr        string // Redis 地址（与 EQS 共享实例）
-	RedisPass        string // Redis 密码
-	RedisDB          int    // Redis DB 索引（TSLOMS 使用 1，EQS 使用 0）
-	JWTSecret        string // JWT 签名密钥
-	MQTTBroker       string // MQTT Broker 地址
-	MQTTUsername     string // MQTT 用户名
-	MQTTPassword     string // MQTT 密码
-	MQTTClientID     string // MQTT 客户端 ID
-	MQTTTopicPrefix  string // MQTT Topic 前缀
+	ServerPort      string // 后端服务端口
+	AppEnv          string // 运行环境（development/production/test）
+	DBDriver        string // 数据库驱动（mysql/sqlite）
+	DBHost          string // MySQL 主机
+	DBPort          string // MySQL 端口
+	DBUser          string // 数据库用户名
+	DBPassword      string // 数据库密码
+	DBName          string // 数据库名（tsloms，与 EQS 的 eqs 隔离）
+	RedisAddr       string // Redis 地址（与 EQS 共享实例）
+	RedisPass       string // Redis 密码
+	RedisDB         int    // Redis DB 索引（TSLOMS 使用 1，EQS 使用 0）
+	JWTSecret       string // JWT 签名密钥
+	MQTTBroker      string // MQTT Broker 地址
+	MQTTUsername    string // MQTT 用户名
+	MQTTPassword    string // MQTT 密码
+	MQTTClientID    string // MQTT 客户端 ID
+	MQTTTopicPrefix string // MQTT Topic 前缀
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）

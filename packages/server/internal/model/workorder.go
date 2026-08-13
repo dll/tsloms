@@ -23,7 +23,7 @@ func (WorkOrder) TableName() string {
 
 // 工单状态常量
 const (
-	WorkOrderStatusPending   = "pending"
+	WorkOrderStatusPending    = "pending"
 	WorkOrderStatusProcessing = "processing"
 	WorkOrderStatusCompleted  = "completed"
 	WorkOrderStatusRejected   = "rejected"

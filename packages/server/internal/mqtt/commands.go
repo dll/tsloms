@@ -35,21 +35,21 @@ const (
 // ==================== 错误码常量（errCode） ====================
 
 const (
-	LEDErrOK          int8 = 0   // 工作正常
-	LEDErrROFF        int8 = -1  // 红灯周期全灭
-	LEDErrYOFF        int8 = -2  // 黄灯周期全灭
-	LEDErrGOFF        int8 = -3  // 绿灯周期全灭
-	LEDErrRYON        int8 = -4  // 红黄同亮
-	LEDErrRGON        int8 = -5  // 红绿同亮
-	LEDErrYGON        int8 = -6  // 黄绿同亮
-	LEDErrRYGON       int8 = -7  // 红黄绿同亮
-	LEDErrRONTimeout  int8 = -8  // 红灯亮灯超时
-	LEDErrYONTimeout  int8 = -9  // 黄灯亮灯超时
-	LEDErrGONTimeout  int8 = -10 // 绿灯亮灯超时
-	LEDErrRDim        int8 = -11 // 红灯缺亮（暂未实现）
-	LEDErrYDim        int8 = -12 // 黄灯缺亮（暂未实现）
-	LEDErrGDim        int8 = -13 // 绿灯缺亮（暂未实现）
-	LEDErrPowerLoss   int8 = -14 // 断电（超过设定时间阈值）
+	LEDErrOK         int8 = 0   // 工作正常
+	LEDErrROFF       int8 = -1  // 红灯周期全灭
+	LEDErrYOFF       int8 = -2  // 黄灯周期全灭
+	LEDErrGOFF       int8 = -3  // 绿灯周期全灭
+	LEDErrRYON       int8 = -4  // 红黄同亮
+	LEDErrRGON       int8 = -5  // 红绿同亮
+	LEDErrYGON       int8 = -6  // 黄绿同亮
+	LEDErrRYGON      int8 = -7  // 红黄绿同亮
+	LEDErrRONTimeout int8 = -8  // 红灯亮灯超时
+	LEDErrYONTimeout int8 = -9  // 黄灯亮灯超时
+	LEDErrGONTimeout int8 = -10 // 绿灯亮灯超时
+	LEDErrRDim       int8 = -11 // 红灯缺亮（暂未实现）
+	LEDErrYDim       int8 = -12 // 黄灯缺亮（暂未实现）
+	LEDErrGDim       int8 = -13 // 绿灯缺亮（暂未实现）
+	LEDErrPowerLoss  int8 = -14 // 断电（超过设定时间阈值）
 )
 
 // ==================== 灯组状态常量（LED_STATE） ====================
@@ -90,15 +90,15 @@ type EventPak struct {
 // EventRecord 事件记录结构
 // 包含设备硬件ID、灯组状态、错误码、电流值等核心字段
 type EventRecord struct {
-	LedHwID  uint32  // 设备硬件 ID（出厂唯一）
-	SubHwID  uint32  // 子灯组 ID
-	SwVer    uint32  // 固件版本号
-	ConfVer  uint32  // 配置版本号（0xYYMMDDnn 格式）
-	LedState int8    // 当前灯组亮灯状态
-	ErrCode  int8    // 错误码（见 LED_ERR_* 常量）
-	CurrentR uint16  // 红灯电流值（0-2048）
-	CurrentY uint16  // 黄灯电流值（0-2048）
-	CurrentG uint16  // 绿灯电流值（0-2048）
+	LedHwID  uint32 // 设备硬件 ID（出厂唯一）
+	SubHwID  uint32 // 子灯组 ID
+	SwVer    uint32 // 固件版本号
+	ConfVer  uint32 // 配置版本号（0xYYMMDDnn 格式）
+	LedState int8   // 当前灯组亮灯状态
+	ErrCode  int8   // 错误码（见 LED_ERR_* 常量）
+	CurrentR uint16 // 红灯电流值（0-2048）
+	CurrentY uint16 // 黄灯电流值（0-2048）
+	CurrentG uint16 // 绿灯电流值（0-2048）
 }
 
 // ==================== 故障分类辅助函数 ====================

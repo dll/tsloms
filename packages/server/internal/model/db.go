@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tsloms/server/internal/config"
 	"github.com/redis/go-redis/v9"
+	"github.com/tsloms/server/internal/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
