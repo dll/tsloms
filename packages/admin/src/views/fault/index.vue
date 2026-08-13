@@ -138,8 +138,8 @@ async function fetchData() {
       params.end_date = dateRange.value[1]
     }
     const res = await getFaults(params)
-    tableData.value = res.list || []
-    pagination.total = res.total || 0
+    tableData.value = res.data?.list || []
+    pagination.total = res.data?.total || 0
   } catch {
     // 请求失败忽略
   } finally {

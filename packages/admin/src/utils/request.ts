@@ -14,7 +14,7 @@ export interface ApiResponse<T = any> {
 
 // 创建 axios 实例，统一配置
 const request = axios.create({
-  baseURL: '/api/v1',
+  baseURL: '/tsloms/api/v1',
   timeout: 15000,
 })
 

@@ -193,8 +193,8 @@ async function fetchData() {
       device_hw_id: searchForm.device_hw_id || undefined,
       status: searchForm.status || undefined,
     })
-    tableData.value = res.list || []
-    pagination.total = res.total || 0
+    tableData.value = res.data?.list || []
+    pagination.total = res.data?.total || 0
   } catch {
     // 请求失败忽略
   } finally {

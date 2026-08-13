@@ -122,8 +122,8 @@ async function fetchData() {
       intersection: searchForm.intersection || undefined,
       online_status: searchForm.online_status || undefined,
     })
-    tableData.value = res.list || []
-    pagination.total = res.total || 0
+    tableData.value = res.data?.list || []
+    pagination.total = res.data?.total || 0
   } catch {
     // 请求失败忽略
   } finally {

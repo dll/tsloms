@@ -8,21 +8,30 @@ import (
 	"github.com/tsloms/server/internal/config"
 )
 
-// ok 统一成功响应
+// ok 统一成功响应，格式: { code: 0, msg: "success", data: {...} }
 func ok(c *gin.Context, data gin.H) {
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "success",
+		"data": data,
+	})
 }
 
 // created 统一创建成功响应
 func created(c *gin.Context, data gin.H) {
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "created",
+		"data": data,
+	})
 }
 
 // fail 统一失败响应
 func fail(c *gin.Context, status int, errCode string, message string) {
 	c.JSON(status, gin.H{
-		"error":   errCode,
-		"message": message,
+		"code":  -1,
+		"msg":   message,
+		"error": errCode,
 	})
 }
 
