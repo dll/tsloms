@@ -123,6 +123,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		// 公开接口（无需登录）
 		api.POST("/auth/login", handler.Login)
+		api.GET("/health", handler.Health)
 
 		// 受保护接口（需登录）
 		auth := api.Group("")

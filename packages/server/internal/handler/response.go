@@ -17,6 +17,15 @@ func ok(c *gin.Context, data gin.H) {
 	})
 }
 
+// Health 健康检查（公开接口，用于 Nginx / 探活）
+func Health(c *gin.Context) {
+	ok(c, gin.H{
+		"status":  "ok",
+		"service": "tsloms-server",
+		"env":     config.Get().AppEnv,
+	})
+}
+
 // created 统一创建成功响应
 func created(c *gin.Context, data gin.H) {
 	c.JSON(http.StatusOK, gin.H{
