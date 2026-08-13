@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+)
 
 // User 用户表
 // role: admin-管理员 operator-运维人员 viewer-查看人员
@@ -24,3 +28,9 @@ const (
 	RoleOperator = "operator"
 	RoleViewer   = "viewer"
 )
+
+// HashPassword 使用 bcrypt 哈希密码
+func HashPassword(password string) string {
+	bytes, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes)
+}

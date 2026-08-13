@@ -3,6 +3,7 @@ package mqtt
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -82,11 +83,11 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 	// 根据命令类型分发到对应处理器
 	switch frame.Cmd {
 	case CmdCheckin:
-		h.HandleCheckin(frame, eventPak)
+		h.HandleCheckin(frame, eventPak, topic)
 	case CmdAlarm:
 		h.HandleAlarm(frame, eventPak)
 	case CmdPowerOn:
-		h.HandlePowerOn(frame, eventPak)
+		h.HandlePowerOn(frame, eventPak, topic)
 	case CmdCheckFW:
 		h.logger.Info("固件查询请求",
 			zap.String("topic", topic),
@@ -111,7 +112,7 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 // 1. 更新设备在线状态和签到时间
 // 2. 检查事件记录中是否有故障，有则触发故障研判
 // 3. 返回时间同步回应
-func (h *Handler) HandleCheckin(frame *CmdFrame, eventPak *EventPak) {
+func (h *Handler) HandleCheckin(frame *CmdFrame, eventPak *EventPak, uplinkTopic string) {
 	now := time.Now()
 
 	// 遍历事件记录，更新设备信息并检查故障
@@ -126,7 +127,7 @@ func (h *Handler) HandleCheckin(frame *CmdFrame, eventPak *EventPak) {
 	}
 
 	// 发送时间同步回应
-	h.sendTimeSyncAck(frame)
+	h.sendTimeSyncAck(frame, uplinkTopic)
 
 	h.logger.Info("设备签到处理完成",
 		zap.Uint32("swVer", frame.SwVer),
@@ -162,7 +163,7 @@ func (h *Handler) HandleAlarm(frame *CmdFrame, eventPak *EventPak) {
 // HandlePowerOn 处理设备上电报告
 // 1. 更新设备信息与在线状态
 // 2. 返回时间同步回应
-func (h *Handler) HandlePowerOn(frame *CmdFrame, eventPak *EventPak) {
+func (h *Handler) HandlePowerOn(frame *CmdFrame, eventPak *EventPak, uplinkTopic string) {
 	now := time.Now()
 
 	if eventPak != nil {
@@ -172,7 +173,7 @@ func (h *Handler) HandlePowerOn(frame *CmdFrame, eventPak *EventPak) {
 	}
 
 	// 发送时间同步回应
-	h.sendTimeSyncAck(frame)
+	h.sendTimeSyncAck(frame, uplinkTopic)
 
 	h.logger.Info("设备上电报告处理完成",
 		zap.Uint32("swVer", frame.SwVer),
@@ -338,7 +339,8 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 
 // sendTimeSyncAck 发送时间同步回应
 // 对 CMD_CHECKIN 和 CMD_POWER_ON，通过 userVal 返回当前 epoch seconds（UTC+8）
-func (h *Handler) sendTimeSyncAck(frame *CmdFrame) {
+// uplinkTopic 为设备上行 Topic，将末尾 /U 替换为 /D 构造下行 Topic
+func (h *Handler) sendTimeSyncAck(frame *CmdFrame, uplinkTopic string) {
 	if h.mqttClient == nil || !h.mqttClient.IsConnected() {
 		return
 	}
@@ -350,13 +352,16 @@ func (h *Handler) sendTimeSyncAck(frame *CmdFrame) {
 	// 构造时间同步回应帧
 	ackPayload := BuildTimeSyncAck(frame.Cmd, frame.SwVer, frame.CmdSeq, epochSeconds)
 
-	// 发布到设备下行 Topic（将 /U 替换为 /D）
-	// Topic 格式：{topicPrefix}/{networkCode}/{stationCode}/{hwId}/D
-	// 这里简化处理，直接使用回应 Topic
-	downTopic := fmt.Sprintf("trafficLight/down/%d/ack", frame.CmdSeq)
+	// 从上行 Topic 构造下行 Topic：将末尾 /U 替换为 /D
+	downTopic := strings.TrimSuffix(uplinkTopic, "/U") + "/D"
+	if downTopic == "/D" {
+		// 降级处理：Topic 格式异常时使用默认格式
+		downTopic = fmt.Sprintf("trafficLight/down/%d/ack", frame.CmdSeq)
+	}
 
 	if err := h.mqttClient.Publish(downTopic, 1, ackPayload); err != nil {
 		h.logger.Error("发送时间同步回应失败",
+			zap.String("topic", downTopic),
 			zap.Uint16("cmdSeq", frame.CmdSeq),
 			zap.Error(err),
 		)

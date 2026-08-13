@@ -58,42 +58,51 @@ func WorkOrderStatusStats(c *gin.Context) {
 }
 
 // FaultTrendStats 故障趋势统计（柱状图）
-// 按日/周/月统计故障数量趋势
+// 按日/周/月统计故障数量趋势，使用 Go 层分组保证 MySQL/SQLite 兼容
 func FaultTrendStats(c *gin.Context) {
-	// 维度：day/week/month，默认 day
 	dimension := c.DefaultQuery("dimension", "day")
-	// 时间范围：默认近 7 天
 	days := 7
 	if d := c.Query("days"); d != "" {
 		if n, err := fmt.Sscanf(d, "%d", &days); err == nil && n == 1 && days > 0 {
-			// 使用 days
 		}
 	}
 
 	startTime := time.Now().AddDate(0, 0, -days)
 
-	var dateFormat string
-	switch dimension {
-	case "week":
-		dateFormat = "%Y-W%v"
-	case "month":
-		dateFormat = "%Y-%m"
-	default:
-		dateFormat = "%Y-%m-%d"
+	var faults []model.FaultRecord
+	model.DB.Where("first_seen >= ?", startTime).Find(&faults)
+
+	counts := make(map[string]int64)
+	for _, f := range faults {
+		var period string
+		switch dimension {
+		case "week":
+			year, week := f.FirstSeen.ISOWeek()
+			period = fmt.Sprintf("%d-W%02d", year, week)
+		case "month":
+			period = f.FirstSeen.Format("2006-01")
+		default:
+			period = f.FirstSeen.Format("2006-01-02")
+		}
+		counts[period]++
 	}
 
 	type TrendResult struct {
 		Period string `json:"period"`
 		Count  int64  `json:"count"`
 	}
-
 	var results []TrendResult
-	model.DB.Model(&model.FaultRecord{}).
-		Select(fmt.Sprintf("DATE_FORMAT(first_seen, '%s') as period, COUNT(*) as count", dateFormat)).
-		Where("first_seen >= ?", startTime).
-		Group("period").
-		Order("period ASC").
-		Find(&results)
+	for period, count := range counts {
+		results = append(results, TrendResult{Period: period, Count: count})
+	}
+
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[i].Period > results[j].Period {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
 
 	ok(c, gin.H{
 		"trend":     results,

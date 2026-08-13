@@ -44,6 +44,13 @@ func main() {
 		log.Fatalf("数据库连接失败: %v", err)
 	}
 
+	// 初始化默认管理员账户
+	if err := model.SeedAdmin(); err != nil {
+		log.Printf("管理员种子失败: %v", err)
+	} else {
+		log.Println("管理员账户已就绪（admin/admin123）")
+	}
+
 	if cfg.DBDriver == "sqlite" {
 		log.Printf("SQLite 模式：使用本地文件库 %s", cfg.DBName)
 	} else {
@@ -124,22 +131,22 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)
 
-			// 设备管理
+			// 设备管理（查看：所有角色，修改：管理员/运维）
 			auth.GET("/devices", handler.ListDevices)
 			auth.GET("/devices/stats", handler.DeviceStats)
 			auth.GET("/devices/:id", handler.GetDevice)
-			auth.PUT("/devices/:id", handler.UpdateDevice)
+			auth.PUT("/devices/:id", middleware.RequireOperator(), handler.UpdateDevice)
 
-			// 故障查询
+			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)
 			auth.GET("/faults/:id", handler.GetFault)
 
-			// 工单管理
+			// 工单管理（查看：所有角色，操作：管理员/运维）
 			auth.GET("/work-orders", handler.ListWorkOrders)
-			auth.POST("/work-orders", handler.CreateWorkOrder)
-			auth.PUT("/work-orders/:id/status", handler.UpdateWorkOrderStatus)
+			auth.POST("/work-orders", middleware.RequireOperator(), handler.CreateWorkOrder)
+			auth.PUT("/work-orders/:id/status", middleware.RequireOperator(), handler.UpdateWorkOrderStatus)
 
-			// 数据看板
+			// 数据看板（只读）
 			auth.GET("/dashboard/overview", handler.DashboardOverview)
 			auth.GET("/dashboard/fault-type-stats", handler.FaultTypeStats)
 			auth.GET("/dashboard/work-order-stats", handler.WorkOrderStatusStats)

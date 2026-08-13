@@ -73,6 +73,26 @@ func InitRedis(cfg *config.Config) error {
 	return nil
 }
 
+// SeedAdmin 初始化默认管理员账户（仅在 users 表为空时创建）
+func SeedAdmin() error {
+	if DB == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
+
+	var count int64
+	DB.Model(&User{}).Count(&count)
+	if count > 0 {
+		return nil
+	}
+
+	admin := User{
+		Username:     "admin",
+		PasswordHash: HashPassword("admin123"),
+		Role:         RoleAdmin,
+	}
+	return DB.Create(&admin).Error
+}
+
 // InitTestDB 创建内存 SQLite 数据库（仅供单元测试）
 func InitTestDB() *gorm.DB {
 	// 使用独立名称的共享内存库，避免测试间数据串扰
