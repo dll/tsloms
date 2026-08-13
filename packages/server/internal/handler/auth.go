@@ -54,6 +54,10 @@ func Login(c *gin.Context) {
 			"phone":    user.Phone,
 		},
 	})
+
+	// 记录登录操作日志
+	c.Set("op_username", user.Username)
+	recordOperation(c, model.OpLogin, "auth/login", "用户登录")
 }
 
 // issueToken 签发 JWT（HS256，有效期 72 小时）

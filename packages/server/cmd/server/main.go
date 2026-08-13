@@ -153,6 +153,10 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/dashboard/work-order-stats", handler.WorkOrderStatusStats)
 			auth.GET("/dashboard/fault-trend", handler.FaultTrendStats)
 			auth.GET("/dashboard/device-fault-rank", handler.DeviceFaultRank)
+
+			// 日志查询
+			auth.GET("/logs/packets", handler.ListPacketLogs)
+			auth.GET("/logs/operations", handler.ListOperationLogs)
 		}
 	}
 

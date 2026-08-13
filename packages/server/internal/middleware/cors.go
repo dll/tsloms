@@ -1,63 +1,59 @@
 package middleware
 
 import (
-	"net/url"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tsloms/server/internal/config"
 )
 
 // CORS 跨域中间件
-// 开发/测试环境允许所有来源（*），生产环境按白名单限制
+// 生产环境按白名单限制（ALLOWED_ORIGINS 环境变量，逗号分隔），
+// 非白名单来源不返回 CORS 头（浏览器拦截）；开发/测试环境允许所有来源。
 func CORS() gin.HandlerFunc {
+	cfg := config.Get()
+	// 生产环境白名单（逗号分隔），如 https://admin.example.com,http://127.0.0.1:8092
+	allowed := map[string]bool{}
+	if cfg.IsProduction() {
+		for _, o := range strings.Split(cfg.AllowedOrigins, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				allowed[strings.TrimSuffix(o, "/")] = true
+			}
+		}
+	}
+
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
-		// 有 Origin 时回显来源，否则通配
-		allowOrigin := "*"
-		if origin != "" {
+		allowOrigin := ""
+		if !cfg.IsProduction() {
+			// 开发/测试：有 Origin 回显，无则通配
+			if origin != "" {
+				allowOrigin = origin
+			} else {
+				allowOrigin = "*"
+			}
+		} else if origin != "" && allowed[strings.TrimSuffix(origin, "/")] {
+			// 生产：仅白名单内来源放行
 			allowOrigin = origin
 		}
-		c.Header("Access-Control-Allow-Origin", allowOrigin)
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
-		c.Header("Access-Control-Max-Age", "86400")
 
-		// 预检请求直接返回 204
-		if c.Request.Method == "OPTIONS" {
+		if allowOrigin != "" {
+			c.Header("Access-Control-Allow-Origin", allowOrigin)
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Max-Age", "86400")
+		}
+
+		// 预检请求
+		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(204)
 			return
 		}
 
 		c.Next()
 	}
-}
-
-// isSameOrigin 判断请求 Origin 与后端 Host 是否同源
-func isSameOrigin(origin, host string) bool {
-	o := originHost(origin)
-	h := originHost(host)
-	return o != "" && o == h
-}
-
-// originHost 从 URL 或 host[:port] 中提取小写主机名
-func originHost(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	u, err := url.Parse(s)
-	if err != nil {
-		return ""
-	}
-	if host := u.Hostname(); host != "" {
-		return strings.ToLower(host)
-	}
-	if i := strings.IndexAny(s, "/?"); i >= 0 {
-		s = s[:i]
-	}
-	if i := strings.LastIndex(s, ":"); i >= 0 {
-		s = s[:i]
-	}
-	return strings.ToLower(s)
 }

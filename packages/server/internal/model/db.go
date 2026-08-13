@@ -60,6 +60,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&FaultRecord{},
 		&WorkOrder{},
 		&User{},
+		&OperationLog{},
 	)
 }
 

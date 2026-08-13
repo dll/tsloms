@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -119,6 +120,7 @@ func UpdateDevice(c *gin.Context) {
 			serverError(c, err)
 			return
 		}
+		recordOperation(c, model.OpUpdate, fmt.Sprintf("device/%d", device.ID), "更新设备台账信息")
 	}
 
 	ok(c, gin.H{"device": device, "message": "更新成功"})

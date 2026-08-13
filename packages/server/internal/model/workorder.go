@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // WorkOrder 工单表
 // 故障触发后自动生成维修工单，状态流转：pending → processing → completed/rejected
@@ -28,3 +33,13 @@ const (
 	WorkOrderStatusCompleted  = "completed"
 	WorkOrderStatusRejected   = "rejected"
 )
+
+// NextOrderNo 生成工单编号：WO{yyyyMMdd}{4位自增序号}
+// 基于当日已有工单数 + 1，保证同日内序号连续且唯一
+func NextOrderNo(db *gorm.DB) string {
+	today := time.Now().Format("20060102")
+	prefix := "WO" + today
+	var count int64
+	db.Model(&WorkOrder{}).Where("order_no LIKE ?", prefix+"%").Count(&count)
+	return fmt.Sprintf("%s%04d", prefix, count+1)
+}

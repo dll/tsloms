@@ -66,6 +66,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		// 将用户信息注入上下文
 		c.Set("user_id", user.ID)
 		c.Set("user_role", user.Role)
+		c.Set("username", user.Username)
 		c.Next()
 	}
 }

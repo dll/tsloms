@@ -94,8 +94,8 @@ func CreateWorkOrder(c *gin.Context) {
 		return
 	}
 
-	// 生成工单编号：WO{yyyyMMdd}{seq}
-	orderNo := fmt.Sprintf("WO%s%04d", time.Now().Format("20060102"), req.FaultID%10000)
+	// 生成工单编号：WO{yyyyMMdd}{4位自增序号}
+	orderNo := model.NextOrderNo(model.DB)
 
 	wo := model.WorkOrder{
 		OrderNo:    orderNo,
@@ -112,6 +112,8 @@ func CreateWorkOrder(c *gin.Context) {
 
 	// 关联故障记录的工单 ID
 	model.DB.Model(&fault).Update("work_order_id", wo.ID)
+
+	recordOperation(c, model.OpCreate, fmt.Sprintf("work-order/%d", wo.ID), "创建维修工单")
 
 	ok(c, gin.H{"work_order": wo, "message": "工单创建成功"})
 }
@@ -160,11 +162,10 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 		updates["result"] = req.Result
 	}
 
-	// 工单完成时记录闭环时间
+	// 工单完成时记录闭环时间，并将关联故障标记为已解决
 	if req.Status == model.WorkOrderStatusCompleted {
 		now := time.Now()
 		updates["closed_at"] = &now
-		// 同时将关联故障标记为已解决
 		model.DB.Model(&model.FaultRecord{}).
 			Where("id = ?", wo.FaultID).
 			Updates(map[string]interface{}{
@@ -173,15 +174,17 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 			})
 	}
 
-	// 工单驳回时重新变为待处理（重新派发）
-	if req.Status == model.WorkOrderStatusRejected {
-		updates["status"] = model.WorkOrderStatusPending
+	// 工单驳回后重新派发（rejected → pending）：清空关闭时间
+	if req.Status == model.WorkOrderStatusPending && wo.Status == model.WorkOrderStatusRejected {
+		updates["closed_at"] = nil
 	}
 
 	if err := model.DB.Model(&wo).Updates(updates).Error; err != nil {
 		serverError(c, err)
 		return
 	}
+
+	recordOperation(c, model.OpUpdate, fmt.Sprintf("work-order/%d", wo.ID), "更新工单状态为 "+req.Status)
 
 	ok(c, gin.H{"work_order": wo, "message": "工单状态更新成功"})
 }

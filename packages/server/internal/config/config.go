@@ -26,6 +26,7 @@ type Config struct {
 	MQTTPassword    string // MQTT 密码
 	MQTTClientID    string // MQTT 客户端 ID
 	MQTTTopicPrefix string // MQTT Topic 前缀
+	AllowedOrigins  string // CORS 生产白名单（逗号分隔，可为空）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -48,6 +49,7 @@ func Load() *Config {
 		MQTTPassword:    getEnv("MQTT_PASSWORD", ""),
 		MQTTClientID:    getEnv("MQTT_CLIENT_ID", "tsloms-server"),
 		MQTTTopicPrefix: getEnv("MQTT_TOPIC_PREFIX", "trafficLight"),
+		AllowedOrigins:  getEnv("ALLOWED_ORIGINS", ""),
 	}
 }
 

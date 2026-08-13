@@ -306,11 +306,8 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 		return
 	}
 
-	// 生成工单编号：WO{yyyyMMdd}{seq}
-	orderNo := fmt.Sprintf("WO%s%04d",
-		time.Now().Format("20060102"),
-		fault.ID%10000,
-	)
+	// 生成工单编号：WO{yyyyMMdd}{4位自增序号}
+	orderNo := model.NextOrderNo(model.DB)
 
 	wo := model.WorkOrder{
 		OrderNo:    orderNo,

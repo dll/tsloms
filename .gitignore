@@ -47,3 +47,7 @@ packages/admin/components.d.ts
 
 # Test coverage
 coverage/
+
+# Build artifacts (zip)
+dist.zip
+packages/admin/dist.zip

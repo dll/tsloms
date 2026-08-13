@@ -41,13 +41,21 @@ func ListFaults(c *gin.Context) {
 		query = query.Where("fault_level = ?", faultLevel)
 	}
 
-	// 按时间范围筛选
-	if startTime := c.Query("start_time"); startTime != "" {
+	// 按时间范围筛选（兼容 start_time/end_time 与 start_date/end_date 两套参数名）
+	startTime := c.Query("start_time")
+	if startTime == "" {
+		startTime = c.Query("start_date")
+	}
+	if startTime != "" {
 		if t, err := time.Parse("2006-01-02", startTime); err == nil {
 			query = query.Where("first_seen >= ?", t)
 		}
 	}
-	if endTime := c.Query("end_time"); endTime != "" {
+	endTime := c.Query("end_time")
+	if endTime == "" {
+		endTime = c.Query("end_date")
+	}
+	if endTime != "" {
 		if t, err := time.Parse("2006-01-02", endTime); err == nil {
 			query = query.Where("last_seen <= ?", t.Add(24*time.Hour))
 		}
