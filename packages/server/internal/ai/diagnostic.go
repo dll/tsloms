@@ -115,9 +115,10 @@ func extractDiag(text, key string) string {
 	started := false
 	for _, l := range lines {
 		trim := strings.TrimSpace(l)
-		if strings.HasPrefix(trim, key) {
+		// 兼容全角（：）与半角（:）冒号
+		if strings.HasPrefix(trim, key+"：") || strings.HasPrefix(trim, key+":") {
 			started = true
-			buf = append(buf, strings.TrimPrefix(trim, key+":"))
+			buf = append(buf, strings.TrimPrefix(strings.TrimPrefix(trim, key+"："), key+":"))
 			continue
 		}
 		if started {
