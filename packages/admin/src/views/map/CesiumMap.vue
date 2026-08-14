@@ -141,6 +141,7 @@ function initCesium() {
   })
   viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100
   viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
+  ;(window as any).__tslomsViewer = viewer // 便于调试/验证相机
   // 默认视角：先定位到中国东部（避免全世界），设备加载后自动聚焦到设备分布
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(104.0, 30.0, 3000000) })
   applySceneMode()
