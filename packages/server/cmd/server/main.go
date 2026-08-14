@@ -189,6 +189,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/dashboard/fault-trend", handler.FaultTrendStats)
 			auth.GET("/dashboard/device-fault-rank", handler.DeviceFaultRank)
 			auth.GET("/dashboard/work-order-avg-closure", handler.WorkOrderAvgClosure)
+	auth.GET("/dashboard/ai-overview", handler.AIDashboardOverview)
 
 			// 日志查询
 			auth.GET("/logs/packets", handler.ListPacketLogs)
@@ -202,6 +203,15 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				users.PUT("/:id", handler.UpdateUser)
 				users.PUT("/:id/password", handler.ResetUserPassword)
 				users.DELETE("/:id", handler.DeleteUser)
+			}
+
+			// 组织/部门管理（列表所有人可读，增删改仅管理员）
+			auth.GET("/departments", handler.ListDepartments)
+			departments := auth.Group("/departments", middleware.RequireAdmin())
+			{
+				departments.POST("", handler.CreateDepartment)
+				departments.PUT("/:id", handler.UpdateDepartment)
+				departments.DELETE("/:id", handler.DeleteDepartment)
 			}
 
 			// 设备媒体（视频举证/监控/时间视频）
@@ -235,6 +245,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/ai/usage/reset", middleware.RequireAdmin(), handler.ResetAIUsage)
 			// 故障预测
 			auth.POST("/ai/predict/run", middleware.RequireOperator(), handler.RunPrediction)
+	auth.GET("/ai/predict/by-intersection", handler.RunPredictionByIntersection)
 			auth.GET("/ai/predict", handler.AIPredictions)
 			auth.POST("/ai/predict/:id/enhance", handler.EnhancePredictionPlan)
 			// 故障诊断（反馈，含图片）

@@ -31,6 +31,11 @@ export function runPrediction(): Promise<ApiResponse> {
   return request.post('/ai/predict/run') as unknown as Promise<ApiResponse>
 }
 
+// 按路口聚合预测（返回每个路口风险聚合）
+export function runPredictionByIntersection(): Promise<ApiResponse> {
+  return request.get('/ai/predict/by-intersection') as unknown as Promise<ApiResponse>
+}
+
 // 查询历史预测
 export function getPredictions(batchId?: string): Promise<ApiResponse> {
   return request.get('/ai/predict', { params: batchId ? { batch_id: batchId } : {} }) as unknown as Promise<ApiResponse>

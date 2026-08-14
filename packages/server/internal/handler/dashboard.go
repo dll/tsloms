@@ -243,3 +243,100 @@ func WorkOrderAvgClosure(c *gin.Context) {
 		"days":             days,
 	})
 }
+
+// AIDashboardOverview AI 智慧大屏聚合数据
+// 返回：今日 AI 额度用量、最新预测批次风险分布、高风险设备清单、AI 动作汇总
+func AIDashboardOverview(c *gin.Context) {
+	cfg := model.GetAIConfig()
+	userID := c.GetUint("user_id")
+
+	// 今日额度消耗（当前用户）
+	tokens, calls := model.TodayAIConsumed(userID)
+
+	// 最新预测批次风险分布：取所有批次里最近的一批，统计各风险等级设备数
+	var latestBatch string
+	model.DB.Model(&model.AIPrediction{}).Select("MAX(batch_id)").Scan(&latestBatch)
+	riskDist := gin.H{"low": 0, "medium": 0, "high": 0, "critical": 0}
+	if latestBatch != "" {
+		var rows []struct {
+			RiskLevel string
+			Count     int64
+		}
+		model.DB.Model(&model.AIPrediction{}).
+			Select("risk_level, COUNT(*) AS count").
+			Where("batch_id = ?", latestBatch).
+			Group("risk_level").Scan(&rows)
+		total := int64(0)
+		for _, r := range rows {
+			riskDist[r.RiskLevel] = r.Count
+			total += r.Count
+		}
+		riskDist["total"] = total
+		riskDist["batch_id"] = latestBatch
+	}
+
+	// 最新批次中高/极高风险设备清单（取 top 5）
+	var highRisk []gin.H
+	if latestBatch != "" {
+		var preds []model.AIPrediction
+		model.DB.Where("batch_id = ? AND risk_level IN ?", latestBatch, []string{"high", "critical"}).
+			Order("health_score ASC").Limit(5).Find(&preds)
+		for _, p := range preds {
+			highRisk = append(highRisk, gin.H{
+				"device_hw_id":  p.DeviceHwID,
+				"intersection":  p.Intersection,
+				"health_score":  p.HealthScore,
+				"risk_level":    p.RiskLevel,
+				"predict_type":  p.PredictType,
+				"remain_days":   p.RemainDays,
+			})
+		}
+	}
+
+	// 今日 AI 动作汇总
+	today := time.Now().Truncate(24 * time.Hour)
+	type actRow struct {
+		Action string
+		Count  int64
+	}
+	var acts []actRow
+	model.DB.Model(&model.AIUsage{}).
+		Select("action, COUNT(*) AS count").
+		Where("created_at >= ?", today).
+		Group("action").Scan(&acts)
+	actionSummary := gin.H{}
+	for _, a := range acts {
+		actionSummary[a.Action] = a.Count
+	}
+
+	// 近 7 天预测批次趋势（每日有预测的设备数）
+	var batchRows []struct {
+		BatchID string
+		Count   int64
+	}
+	model.DB.Model(&model.AIPrediction{}).
+		Select("batch_id, COUNT(DISTINCT device_hw_id) AS count").
+		Where("created_at >= ?", time.Now().AddDate(0, 0, -7)).
+		Group("batch_id").Order("batch_id ASC").Scan(&batchRows)
+	batchTrend := make([]gin.H, 0, len(batchRows))
+	for _, b := range batchRows {
+		batchTrend = append(batchTrend, gin.H{"batch_id": b.BatchID, "count": b.Count})
+	}
+
+	ok(c, gin.H{
+		"config": gin.H{
+			"enabled":          cfg.Enabled,
+			"provider":         cfg.Provider,
+			"day_token_limit":  cfg.DayTokenLimit,
+			"day_call_limit":   cfg.DayCallLimit,
+		},
+		"today": gin.H{
+			"tokens": tokens,
+			"calls":  calls,
+		},
+		"risk_distribution": riskDist,
+		"high_risk_devices": highRisk,
+		"action_summary":    actionSummary,
+		"batch_trend":       batchTrend,
+	})
+}

@@ -30,3 +30,8 @@ export function getDeviceFaultRank(params: { limit?: number; days?: number }): P
 export function getWorkOrderAvgClosure(params: { days?: number }): Promise<ApiResponse> {
   return request.get('/dashboard/work-order-avg-closure', { params }) as unknown as Promise<ApiResponse>
 }
+
+// AI 智慧大屏聚合数据（今日额度用量、风险分布、高风险设备、AI动作汇总）
+export function getAIDashboardOverview(): Promise<ApiResponse> {
+  return request.get('/dashboard/ai-overview') as unknown as Promise<ApiResponse>
+}

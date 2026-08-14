@@ -74,6 +74,72 @@
       </el-col>
     </el-row>
 
+    <!-- AI 智慧大屏 -->
+    <el-card shadow="hover" class="ai-board">
+      <template #header>
+        <div class="ai-board-head">
+          <span class="ai-board-title">🤖 AI 智慧大屏</span>
+          <el-tag v-if="ai.config?.enabled" type="success" size="small" effect="plain">LLM 引擎已启用（{{ ai.config?.provider || '-' }}）</el-tag>
+          <el-tag v-else type="info" size="small" effect="plain">LLM 引擎关闭（规则引擎兜底）</el-tag>
+          <el-button v-if="ai.high_risk_devices?.length" size="small" type="danger" text @click="goPredict">查看全部预测 →</el-button>
+        </div>
+      </template>
+      <el-row :gutter="20">
+        <!-- 左侧：今日 AI 用量 + 额度使用率 -->
+        <el-col :span="7">
+          <div class="ai-usage">
+            <div ref="aiGaugeRef" class="ai-gauge"></div>
+            <div class="ai-usage-meta">
+              <div class="ai-meta-row"><span>今日调用</span><b>{{ ai.today?.calls ?? 0 }} 次</b></div>
+              <div class="ai-meta-row"><span>今日 Token</span><b>{{ fmtTokens(ai.today?.tokens ?? 0) }}</b></div>
+              <div class="ai-meta-row"><span>额度上限</span><b>{{ fmtTokens(ai.config?.day_token_limit ?? 0) }}</b></div>
+            </div>
+            <div class="ai-action-tags">
+              <el-tag v-for="(cnt, act) in ai.action_summary" :key="act" size="small" type="info" style="margin-right:6px">
+                {{ actionLabel(act) }}×{{ cnt }}
+              </el-tag>
+              <span v-if="!Object.keys(ai.action_summary || {}).length" class="ai-empty">今日暂无 AI 调用</span>
+            </div>
+          </div>
+        </el-col>
+        <!-- 中：风险分布 + 高风险设备 -->
+        <el-col :span="10">
+          <div class="ai-risk">
+            <div class="ai-risk-sub">最新预测批次风险分布
+              <span v-if="ai.risk_distribution?.batch_id" class="ai-batch">批次 {{ ai.risk_distribution.batch_id }}</span>
+            </div>
+            <div class="ai-risk-bars">
+              <div class="ai-bar-row" v-for="lv in ['critical','high','medium','low']" :key="lv">
+                <span class="ai-bar-label" :style="{ color: riskColor(lv) }">{{ riskLabel(lv) }}</span>
+                <div class="ai-bar-track">
+                  <div class="ai-bar-fill" :style="{ width: riskPct(lv) + '%', background: riskColor(lv) }"></div>
+                </div>
+                <span class="ai-bar-num">{{ ai.risk_distribution?.[lv] ?? 0 }}</span>
+              </div>
+            </div>
+            <div class="ai-high-risk" v-if="ai.high_risk_devices?.length">
+              <div class="ai-risk-sub">高/极高风险设备 TOP{{ ai.high_risk_devices.length }}</div>
+              <div v-for="d in ai.high_risk_devices" :key="d.device_hw_id" class="ai-high-item">
+                <span class="ai-high-dot" :style="{ background: riskColor(d.risk_level) }"></span>
+                <span class="ai-high-name">{{ d.intersection || ('#' + d.device_hw_id) }}</span>
+                <span class="ai-high-type">{{ faultTypeCN[d.predict_type] || d.predict_type }}</span>
+                <span class="ai-high-health">健康 {{ d.health_score }}</span>
+                <el-tag size="small" :type="riskTag(d.risk_level)">{{ riskLabel(d.risk_level) }}</el-tag>
+              </div>
+            </div>
+          </div>
+        </el-col>
+        <!-- 右：预测批次趋势 -->
+        <el-col :span="7">
+          <div class="ai-trend">
+            <div class="ai-risk-sub">近7日预测批次趋势</div>
+            <div ref="aiTrendRef" class="ai-trend-chart"></div>
+            <div v-if="!ai.batch_trend?.length" class="ai-empty">暂无预测批次数据</div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
     <!-- 图表区域 -->
     <el-row :gutter="20" class="chart-row">
       <el-col :span="12">
@@ -121,10 +187,13 @@
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import { useRouter } from 'vue-router'
 import {
   getOverview, getFaultTypeStats, getFaultTrend, getWorkOrderStats,
-  getDeviceFaultRank, getWorkOrderAvgClosure,
+  getDeviceFaultRank, getWorkOrderAvgClosure, getAIDashboardOverview,
 } from '@/api/dashboard'
+
+const router = useRouter()
 
 // 看板概览数据
 const overview = reactive({
@@ -143,12 +212,29 @@ const pieChartRef = ref<HTMLElement>()
 const barChartRef = ref<HTMLElement>()
 const woPieRef = ref<HTMLElement>()
 const rankBarRef = ref<HTMLElement>()
+const aiGaugeRef = ref<HTMLElement>()
+const aiTrendRef = ref<HTMLElement>()
 
 // ECharts 实例
 let pieChart: echarts.ECharts | null = null
 let barChart: echarts.ECharts | null = null
 let woPieChart: echarts.ECharts | null = null
 let rankBarChart: echarts.ECharts | null = null
+let aiGaugeChart: echarts.ECharts | null = null
+let aiTrendChart: echarts.ECharts | null = null
+
+// AI 智慧大屏数据
+const ai = reactive<{
+  config: { enabled?: boolean; provider?: string; day_token_limit?: number; day_call_limit?: number } | null
+  today: { tokens?: number; calls?: number } | null
+  risk_distribution: Record<string, number> | null
+  high_risk_devices: any[] | null
+  action_summary: Record<string, number> | null
+  batch_trend: any[] | null
+}>({
+  config: null, today: null, risk_distribution: null,
+  high_risk_devices: null, action_summary: null, batch_trend: null,
+})
 
 // 故障类型中文映射
 const faultTypeCN: Record<string, string> = {
@@ -164,6 +250,81 @@ async function fetchOverview() {
   } catch {
     // 请求失败忽略
   }
+}
+
+// ---- AI 智慧大屏 ----
+const riskColorMap: Record<string, string> = { critical: '#F56C6C', high: '#E6A23C', medium: '#409EFF', low: '#67C23A' }
+const riskTextMap: Record<string, string> = { critical: '极高', high: '高', medium: '中', low: '低' }
+const riskTagMap: Record<string, string> = { critical: 'danger', high: 'warning', medium: 'primary', low: 'success' }
+const actionCN: Record<string, string> = { predict: '预测', diagnose: '诊断', lifecycle: '溯源' }
+function riskColor(lv: string) { return riskColorMap[lv] || '#909399' }
+function riskLabel(lv: string) { return riskTextMap[lv] || lv }
+function riskTag(lv: string) { return riskTagMap[lv] || 'info' }
+function actionLabel(act: string) { return actionCN[act] || act }
+function fmtTokens(n: number) {
+  if (n >= 10000) return (n / 10000).toFixed(1) + ' 万'
+  return String(n)
+}
+function riskPct(lv: string) {
+  const total = ai.risk_distribution?.total
+  const v = ai.risk_distribution?.[lv] ?? 0
+  if (!total) return 0
+  return Math.max(3, Math.round((v / total) * 100))
+}
+function goPredict() { router.push('/ai/predict') }
+
+async function initAIGauge() {
+  await nextTick()
+  if (!aiGaugeRef.value) return
+  const tokens = ai.today?.tokens ?? 0
+  const limit = ai.config?.day_token_limit || 1
+  const pct = Math.min(100, Math.round((tokens / limit) * 100))
+  aiGaugeChart = echarts.init(aiGaugeRef.value)
+  aiGaugeChart.setOption({
+    series: [{
+      type: 'gauge', startAngle: 220, endAngle: -40, radius: '90%',
+      min: 0, max: 100, splitNumber: 10,
+      progress: { show: true, width: 14, itemStyle: { color: pct > 80 ? '#F56C6C' : pct > 50 ? '#E6A23C' : '#67C23A' } },
+      axisLine: { lineStyle: { width: 14, color: [[1, '#f0f2f5']] } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      pointer: { show: false },
+      title: { show: true, offsetCenter: [0, '30%'], fontSize: 12, color: '#909399', formatter: 'Token 使用率' },
+      detail: { valueAnimation: true, fontSize: 20, fontWeight: 'bold', offsetCenter: [0, '-10%'], color: '#303133', formatter: pct + '%' },
+      data: [{ value: pct }],
+    }],
+  })
+}
+
+async function initAITrend() {
+  await nextTick()
+  if (!aiTrendRef.value) return
+  const trend = ai.batch_trend || []
+  if (!trend.length) return
+  const labels = trend.map((b) => b.batch_id)
+  const counts = trend.map((b) => b.count)
+  aiTrendChart = echarts.init(aiTrendRef.value)
+  aiTrendChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '4%', top: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', data: labels, axisLabel: { rotate: 30, fontSize: 10 } },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [{ name: '预测设备数', type: 'bar', data: counts, itemStyle: { color: '#722ed1', borderRadius: [3, 3, 0, 0] }, barWidth: '45%' }],
+  })
+}
+
+async function fetchAIData() {
+  try {
+    const res = await getAIDashboardOverview()
+    const d = res.data || {}
+    ai.config = d.config || null
+    ai.today = d.today || null
+    ai.risk_distribution = d.risk_distribution || null
+    ai.high_risk_devices = d.high_risk_devices || null
+    ai.action_summary = d.action_summary || null
+    ai.batch_trend = d.batch_trend || null
+    initAIGauge()
+    initAITrend()
+  } catch { /* 请求失败忽略 */ }
 }
 
 // 初始化饼图 - 故障类型占比
@@ -315,10 +476,13 @@ function handleResize() {
   barChart?.resize()
   woPieChart?.resize()
   rankBarChart?.resize()
+  aiGaugeChart?.resize()
+  aiTrendChart?.resize()
 }
 
 onMounted(async () => {
   await fetchOverview()
+  await fetchAIData()
   await refreshAll()
   window.addEventListener('resize', handleResize)
 })
@@ -329,6 +493,8 @@ onUnmounted(() => {
   barChart?.dispose()
   woPieChart?.dispose()
   rankBarChart?.dispose()
+  aiGaugeChart?.dispose()
+  aiTrendChart?.dispose()
 })
 </script>
 
@@ -417,4 +583,31 @@ onUnmounted(() => {
 .chart-container {
   height: 320px;
 }
+
+.ai-board { margin-bottom: 20px; border-top: 2px solid #722ed1; }
+.ai-board-head { display: flex; align-items: center; gap: 10px; }
+.ai-board-title { font-weight: 600; font-size: 15px; }
+.ai-usage { display: flex; flex-direction: column; align-items: center; }
+.ai-gauge { width: 100%; height: 200px; }
+.ai-usage-meta { width: 100%; margin-top: 4px; }
+.ai-meta-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 13px; color: #606266; }
+.ai-meta-row b { color: #303133; }
+.ai-action-tags { margin-top: 10px; text-align: center; }
+.ai-empty { color: #c0c4cc; font-size: 12px; }
+.ai-risk-sub { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.ai-batch { font-weight: normal; color: #909399; font-size: 12px; }
+.ai-risk-bars { margin-bottom: 16px; }
+.ai-bar-row { display: flex; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.ai-bar-label { width: 44px; }
+.ai-bar-track { flex: 1; height: 12px; background: #f0f2f5; border-radius: 6px; overflow: hidden; margin: 0 10px; }
+.ai-bar-fill { height: 100%; border-radius: 6px; transition: width .3s; }
+.ai-bar-num { width: 30px; text-align: right; color: #606266; }
+.ai-high-risk { border-top: 1px dashed #ebeef5; padding-top: 10px; }
+.ai-high-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+.ai-high-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ai-high-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-high-type { color: #909399; font-size: 12px; }
+.ai-high-health { color: #606266; font-size: 12px; }
+.ai-trend-chart { width: 100%; height: 200px; }
+.ai-trend { text-align: center; }
 </style>

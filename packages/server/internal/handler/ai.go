@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +161,101 @@ func RunPrediction(c *gin.Context) {
 	}
 	recordOperation(c, model.OpRead, "ai/predict", fmt.Sprintf("运行全量故障预测(%d台)", len(devices)))
 	ok(c, gin.H{"batch_id": batchID, "list": results, "count": len(devices), "risk_count": riskCount})
+}
+
+// RunPredictionByIntersection 按路口聚合预测：对全量设备预测后按路口聚类，
+// 输出每个路口的风险聚合（取最严重设备风险、平均健康分、设备数、中心经纬度、高发故障类型）
+func RunPredictionByIntersection(c *gin.Context) {
+	var devices []model.Device
+	model.DB.Find(&devices)
+	batchID := time.Now().Format("200601021504")
+
+	type agg struct {
+		Intersection string
+		Lat, Lng     *float64
+		count        int
+		healthSum    int
+		worstLevel   string
+		faultTypeCnt map[string]int
+		devices      []gin.H
+	}
+	order := map[string]int{"low": 1, "medium": 2, "high": 3, "critical": 4}
+	groups := map[string]*agg{}
+	var groupKeys []string
+
+	for _, d := range devices {
+		p := ai.RunRulePrediction(&d, batchID)
+		key := p.Intersection
+		if key == "" {
+			key = fmt.Sprintf("#%d", p.DeviceHwID)
+		}
+		g, exist := groups[key]
+		if !exist {
+			g = &agg{Intersection: key, worstLevel: "low", faultTypeCnt: map[string]int{}}
+			groups[key] = g
+			groupKeys = append(groupKeys, key)
+		}
+		g.count++
+		g.healthSum += p.HealthScore
+		if d.Lat != nil && d.Lng != nil {
+			if g.Lat == nil { g.Lat = new(float64); g.Lng = new(float64) }
+			*g.Lat += *d.Lat
+			*g.Lng += *d.Lng
+		}
+		if order[p.RiskLevel] > order[g.worstLevel] {
+			g.worstLevel = p.RiskLevel
+		}
+		if p.PredictType != "" { g.faultTypeCnt[p.PredictType]++ }
+		g.devices = append(g.devices, gin.H{
+			"device_hw_id": p.DeviceHwID, "health_score": p.HealthScore,
+			"risk_level": p.RiskLevel, "predict_type": p.PredictType,
+			"remain_days": p.RemainDays, "source": p.Source,
+		})
+	}
+
+	// 排序：先按最严重风险降序，再按平均健康分升序
+	riskCount := map[string]int{"low": 0, "medium": 0, "high": 0, "critical": 0}
+	list := make([]gin.H, 0, len(groupKeys))
+	for _, k := range groupKeys {
+		g := groups[k]
+		var lat, lng *float64
+		if g.Lat != nil && g.count > 0 {
+			la, ln := *g.Lat/float64(g.count), *g.Lng/float64(g.count)
+			lat, lng = &la, &ln
+		}
+		avgHealth := 0
+		if g.count > 0 { avgHealth = g.healthSum / g.count }
+		// 高发故障类型（出现最多者）
+		worstFault, worstCnt := "", 0
+		for ft, n := range g.faultTypeCnt {
+			if n > worstCnt { worstFault, worstCnt = ft, n }
+		}
+		riskCount[g.worstLevel]++
+		list = append(list, gin.H{
+			"intersection":  g.Intersection,
+			"device_count":  g.count,
+			"health_score":  avgHealth,
+			"risk_level":    g.worstLevel,
+			"risk_label":    ai.RiskLabel(g.worstLevel),
+			"top_fault":     worstFault,
+			"top_fault_cnt": worstCnt,
+			"lat":           lat, "lng": lng,
+			"devices": g.devices,
+		})
+	}
+	// 按最严重风险降序、平均健康分升序稳定排序
+	sort.SliceStable(list, func(i, j int) bool {
+		a, b := list[i], list[j]
+		if a["risk_level"].(string) != b["risk_level"].(string) {
+			return order[a["risk_level"].(string)] > order[b["risk_level"].(string)]
+		}
+		return a["health_score"].(int) < b["health_score"].(int)
+	})
+
+	recordOperation(c, model.OpRead, "ai/predict/by-intersection",
+		fmt.Sprintf("按路口聚合预测(%d个路口/%d台)", len(list), len(devices)))
+	ok(c, gin.H{"batch_id": batchID, "list": list, "count": len(list),
+		"device_count": len(devices), "risk_count": riskCount})
 }
 
 // EnhancePredictionPlan 对单条预测生成 LLM 增强预案（消耗额度）

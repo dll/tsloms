@@ -8,6 +8,10 @@
           <span class="sub">（规则引擎健康评分 + 地图风险可视化 + LLM 预案增强）</span>
         </div>
         <div class="actions">
+          <el-radio-group v-model="viewMode" size="small" @change="onViewChange">
+            <el-radio-button value="device">设备视图</el-radio-button>
+            <el-radio-button value="intersection">路口聚合</el-radio-button>
+          </el-radio-group>
           <el-button type="primary" :loading="running" @click="doRun">
             <el-icon><VideoPlay /></el-icon> 运行全量预测
           </el-button>
@@ -32,22 +36,36 @@
       <div class="body-wrap">
         <!-- 左侧清单 -->
         <div class="list-panel">
-          <div class="list-head">预测清单（点击定位）</div>
+          <div class="list-head">
+            {{ viewMode === 'device' ? '预测清单（点击定位）' : '路口聚合（点击定位）' }}
+            <span v-if="viewMode === 'intersection' && list.length" class="agg-note">{{ list.length }} 个路口 / {{ totalDevices }} 台</span>
+          </div>
           <el-input v-model="kw" placeholder="搜索路口/设备" size="small" clearable style="padding: 8px 10px" />
           <div class="pred-list">
-            <div v-for="p in filtered" :key="p.device_hw_id" class="pred-item"
-                 :class="{ active: sel && sel.device_hw_id === p.device_hw_id }"
-                 :style="{ borderLeftColor: sel && sel.device_hw_id === p.device_hw_id ? '#409eff' : '' }"
+            <div v-for="p in filtered" :key="(viewMode==='device'?p.device_hw_id:p.intersection)" class="pred-item"
+                 :class="{ active: sel && sel[viewMode==='device'?'device_hw_id':'intersection'] === p[viewMode==='device'?'device_hw_id':'intersection'] }"
+                 :style="{ borderLeftColor: sel && sel[viewMode==='device'?'device_hw_id':'intersection'] === p[viewMode==='device'?'device_hw_id':'intersection'] ? '#409eff' : '' }"
                  @click="focusPred(p)">
               <span class="risk-dot" :class="'r-' + p.risk_level"></span>
               <div class="pi-main">
-                <div class="pi-name">{{ p.intersection || '#' + p.device_hw_id }}</div>
-                <div class="pi-sub">
-                  健康 {{ p.health_score }} · {{ p.risk_label }}风险 · 预计{{ p.predict_type }}
+                <div class="pi-name">{{ p.intersection || '#' + p.device_hw_id }}
+                  <span v-if="viewMode==='intersection'" class="dev-cnt">{{ p.device_count }}台</span>
                 </div>
-                <div class="pi-plan" v-if="sel && sel.device_hw_id === p.device_hw_id">{{ p.plan }}</div>
+                <div class="pi-sub">
+                  健康 {{ p.health_score }} · {{ p.risk_label }}风险
+                  <template v-if="viewMode==='device'"> · 预计{{ p.predict_type }}</template>
+                  <template v-else> · 高发{{ p.top_fault || '—' }}</template>
+                </div>
+                <div class="pi-plan" v-if="sel && sel[viewMode==='device'?'device_hw_id':'intersection'] === p[viewMode==='device'?'device_hw_id':'intersection']">
+                  <template v-if="viewMode==='device'">{{ p.plan }}</template>
+                  <template v-else>
+                    <span v-for="d in (p.devices||[]).slice(0,3)" :key="d.device_hw_id" class="mini-dev">
+                      #{{ d.device_hw_id }} 健康{{ d.health_score }} <span class="rd" :class="'r-'+d.risk_level"></span>
+                    </span>
+                  </template>
+                </div>
               </div>
-              <el-button v-if="sel && sel.device_hw_id === p.device_hw_id" size="small" type="primary" text
+              <el-button v-if="viewMode==='device' && sel && sel.device_hw_id === p.device_hw_id" size="small" type="primary" text
                          :loading="enhancing" @click.stop="enhancePlan(p)">LLM预案</el-button>
             </div>
             <el-empty v-if="!loading && filtered.length === 0" description="暂无预测，点击右上角运行" :image-size="60" />
@@ -83,7 +101,7 @@ import { ElMessage } from 'element-plus'
 import { Cpu, VideoPlay } from '@element-plus/icons-vue'
 import * as Cesium from 'cesium'
 import GaodeImageryProvider from '@/views/map/GaodeImagery.js'
-import { runPrediction, getPredictions, enhancePredictionPlan } from '@/api/ai'
+import { runPrediction, runPredictionByIntersection, getPredictions, enhancePredictionPlan } from '@/api/ai'
 
 let viewer: Cesium.Viewer | null = null
 const mapRef = ref<HTMLDivElement>()
@@ -97,12 +115,20 @@ const planVisible = ref(false)
 const planText = ref('')
 const riskCount = ref<Record<string, number> | null>(null)
 const totalDevices = ref(0)
+const viewMode = ref<'device' | 'intersection'>('device')
 
 const filtered = computed(() => {
   const k = kw.value.trim()
   if (!k) return list.value
-  return list.value.filter((p) => (p.intersection || '').includes(k) || String(p.device_hw_id).includes(k))
+  return list.value.filter((p) =>
+    (p.intersection || '').includes(k) || String(p.device_hw_id || '').includes(k))
 })
+
+function onViewChange() {
+  sel.value = null
+  if (viewMode.value === 'intersection') loadIntersection()
+  else loadHistory()
+}
 
 function riskColor(level: string): string {
   return { low: '#67c23a', medium: '#e6a23c', high: '#f56c6c', critical: '#b91c1c' }[level] || '#909399'
@@ -126,14 +152,18 @@ function initMap() {
 function drawPoints() {
   if (!viewer) return
   viewer.entities.removeAll()
+  const isAgg = viewMode.value === 'intersection'
   list.value.forEach((p) => {
     if (p.lat == null || p.lng == null) return
     const color = Cesium.Color.fromCssColorString(riskColor(p.risk_level))
+    // 路口聚合用更大的标记
+    const size = isAgg ? 22 : 14
     viewer!.entities.add({
       position: Cesium.Cartesian3.fromDegrees(p.lng, p.lat),
-      point: { pixelSize: 14, color, outlineColor: Cesium.Color.WHITE, outlineWidth: 1, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND },
-      label: { text: p.intersection || ('#' + p.device_hw_id), font: '12px sans-serif', fillColor: Cesium.Color.WHITE,
-               showBackground: true, backgroundColor: Cesium.Color.fromCssColorString(`rgba(0,0,0,0.6)`),
+      point: { pixelSize: size, color, outlineColor: Cesium.Color.WHITE, outlineWidth: isAgg ? 2 : 1, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND },
+      label: { text: isAgg ? (p.intersection || '') + '×' + p.device_count : (p.intersection || ('#' + p.device_hw_id)),
+               font: (isAgg ? '13px' : '12px') + ' sans-serif', fillColor: Cesium.Color.WHITE,
+               showBackground: true, backgroundColor: Cesium.Color.fromCssColorString('rgba(0,0,0,0.6)'),
                pixelOffset: new Cesium.Cartesian2(0, -16), heightReference: Cesium.HeightReference.CLAMP_TO_GROUND },
     })
   })
@@ -149,19 +179,39 @@ function focusPred(p: any) {
 async function doRun() {
   running.value = true
   try {
-    const res = await runPrediction()
-    const d = res.data || {}
-    list.value = d.list || []
-    riskCount.value = d.risk_count || null
-    totalDevices.value = d.count || 0
-    sel.value = null
-    drawPoints()
-    ElMessage.success(`预测完成：${totalDevices.value} 台设备`)
+    if (viewMode.value === 'intersection') {
+      loadIntersection(true)
+    } else {
+      const res = await runPrediction()
+      const d = res.data || {}
+      list.value = d.list || []
+      riskCount.value = d.risk_count || null
+      totalDevices.value = d.count || 0
+      sel.value = null
+      drawPoints()
+      ElMessage.success(`预测完成：${totalDevices.value} 台设备`)
+    }
   } catch {
     ElMessage.error('预测失败')
   } finally {
     running.value = false
   }
+}
+
+async function loadIntersection(showMsg = false) {
+  loading.value = true
+  try {
+    const res = await runPredictionByIntersection()
+    const d = res.data || {}
+    list.value = d.list || []
+    riskCount.value = d.risk_count || null
+    totalDevices.value = d.device_count || 0
+    sel.value = null
+    drawPoints()
+    if (showMsg) ElMessage.success(`路口聚合：${list.value.length} 个路口 / ${totalDevices.value} 台设备`)
+  } catch {
+    ElMessage.error('路口聚合失败')
+  } finally { loading.value = false }
 }
 
 async function enhancePlan(p: any) {
