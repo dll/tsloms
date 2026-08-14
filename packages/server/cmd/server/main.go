@@ -49,6 +49,8 @@ func main() {
 	if err := model.SeedAdmin(); err != nil {
 		log.Printf("管理员种子失败: %v", err)
 	} else {
+		// 初始化 AI 配置（从环境变量填入 API Key）
+		model.SeedAIConfig(cfg.AIAPIKey, cfg.AITextModel, cfg.AIVisionModel)
 		log.Println("管理员账户已就绪（admin/admin123）")
 	}
 
@@ -215,6 +217,22 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 可派单人员（运维/管理员），供工单派单
 			auth.GET("/users/assignable", handler.ListAssignableUsers)
+
+			// ---- AI 分析 ----
+			// 配置（管理员读写，普通用户读）+ 我的额度
+			auth.GET("/ai/config", handler.GetAIConfig)
+			auth.PUT("/ai/config", middleware.RequireAdmin(), handler.UpdateAIConfig)
+			auth.GET("/ai/usage", handler.MyAIUsage)
+			auth.GET("/ai/usage/logs", middleware.RequireAdmin(), handler.AIUsagePage)
+			auth.POST("/ai/usage/reset", middleware.RequireAdmin(), handler.ResetAIUsage)
+			// 故障预测
+			auth.POST("/ai/predict/run", middleware.RequireOperator(), handler.RunPrediction)
+			auth.GET("/ai/predict", handler.AIPredictions)
+			auth.POST("/ai/predict/:id/enhance", handler.EnhancePredictionPlan)
+			// 故障诊断（反馈，含图片）
+			auth.POST("/ai/diagnose/:id", handler.DiagnoseFeedbackAPI)
+			// 生命周期溯源
+			auth.GET("/ai/lifecycle/:hwid", handler.BuildLifecycleAPI)
 		}
 	}
 

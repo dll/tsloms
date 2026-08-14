@@ -64,6 +64,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&DeviceMedia{},
 		&DeviceMaterial{},
 		&Feedback{},
+		&AIConfig{},
+		&AIUsage{},
+		&AIPrediction{},
 	)
 }
 

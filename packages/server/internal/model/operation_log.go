@@ -28,4 +28,5 @@ const (
 	OpUpdate   = "update"
 	OpDelete   = "delete"
 	OpDispatch = "dispatch"
+	OpRead     = "read"
 )

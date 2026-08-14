@@ -30,6 +30,9 @@ type Config struct {
 	OfflineAfterMin int    // 设备离线判定阈值（分钟，默认6=3倍签到周期）
 	MediaDir        string // 媒体文件存储目录（默认 ./uploads/media）
 	MediaURLPrefix  string // 媒体对外访问前缀（默认 /media）
+	AIAPIKey        string // AI LLM API Key（智谱/DeepSeek，可选，UI可改）
+	AITextModel     string // AI 文本模型（默认 glm-4-flash）
+	AIVisionModel   string // AI 多模态模型（默认 glm-4v）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -56,6 +59,9 @@ func Load() *Config {
 		OfflineAfterMin: getEnvInt("OFFLINE_AFTER_MIN", 6),
 		MediaDir:        getEnv("MEDIA_DIR", ""),
 		MediaURLPrefix:  getEnv("MEDIA_URL_PREFIX", "/media"),
+		AIAPIKey:        getEnv("AI_API_KEY", ""),
+		AITextModel:     getEnv("AI_TEXT_MODEL", "glm-4-flash"),
+		AIVisionModel:   getEnv("AI_VISION_MODEL", "glm-4v"),
 	}
 }
 
