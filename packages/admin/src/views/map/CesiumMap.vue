@@ -8,6 +8,10 @@
           <el-radio-button :value="3">3D 球</el-radio-button>
           <el-radio-button :value="1">哥伦布视图</el-radio-button>
         </el-radio-group>
+        <el-radio-group v-model="baseLayer" size="small" style="margin-left: 12px" @change="switchBaseLayer">
+          <el-radio-button value="osm">OSM</el-radio-button>
+          <el-radio-button value="baidu">百度实景</el-radio-button>
+        </el-radio-group>
       </div>
       <div class="stats">
         <span class="st">设备 <b>{{ devices.length }}</b></span>
@@ -101,6 +105,8 @@ import { ElMessage } from 'element-plus'
 import * as Cesium from 'cesium'
 import { getAllDevices } from '@/api/map'
 import { getDispatchReference } from '@/api/dispatch'
+// @ts-ignore 百度瓦片 ImageryProvider
+import BaiduImageryProvider from './BaiduImagery.js'
 
 // 组件 emit：通知父级切换标签页（video/feedback）
 const emit = defineEmits<{ (e: 'goPanel', name: string): void }>()
@@ -114,6 +120,7 @@ const cesiumRef = ref<HTMLElement>()
 let viewer: Cesium.Viewer | null = null
 
 const sceneMode = ref(3)
+const baseLayer = ref('osm')
 const searchKw = ref('')
 const devices = ref<Dev[]>([])
 
@@ -202,7 +209,7 @@ function initCesium() {
     /* 底图加载失败则保留默认 */
   }
   // 默认视角：中国东部
-  viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(105, 35, 6000000) })
+  viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(105, 35, 4000000) })
   applySceneMode()
 
   // 点击设备点位 → 联动下钻
@@ -216,6 +223,24 @@ function initCesium() {
       if (dev) openDrill(dev)
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+}
+
+// 切换底图（OSM / 百度实景）
+function switchBaseLayer() {
+  if (!viewer) return
+  viewer.imageryLayers.removeAll()
+  try {
+    if (baseLayer.value === 'baidu') {
+      viewer.imageryLayers.addImageryProvider(new (BaiduImageryProvider as any)())
+      ElMessage.success('已切换到百度实景底图')
+    } else {
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' })
+      )
+    }
+  } catch {
+    ElMessage.error('底图加载失败')
+  }
 }
 
 // 应用 2D/3D/哥伦布 模式
