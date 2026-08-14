@@ -37,6 +37,16 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// 检查账号状态
+	if user.Status != "" && user.Status == model.UserStatusDisabled {
+		unauthorized(c, "账号已停用，请联系管理员")
+		return
+	}
+
+	// 更新最后登录时间
+	now := time.Now()
+	model.DB.Model(&user).Update("last_login_at", now)
+
 	// 签发 JWT
 	cfg := config.Get()
 	token, err := issueToken(&user, cfg.JWTSecret)
@@ -48,10 +58,14 @@ func Login(c *gin.Context) {
 	ok(c, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
-			"phone":    user.Phone,
+			"id":            user.ID,
+			"username":      user.Username,
+			"role":          user.Role,
+			"real_name":     user.RealName,
+			"phone":         user.Phone,
+			"email":         user.Email,
+			"department_id": user.DepartmentID,
+			"status":        user.Status,
 		},
 	})
 
@@ -85,7 +99,10 @@ func GetUserInfo(c *gin.Context) {
 			"id":         user.ID,
 			"username":   user.Username,
 			"role":       user.Role,
+			"real_name":  user.RealName,
 			"phone":      user.Phone,
+			"email":      user.Email,
+			"status":     user.Status,
 			"center_lat": user.CenterLat,
 			"center_lng": user.CenterLng,
 		},

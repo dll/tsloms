@@ -22,7 +22,7 @@ func ListAssignableUsers(c *gin.Context) {
 	ok(c, gin.H{"list": list, "total": len(list)})
 }
 
-// ListUsers 用户列表查询（分页 + 角色筛选）
+// ListUsers 用户列表查询（分页 + 角色/部门/状态筛选）
 // 仅管理员可访问
 func ListUsers(c *gin.Context) {
 	page, _ := parseUint(c.DefaultQuery("page", "1"))
@@ -41,8 +41,16 @@ func ListUsers(c *gin.Context) {
 	if role := c.Query("role"); role != "" {
 		query = query.Where("role = ?", role)
 	}
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if dept := c.Query("department_id"); dept != "" {
+		if did, err := parseUint(dept); err == nil && did > 0 {
+			query = query.Where("department_id = ?", did)
+		}
+	}
 	if keyword := c.Query("keyword"); keyword != "" {
-		query = query.Where("username LIKE ?", "%"+keyword+"%")
+		query = query.Where("username LIKE ? OR real_name LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
 	var total int64
@@ -54,12 +62,39 @@ func ListUsers(c *gin.Context) {
 		Limit(int(pageSize)).
 		Find(&users)
 
+	// 部门名称映射
+	deptNames := map[uint]string{}
+	var deptIDs []uint
+	for _, u := range users {
+		if u.DepartmentID != nil {
+			deptIDs = append(deptIDs, *u.DepartmentID)
+		}
+	}
+	if len(deptIDs) > 0 {
+		var depts []model.Department
+		model.DB.Where("id IN ?", deptIDs).Find(&depts)
+		for _, d := range depts {
+			deptNames[d.ID] = d.Name
+		}
+	}
+
 	// 不返回密码哈希
 	safeUsers := make([]gin.H, 0, len(users))
 	for _, u := range users {
+		deptName := ""
+		if u.DepartmentID != nil {
+			deptName = deptNames[*u.DepartmentID]
+		}
 		safeUsers = append(safeUsers, gin.H{
 			"id": u.ID, "username": u.Username, "role": u.Role,
-			"phone": u.Phone, "created_at": u.CreatedAt,
+			"real_name":     u.RealName,
+			"phone":         u.Phone,
+			"email":         u.Email,
+			"department_id": u.DepartmentID,
+			"department":    deptName,
+			"status":        u.Status,
+			"last_login_at": u.LastLoginAt,
+			"created_at":    u.CreatedAt,
 		})
 	}
 
@@ -69,10 +104,13 @@ func ListUsers(c *gin.Context) {
 // CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required,min=6"`
-		Role     string `json:"role" binding:"required"`
-		Phone    string `json:"phone"`
+		Username     string `json:"username" binding:"required"`
+		Password     string `json:"password" binding:"required,min=6"`
+		Role         string `json:"role" binding:"required"`
+		RealName     string `json:"real_name"`
+		Phone        string `json:"phone"`
+		Email        string `json:"email"`
+		DepartmentID *uint  `json:"department_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（用户名/密码必填，密码至少6位）")
@@ -90,12 +128,24 @@ func CreateUser(c *gin.Context) {
 		badRequest(c, "用户名已存在")
 		return
 	}
+	// 校验部门存在
+	if req.DepartmentID != nil {
+		var dept model.Department
+		if err := model.DB.First(&dept, *req.DepartmentID).Error; err != nil {
+			badRequest(c, "部门不存在")
+			return
+		}
+	}
 
 	user := model.User{
 		Username:     strings.TrimSpace(req.Username),
 		PasswordHash: model.HashPassword(req.Password),
 		Role:         req.Role,
-		Phone:        req.Phone,
+		RealName:     strings.TrimSpace(req.RealName),
+		Phone:        strings.TrimSpace(req.Phone),
+		Email:        strings.TrimSpace(req.Email),
+		DepartmentID: req.DepartmentID,
+		Status:       model.UserStatusEnabled,
 	}
 	if err := model.DB.Create(&user).Error; err != nil {
 		serverError(c, err)
@@ -121,8 +171,12 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	var req struct {
-		Role  *string `json:"role"`
-		Phone *string `json:"phone"`
+		Role         *string `json:"role"`
+		RealName     *string `json:"real_name"`
+		Phone        *string `json:"phone"`
+		Email        *string `json:"email"`
+		DepartmentID *uint   `json:"department_id"`
+		Status       *string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误")
@@ -133,8 +187,29 @@ func UpdateUser(c *gin.Context) {
 	if req.Role != nil && validRole(*req.Role) {
 		updates["role"] = *req.Role
 	}
+	if req.RealName != nil {
+		updates["real_name"] = strings.TrimSpace(*req.RealName)
+	}
 	if req.Phone != nil {
-		updates["phone"] = *req.Phone
+		updates["phone"] = strings.TrimSpace(*req.Phone)
+	}
+	if req.Email != nil {
+		updates["email"] = strings.TrimSpace(*req.Email)
+	}
+	if req.DepartmentID != nil {
+		var dept model.Department
+		if err := model.DB.First(&dept, *req.DepartmentID).Error; err != nil {
+			badRequest(c, "部门不存在")
+			return
+		}
+		updates["department_id"] = *req.DepartmentID
+	}
+	if req.Status != nil {
+		if *req.Status != model.UserStatusEnabled && *req.Status != model.UserStatusDisabled {
+			badRequest(c, "无效的用户状态")
+			return
+		}
+		updates["status"] = *req.Status
 	}
 	if len(updates) > 0 {
 		if err := model.DB.Model(&user).Updates(updates).Error; err != nil {

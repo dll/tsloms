@@ -6,6 +6,8 @@ export interface UserQuery {
   page?: number
   page_size?: number
   role?: string
+  status?: string
+  department_id?: number
   keyword?: string
 }
 
@@ -14,7 +16,13 @@ export interface UserItem {
   id: number
   username: string
   role: string
+  real_name: string
   phone: string
+  email: string
+  department_id: number | null
+  department: string
+  status: string
+  last_login_at: string | null
   created_at: string
 }
 
@@ -24,12 +32,16 @@ export function getUsers(params: UserQuery): Promise<ApiResponse> {
 }
 
 // 创建用户
-export function createUser(data: { username: string; password: string; role: string; phone?: string }): Promise<ApiResponse> {
+export function createUser(data: {
+  username: string; password: string; role: string; real_name?: string; phone?: string; email?: string; department_id?: number | null
+}): Promise<ApiResponse> {
   return request.post('/users', data) as unknown as Promise<ApiResponse>
 }
 
 // 更新用户
-export function updateUser(id: number, data: { role?: string; phone?: string }): Promise<ApiResponse> {
+export function updateUser(id: number, data: {
+  role?: string; real_name?: string; phone?: string; email?: string; department_id?: number | null; status?: string
+}): Promise<ApiResponse> {
   return request.put(`/users/${id}`, data) as unknown as Promise<ApiResponse>
 }
 

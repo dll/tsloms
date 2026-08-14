@@ -48,11 +48,18 @@
         <el-card shadow="never">
           <div class="user-toolbar">
             <div class="user-search">
-              <el-input v-model="query.keyword" placeholder="搜索用户名" clearable style="width: 200px" @keyup.enter="loadUsers" />
-              <el-select v-model="query.role" placeholder="全部角色" clearable style="width: 140px">
+              <el-input v-model="query.keyword" placeholder="搜索用户名/姓名" clearable style="width: 180px" @keyup.enter="loadUsers" />
+              <el-select v-model="query.role" placeholder="全部角色" clearable style="width: 130px">
                 <el-option label="管理员" value="admin" />
                 <el-option label="运维人员" value="operator" />
                 <el-option label="查看人员" value="viewer" />
+              </el-select>
+              <el-select v-model="query.department_id" placeholder="全部部门" clearable style="width: 150px">
+                <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
+              </el-select>
+              <el-select v-model="query.status" placeholder="全部状态" clearable style="width: 120px">
+                <el-option label="启用" value="enabled" />
+                <el-option label="停用" value="disabled" />
               </el-select>
               <el-button @click="loadUsers">查询</el-button>
             </div>
@@ -60,16 +67,34 @@
           </div>
 
           <el-table :data="users" border stripe style="width: 100%" v-loading="loading">
-            <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="username" label="用户名" min-width="120" />
-            <el-table-column label="角色" width="110" align="center">
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="username" label="用户名" min-width="100" />
+            <el-table-column prop="real_name" label="姓名" width="100" align="center">
+              <template #default="{ row }">{{ row.real_name || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="角色" width="100" align="center">
               <template #default="{ row }">
                 <el-tag :type="roleTagType(row.role)" size="small">{{ roleText(row.role) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="phone" label="手机号" width="140" align="center" />
-            <el-table-column prop="created_at" label="创建时间" width="170" align="center" />
-            <el-table-column label="操作" width="200" align="center">
+            <el-table-column prop="department" label="部门" width="120" align="center">
+              <template #default="{ row }">{{ row.department || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="phone" label="手机号" width="120" align="center" />
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'enabled' ? 'success' : 'danger'" size="small" effect="plain">
+                  {{ row.status === 'enabled' ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="最后登录" width="160" align="center">
+              <template #default="{ row }">{{ row.last_login_at ? formatTime(row.last_login_at) : '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="150" align="center">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="210" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button size="small" @click="openEdit(row)">编辑</el-button>
                 <el-button size="small" type="warning" @click="openResetPwd(row)">重置密码</el-button>
@@ -87,16 +112,52 @@
           />
         </el-card>
       </el-tab-pane>
+
+      <!-- 组织/部门管理（仅管理员） -->
+      <el-tab-pane v-if="authStore.user?.role === 'admin'" label="组织管理" name="departments">
+        <el-card shadow="never">
+          <div class="user-toolbar">
+            <span class="dept-tip">部门用于组织用户、按管辖区域分工管理</span>
+            <el-button type="primary" @click="openDeptCreate">新增部门</el-button>
+          </div>
+          <el-table :data="departments" border stripe style="width: 100%" v-loading="deptLoading">
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="name" label="部门名称" min-width="120" />
+            <el-table-column label="上级部门" width="120" align="center">
+              <template #default="{ row }">{{ parentName(row.parent_id) }}</template>
+            </el-table-column>
+            <el-table-column prop="leader" label="负责人" width="120" align="center">
+              <template #default="{ row }">{{ row.leader || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="member_count" label="人数" width="80" align="center" />
+            <el-table-column prop="description" label="描述" min-width="160">
+              <template #default="{ row }">{{ row.description || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="150" align="center">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="140" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" @click="openDeptEdit(row)">编辑</el-button>
+                <el-button size="small" type="danger" @click="handleDeptDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 新增/编辑用户对话框 -->
-    <el-dialog v-model="editVisible" :title="editingId ? '编辑用户' : '新增用户'" width="460px">
+    <el-dialog v-model="editVisible" :title="editingId ? '编辑用户' : '新增用户'" width="520px">
       <el-form :model="editForm" label-width="90px">
         <el-form-item label="用户名" required>
           <el-input v-model="editForm.username" :disabled="!!editingId" placeholder="用户名" />
         </el-form-item>
         <el-form-item v-if="!editingId" label="密码" required>
           <el-input v-model="editForm.password" type="password" show-password placeholder="至少6位" />
+        </el-form-item>
+        <el-form-item label="姓名">
+          <el-input v-model="editForm.real_name" placeholder="真实姓名（选填）" />
         </el-form-item>
         <el-form-item label="角色" required>
           <el-select v-model="editForm.role" style="width: 100%">
@@ -105,13 +166,57 @@
             <el-option label="查看人员" value="viewer" />
           </el-select>
         </el-form-item>
+        <el-form-item label="所属部门">
+          <el-select v-model="editForm.department_id" clearable placeholder="选择部门（选填）" style="width: 100%">
+            <el-option v-for="d in departments" :key="d.id" :label="d.name" :value="d.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="手机号">
           <el-input v-model="editForm.phone" placeholder="手机号（选填）" />
         </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="editForm.email" placeholder="邮箱（选填）" />
+        </el-form-item>
+        <el-form-item v-if="editingId" label="状态">
+          <el-radio-group v-model="editForm.status">
+            <el-radio value="enabled">启用</el-radio>
+            <el-radio value="disabled">停用</el-radio>
+          </el-radio-group>
+        </el-form-item>
       </el-form>
+      <div class="role-hint" v-if="!editingId">
+        <span>角色权限：</span>
+        <el-tag size="small" type="danger">管理员</el-tag> 全部权限
+        <el-tag size="small" type="warning" style="margin-left:8px">运维人员</el-tag> 故障处置/工单/派单/媒体
+        <el-tag size="small" type="info" style="margin-left:8px">查看人员</el-tag> 仅查看
+      </div>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
         <el-button type="primary" :loading="savingUser" @click="saveUser">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 部门新增/编辑对话框 -->
+    <el-dialog v-model="deptVisible" :title="deptEditingId ? '编辑部门' : '新增部门'" width="480px">
+      <el-form :model="deptForm" label-width="90px">
+        <el-form-item label="部门名称" required>
+          <el-input v-model="deptForm.name" placeholder="如：运维一部" />
+        </el-form-item>
+        <el-form-item label="上级部门">
+          <el-select v-model="deptForm.parent_id" clearable placeholder="选择上级（选填）" style="width: 100%">
+            <el-option v-for="d in departments.filter((x) => x.id !== deptEditingId)" :key="d.id" :label="d.name" :value="d.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责人">
+          <el-input v-model="deptForm.leader" placeholder="负责人姓名（选填）" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="deptForm.description" type="textarea" :rows="2" placeholder="部门职责描述（选填）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="deptVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingDept" @click="saveDept">保存</el-button>
       </template>
     </el-dialog>
 
@@ -136,6 +241,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { useAuthStore } from '@/store/auth'
 import { updateMyPhone } from '@/api/auth'
 import { getUsers, createUser, updateUser, resetUserPassword, deleteUser, type UserItem } from '@/api/user'
+import { getDepartments, createDepartment, updateDepartment, deleteDepartment, type DepartmentItem } from '@/api/department'
 
 const authStore = useAuthStore()
 const activeTab = ref('profile')
@@ -220,17 +326,26 @@ async function handleClearCenter() {
 const loading = ref(false)
 const users = ref<UserItem[]>([])
 const total = ref(0)
-const query = reactive({ page: 1, page_size: 20, role: '', keyword: '' })
+const query = reactive({ page: 1, page_size: 20, role: '', status: '', department_id: undefined as number | undefined, keyword: '' })
 
 function roleText(r: string) { return ({ admin: '管理员', operator: '运维人员', viewer: '查看人员' } as Record<string, string>)[r] || r }
 function roleTagType(r: string) { return r === 'admin' ? 'danger' : r === 'operator' ? 'warning' : 'info' }
+function formatTime(t: string) {
+  if (!t) return '-'
+  const d = new Date(t)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 async function loadUsers() {
   loading.value = true
   try {
     const res = await getUsers({
       page: query.page, page_size: query.page_size,
-      role: query.role || undefined, keyword: query.keyword || undefined,
+      role: query.role || undefined,
+      status: query.status || undefined,
+      department_id: query.department_id || undefined,
+      keyword: query.keyword || undefined,
     })
     users.value = res.data?.list || []
     total.value = res.data?.total || 0
@@ -241,16 +356,20 @@ async function loadUsers() {
 const editVisible = ref(false)
 const editingId = ref<number | null>(null)
 const savingUser = ref(false)
-const editForm = reactive({ username: '', password: '', role: 'viewer', phone: '' })
+const editForm = reactive({ username: '', password: '', role: 'viewer', real_name: '', phone: '', email: '', department_id: undefined as number | undefined, status: 'enabled' })
 
 function openCreate() {
   editingId.value = null
-  Object.assign(editForm, { username: '', password: '', role: 'viewer', phone: '' })
+  Object.assign(editForm, { username: '', password: '', role: 'viewer', real_name: '', phone: '', email: '', department_id: undefined, status: 'enabled' })
   editVisible.value = true
 }
 function openEdit(row: UserItem) {
   editingId.value = row.id
-  Object.assign(editForm, { username: row.username, password: '', role: row.role, phone: row.phone || '' })
+  Object.assign(editForm, {
+    username: row.username, password: '', role: row.role,
+    real_name: row.real_name || '', phone: row.phone || '', email: row.email || '',
+    department_id: row.department_id || undefined, status: row.status || 'enabled',
+  })
   editVisible.value = true
 }
 async function saveUser() {
@@ -261,10 +380,10 @@ async function saveUser() {
   savingUser.value = true
   try {
     if (editingId.value) {
-      await updateUser(editingId.value, { role: editForm.role, phone: editForm.phone })
+      await updateUser(editingId.value, { role: editForm.role, real_name: editForm.real_name, phone: editForm.phone, email: editForm.email, department_id: editForm.department_id, status: editForm.status })
       ElMessage.success('用户已更新')
     } else {
-      await createUser({ username: editForm.username, password: editForm.password, role: editForm.role, phone: editForm.phone })
+      await createUser({ username: editForm.username, password: editForm.password, role: editForm.role, real_name: editForm.real_name, phone: editForm.phone, email: editForm.email, department_id: editForm.department_id })
       ElMessage.success('用户已创建')
     }
     editVisible.value = false
@@ -298,12 +417,69 @@ async function handleDelete(row: UserItem) {
   } catch { /* 取消或失败 */ }
 }
 
+// ---- 组织/部门管理 ----
+const deptLoading = ref(false)
+const departments = ref<DepartmentItem[]>([])
+const deptVisible = ref(false)
+const deptEditingId = ref<number | null>(null)
+const savingDept = ref(false)
+const deptForm = reactive({ name: '', parent_id: undefined as number | undefined, leader: '', description: '' })
+
+async function loadDepartments() {
+  deptLoading.value = true
+  try {
+    const res = await getDepartments()
+    departments.value = res.data?.list || []
+  } catch { /* 忽略 */ } finally { deptLoading.value = false }
+}
+function parentName(pid: number | null) {
+  if (!pid) return '-'
+  const d = departments.value.find((x) => x.id === pid)
+  return d ? d.name : '-'
+}
+function openDeptCreate() {
+  deptEditingId.value = null
+  Object.assign(deptForm, { name: '', parent_id: undefined, leader: '', description: '' })
+  deptVisible.value = true
+}
+function openDeptEdit(row: DepartmentItem) {
+  deptEditingId.value = row.id
+  Object.assign(deptForm, { name: row.name, parent_id: row.parent_id || undefined, leader: row.leader || '', description: row.description || '' })
+  deptVisible.value = true
+}
+async function saveDept() {
+  if (!deptForm.name) { ElMessage.warning('部门名称必填'); return }
+  savingDept.value = true
+  try {
+    if (deptEditingId.value) {
+      await updateDepartment(deptEditingId.value, { name: deptForm.name, parent_id: deptForm.parent_id, leader: deptForm.leader, description: deptForm.description })
+      ElMessage.success('部门已更新')
+    } else {
+      await createDepartment({ name: deptForm.name, parent_id: deptForm.parent_id, leader: deptForm.leader, description: deptForm.description })
+      ElMessage.success('部门已创建')
+    }
+    deptVisible.value = false
+    loadDepartments()
+  } catch { /* 后端已提示 */ } finally { savingDept.value = false }
+}
+async function handleDeptDelete(row: DepartmentItem) {
+  try {
+    await ElMessageBox.confirm(`确认删除部门「${row.name}」？若有成员将无法删除。`, '提示', { type: 'warning' })
+    await deleteDepartment(row.id)
+    ElMessage.success('部门已删除')
+    loadDepartments()
+  } catch { /* 取消或失败 */ }
+}
+
 onMounted(async () => {
   if (authStore.token && !authStore.user) {
     try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
   }
   loadCenter()
-  if (authStore.user?.role === 'admin') loadUsers()
+  if (authStore.user?.role === 'admin') {
+    loadUsers()
+    loadDepartments()
+  }
 })
 </script>
 
@@ -312,5 +488,7 @@ onMounted(async () => {
 .info-card { margin-bottom: 20px; }
 .form-card { border-radius: 4px; }
 .user-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.user-search { display: flex; gap: 8px; }
+.user-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.dept-tip { color: #909399; font-size: 13px; }
+.role-hint { font-size: 13px; color: #606266; padding: 4px 88px 0 90px; line-height: 1.9; }
 </style>
