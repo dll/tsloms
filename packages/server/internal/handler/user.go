@@ -251,7 +251,7 @@ func UpdateMyCenter(c *gin.Context) {
 		return
 	}
 	updates := map[string]interface{}{"center_lat": req.Lat, "center_lng": req.Lng}
-	if req.Lat != nil && (req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90)) {
+	if req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90) {
 		badRequest(c, "纬度范围 -90~90")
 		return
 	}

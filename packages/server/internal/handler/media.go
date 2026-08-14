@@ -2,6 +2,9 @@ package handler
 
 import (
 	"fmt"
+	"io"
+	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +86,13 @@ func UploadDeviceMedia(c *gin.Context) {
 		return
 	}
 
+	// 解析 hwID：仅接受纯数字，避免路径穿越（sanitize，防 ../ 注入文件名）
+	hwIDUint, err := parseUintStrict(hwID)
+	if err != nil {
+		badRequest(c, "设备硬件ID不合法（须为数字）")
+		return
+	}
+
 	// 校验扩展名
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".mp4": true, ".mov": true, ".webm": true, ".avi": true}
@@ -96,6 +106,22 @@ func UploadDeviceMedia(c *gin.Context) {
 		return
 	}
 
+	// 打开文件内容做 MIME 嗅探（前 512 字节），防止恶意文件伪装成图片/视频上传
+	src, err := file.Open()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(src, head)
+	_ = src.Close()
+	if n > 0 {
+		if !mimeAllowed(ext, http.DetectContentType(head[:n])) {
+			badRequest(c, "文件内容与扩展名不符，已拒绝上传")
+			return
+		}
+	}
+
 	// 创建存储目录：{mediaDir}/{yyyyMM}
 	dir := filepath.Join(MediaDir(), time.Now().Format("200601"))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -103,8 +129,8 @@ func UploadDeviceMedia(c *gin.Context) {
 		return
 	}
 
-	// 生成唯一文件名（时间戳 + 随机）
-	fname := fmt.Sprintf("%s_%d%s", hwID, time.Now().UnixMilli(), ext)
+	// 生成唯一文件名（纯数字 hwID + 时间戳 + 扩展名，无用户可控字符）
+	fname := fmt.Sprintf("%d_%d%s", hwIDUint, time.Now().UnixMilli(), ext)
 	fpath := filepath.Join(dir, fname)
 	if err := c.SaveUploadedFile(file, fpath); err != nil {
 		serverError(c, err)
@@ -113,11 +139,6 @@ func UploadDeviceMedia(c *gin.Context) {
 
 	// 相对 URL
 	rel := filepath.ToSlash(filepath.Join(mediaURLPrefix(), time.Now().Format("200601"), fname))
-
-	hwIDUint := uint32(0)
-	if hwID != "" {
-		_, _ = fmt.Sscanf(hwID, "%d", &hwIDUint)
-	}
 
 	media := model.DeviceMedia{
 		DeviceHwID: hwIDUint,
@@ -225,4 +246,44 @@ func thumbOf(ext, url string) string {
 		return url
 	}
 	return ""
+}
+
+// parseUintStrict 严格解析非负整数：空字符串返回 0（无设备），非纯数字报错。
+// 用于上传文件名前缀，杜绝路径穿越注入。
+func parseUintStrict(s string) (uint32, error) {
+	if s == "" {
+		return 0, nil
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return 0, fmt.Errorf("非数字")
+		}
+	}
+	var n uint64
+	for _, ch := range s {
+		n = n*10 + uint64(ch-'0')
+		if n > math.MaxUint32 {
+			return 0, fmt.Errorf("超出范围")
+		}
+	}
+	return uint32(n), nil
+}
+
+// mimeAllowed 校验文件内容 MIME 类型是否与扩展名声明的类别一致。
+// 仅接受图片(image/*)或视频(video/*)，防止伪装恶意文件上传。
+func mimeAllowed(ext, detected string) bool {
+	if detected == "" {
+		return true
+	}
+	isImg := ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif"
+	isVid := ext == ".mp4" || ext == ".mov" || ext == ".webm" || ext == ".avi"
+	if isImg {
+		return strings.HasPrefix(detected, "image/")
+	}
+	if isVid {
+		// 视频容器较多，宽松放行常见的视频/二进制容器
+		return strings.HasPrefix(detected, "video/") || detected == "application/octet-stream" ||
+			detected == "application/mp4" || detected == "video/mp4"
+	}
+	return false
 }
