@@ -64,10 +64,10 @@ const authStore = useAuthStore()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
-// 登录表单 - 默认填充 admin/admin123
+// 登录表单 - 初始为空（不预填默认凭据，避免生产环境暴露弱口令）
 const loginForm = reactive({
-  username: 'admin',
-  password: 'admin123',
+  username: '',
+  password: '',
 })
 
 // 表单校验规则
