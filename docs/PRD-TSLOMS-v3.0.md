@@ -215,9 +215,29 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 - 设备 `devices` 新增 `lat`/`lng`（经纬度，用于地图打点），设备详情可录入/编辑路口名称与坐标。
 - 前端「路口管理」页：路口列表 + 按路口筛选设备 + 跳转地图大屏。
 
-### 5.9 地图大屏 ✅（新增）
-- 前端「地图大屏」路由 `/map`：基于 ECharts `geo` + 内置中国简图，按设备经纬度打点，显示在线（绿）/离线（红）状态。
-- **不依赖第三方地图 AK**（百度/高德），离线可用；后续如需实景地图可在页面内接入地图 SDK。
+### 5.9 地图大屏 ✅（新增，升级为 Cesium GIS）
+- 前端「地图大屏」路由 `/map`，基于 **Cesium**（真三维地球引擎，支持真实地理定位/GIS/导航），提供 **2D 地图、3D 球、哥伦布视图**三种模式切换。
+- **2D 能力**：设备定位（经纬度打点）、问题反馈、派单参考（故障/工单/耗材/媒体聚合）。
+- **3D 能力**：精准定位（3D 坐标 + 设备浮层）、维修耗材（设备备件台账展示）。
+- **视频能力**：手机短视频举证（上传）、路灯监控（RTSP 登记）、时间视频（监控自动截取片段），统一接入「视频与监控」面板播放。
+- 影像底图：OpenStreetMap（无需 AK）；后续可换高德/百度实景或接入 3D 模型。
+
+### 5.10 视频与媒体 ✅（新增）
+- `device_media` 表承载三类媒体：举证(evidence)、监控(monitoring)、时间视频(timelapse)。
+- 手机上传：`POST /media/upload`（multipart）存本地，经 nginx `/tsloms/media/` 服务。
+- RTSP/云URL 登记：`POST /media/streams`，支持兼容播放地址（HLS/FLV）。
+- 查询/删除：`GET /media`、`DELETE /media/:id`。
+
+### 5.11 问题反馈 ✅（新增）
+- `feedbacks` 表：设备/路口问题反馈，状态流转 open→processing→resolved/closed，可关联工单。
+- API：列表/提交/更新状态。
+
+### 5.12 维修耗材 ✅（新增）
+- `device_materials` 表：设备备件台账（名称/型号/规格/库存/阈值）。
+- API：列表/增改/删除，供派单与维修参考。
+
+### 5.13 派单参考 ✅（新增）
+- `GET /dispatch/reference`：按设备聚合活跃故障、待处理工单、维修耗材、监控媒体，供派单决策。
 
 ---
 
@@ -249,6 +269,9 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 - `work_orders`：order_no(唯一)、fault_id、device_hw_id、status(pending/processing/completed/rejected)、assignee_id、result、closed_at
 - `users`：username(唯一)、password_hash、role(admin/operator/viewer)、phone
 - `operation_logs`：user_id、username、action、target、ip、detail、created_at
+- `device_media`：device_hw_id、media_type(evidence/monitoring/timelapse)、category(photo/video)、source(upload/rtsp/url)、url、compatible_url、thumbnail、duration
+- `device_materials`：device_hw_id、name、part_no、spec、quantity、unit、threshold
+- `feedbacks`：device_hw_id(可空)、intersection、title、content、reporter、contact、status、work_order_id
 
 ---
 
