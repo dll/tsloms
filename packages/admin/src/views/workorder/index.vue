@@ -65,6 +65,14 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="SLA/超时" width="120" align="center">
+          <template #default="{ row }">
+            <el-tooltip v-if="row.overdue" :content="`超时 ${formatOverdue(row.overdue_hours)}，请优先处理`" placement="top">
+              <el-tag type="danger" effect="dark" size="small">超时 {{ formatOverdue(row.overdue_hours) }}</el-tag>
+            </el-tooltip>
+            <span v-else class="sla-ok">·</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="assignee_name" label="处理人" width="120" align="center" />
         <el-table-column prop="created_at" label="创建时间" width="180" align="center" />
         <el-table-column prop="closed_at" label="闭环时间" width="180" align="center">
@@ -366,6 +374,18 @@ function statusLabel(status: string): string {
   return map[status] || status
 }
 
+// 格式化超时时长：≥24h 显示天数，否则显示小时
+function formatOverdue(hours: number): string {
+  if (!hours || hours <= 0) return ''
+  const h = Math.round(hours * 10) / 10
+  if (h >= 24) {
+    const days = Math.floor(h / 24)
+    const rem = Math.round((h - days * 24) * 10) / 10
+    return rem > 0 ? `${days}天${rem}h` : `${days}天`
+  }
+  return `${h}h`
+}
+
 // 获取工单列表
 async function fetchData() {
   loading.value = true
@@ -499,6 +519,10 @@ onMounted(async () => {
 
 .table-card {
   border-radius: 4px;
+}
+
+.sla-ok {
+  color: #c0c4cc;
 }
 
 .table-toolbar {

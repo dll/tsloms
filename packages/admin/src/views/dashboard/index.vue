@@ -58,6 +58,20 @@
           </div>
         </el-card>
       </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card stat-overdue">
+          <div class="stat-content">
+            <div class="stat-info">
+              <p class="stat-label">超时工单</p>
+              <p class="stat-value">
+                {{ overview.work_orders?.overdue ?? 0 }}
+                <span v-if="(overview.work_orders?.overdue ?? 0) > 0" class="stat-sub stat-sub-red">需优先处理</span>
+              </p>
+            </div>
+            <el-icon :size="40" color="#F56C6C"><AlarmClock /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
     </el-row>
 
     <!-- 图表区域 -->
@@ -116,7 +130,7 @@ import {
 const overview = reactive({
   devices: { online: 0, offline: 0, total: 0 },
   faults: { active: 0, resolved: 0, today: 0 },
-  work_orders: { pending: 0, processing: 0, completed: 0 },
+  work_orders: { pending: 0, processing: 0, completed: 0, overdue: 0 },
 })
 
 // 统计范围（天）
@@ -388,6 +402,12 @@ onUnmounted(() => {
   font-size: 16px;
   color: #909399;
   font-weight: normal;
+}
+
+.stat-sub-red {
+  color: #F56C6C;
+  font-size: 13px;
+  margin-left: 6px;
 }
 
 .chart-row {

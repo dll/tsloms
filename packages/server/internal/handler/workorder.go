@@ -84,7 +84,7 @@ func ListWorkOrders(c *gin.Context) {
 	})
 }
 
-// workOrderView 工单视图：附带处理人姓名
+// workOrderView 工单视图：附带处理人姓名与超时状态
 func workOrderView(o model.WorkOrder) gin.H {
 	assigneeName := ""
 	if o.AssigneeID != nil {
@@ -93,11 +93,13 @@ func workOrderView(o model.WorkOrder) gin.H {
 			assigneeName = u.Username
 		}
 	}
+	overdueHours := model.WorkOrderOverdueHours(&o)
 	return gin.H{
 		"id": o.ID, "order_no": o.OrderNo, "fault_id": o.FaultID,
 		"device_hw_id": o.DeviceHwID, "status": o.Status,
 		"assignee_id": o.AssigneeID, "assignee_name": assigneeName,
 		"result": o.Result, "created_at": o.CreatedAt, "closed_at": o.ClosedAt,
+		"overdue": overdueHours > 0, "overdue_hours": overdueHours,
 	}
 }
 

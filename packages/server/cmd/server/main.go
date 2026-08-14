@@ -84,6 +84,11 @@ func main() {
 	offlineSvc := service.NewOfflineCheck(cfg)
 	offlineSvc.Start(offlineCtx)
 
+	// 启动工单超时升级协程（pending 超 24h 自动转 processing，processing 超 48h 预警）
+	woCtx, woCancel := context.WithCancel(context.Background())
+	woSvc := service.NewWorkOrderEscalator()
+	woSvc.Start(woCtx)
+
 	// 可信代理：仅信任本机 nginx/Caddy
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
@@ -108,6 +113,8 @@ func main() {
 
 	// 停止离线检测协程
 	offlineCancel()
+	// 停止工单超时升级协程
+	woCancel()
 
 	// 断开 MQTT 连接（等待 2 秒处理完剩余消息）
 	if mqttClient != nil {

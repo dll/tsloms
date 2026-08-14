@@ -167,6 +167,17 @@ func DashboardOverview(c *gin.Context) {
 	model.DB.Model(&model.WorkOrder{}).Where("status = ?", model.WorkOrderStatusProcessing).Count(&processingOrders)
 	model.DB.Model(&model.WorkOrder{}).Where("status = ?", model.WorkOrderStatusCompleted).Count(&completedOrders)
 
+	// 超时工单统计：pending 超 SLA(24h) 或 processing 超 SLA(48h)
+	now := time.Now()
+	pendingOverdue := now.Add(-time.Duration(model.WorkOrderPendingSLASeconds) * time.Second)
+	procOverdue := now.Add(-time.Duration(model.WorkOrderProcessingSLASeconds) * time.Second)
+	var overdueOrders int64
+	model.DB.Model(&model.WorkOrder{}).
+		Where("(status = ? AND created_at < ?) OR (status = ? AND created_at < ?)",
+			model.WorkOrderStatusPending, pendingOverdue,
+			model.WorkOrderStatusProcessing, procOverdue).
+		Count(&overdueOrders)
+
 	// 今日新增故障
 	today := time.Now().Truncate(24 * time.Hour)
 	var todayFaults int64
@@ -187,6 +198,7 @@ func DashboardOverview(c *gin.Context) {
 			"pending":    pendingOrders,
 			"processing": processingOrders,
 			"completed":  completedOrders,
+			"overdue":    overdueOrders,
 		},
 	})
 }
