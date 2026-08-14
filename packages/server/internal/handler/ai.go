@@ -274,6 +274,7 @@ func mediaRootDir() string {
 }
 
 // resolveFeedbackImages 把反馈图片 URL(/tsloms/media/xxx) 解析为本地文件路径（目录中查找匹配文件）
+// 防御性纵深：清洗后路径必须仍位于 mediaDir 内，防止路径穿越读取任意文件
 func resolveFeedbackImages(imageURL, mediaDir string) []string {
 	if imageURL == "" || mediaDir == "" {
 		return nil
@@ -286,6 +287,11 @@ func resolveFeedbackImages(imageURL, mediaDir string) []string {
 	if name == "" || strings.Contains(name, "..") {
 		return nil
 	}
-	path := filepath.Join(mediaDir, name)
+	// Clean 后校验前缀：必须落在 mediaDir 根目录内（防穿越/软链逃逸）
+	base := filepath.Clean(mediaDir)
+	path := filepath.Clean(filepath.Join(base, name))
+	if !strings.HasPrefix(path, base+string(filepath.Separator)) && path != base {
+		return nil
+	}
 	return []string{path}
 }
