@@ -1,0 +1,362 @@
+# PRD-TSLOMS-v3.1 交通信号灯检测后台运维系统
+
+**项目名称**：交通信号灯检测后台运维系统
+
+**英文名称**：Traffic Signal Light Operation and Maintenance System
+
+**项目简称**：TSLOMS
+
+**文档版本**：V3.1
+
+**更新日期**：2026-08-14
+
+**适用场景**：城市交通信号灯设备 MQTT 通信对接、故障自动研判、维修工单流转、运维数据可视化统计、AI 故障预测/诊断/生命周期溯源
+
+**需求依据（本版严格遵照以下两份文档）**：
+1. `docs/信号灯设备通信协议第三版本.pdf`（V0.1.3，通信协议基线）
+2. `docs/信号灯检测器_故障含义.docx`（故障含义与触发条件基线）
+
+**版本说明**：V3.1 在 V3.0 基础上，补齐设备/路口/工单管理 CRUD 操作，并新增 **AI 原生能力**（故障预分析、AI 故障诊断、生命周期溯源）与 AI 额度控制系统；以协议 PDF 与故障含义 DOCX 为**权威依据**，作为后续实现的唯一需求基线。
+
+---
+
+## 0. 协议与实现对应总览
+
+| 协议能力（PDF） | 实现状态 | 备注 |
+|-----------------|----------|------|
+| 上行签到 CMD_CHECKIN（0x00） | ✅ 已实现 | 解析 + 时间同步回应 |
+| 上行告警 CMD_ALARM（0x01） | ✅ 已实现 | 解析 + 故障研判（无回应） |
+| 上电报告 CMD_POWER_ON（0x03） | ✅ 已实现 | 解析 + 时间同步回应 |
+| 配置下发 CMD_UPDATE_CONFIG（0x20） | ⛔ 未实现 | 后续迭代 |
+| 固件查询 CMD_CHECK_FW（0x30） | 🟡 仅记录 | 后续迭代完整响应 |
+| 固件请求 CMD_GET_FW（0x31） | 🟡 仅记录 | 后续迭代完整响应 |
+| 远程重启 CMD_REBOOT（0x7F） | ⛔ 未实现 | 后续迭代 |
+| 回应标志 CMD_ACK_FLAG（0x80） | ✅ 已实现 | MakeAckCmd/IsAckFrame |
+| 时间同步（userVal=epoch+UTC8） | ✅ 已实现 | BuildTimeSyncAck |
+| 故障含义（DOCX）全量 errCode | ✅ 已实现 | 见 §4 故障研判 |
+
+---
+
+## 一、项目概述
+
+### 1.1 背景
+
+信号灯监控设备在检测到故障或签到周期结束时，主动经 MQTT 向后台上报二进制数据包。系统实时接收、解析、研判，自动生成维修工单并闭环流转，实现运维数字化。
+
+### 1.2 拓扑（PDF 图1）
+
+```
+  ┌──────────┐   MQTT 3.1.1  ┌──────────────┐  MQTT 3.1.1  ┌──────────┐
+  │ 信号灯    │◄─────────────►│  MQTT Broker  │◄─────────────►│  TSLOMS  │
+  │ 监控设备  │  (U入 / D出)  │  (Mosquitto) │  (U入 / D出)  │  后台系统 │
+  └──────────┘               └──────────────┘              └──────────┘
+```
+
+---
+
+## 二、通信协议（严格依据 PDF V0.1.3）
+
+### 2.1 Topic 约定（PDF §前言）
+
+- 上行（设备→后台）：`trafficLight/{networkCode}/{stationCode}/{ledHwId}/U`
+- 下行（后台→设备）：`trafficLight/{networkCode}/{stationCode}/{ledHwId}/D`
+- `networkCode`（0~254，默认0）、`stationCode`（0-65534，默认0）、`ledHwId` 均为**十六进制大写 ASCII**（示例：`trafficLight/0/0/11130000/U`）。
+- 系统实现：订阅 `{topicPrefix}/+/+/+/U`；时间同步回应用 `TrimSuffix("/U")+"/D"` 构造下行 Topic。
+
+### 2.2 命令帧 CMD_FRAME（PDF §3.1）
+
+```
+CMD_FRAME（16 字节固定头 + 变长 dat）：
+字节  字段      长度    说明
+00    token     1     魔术字 0x55
+01    cmd       1     命令类型（见 2.4）
+02    ver       1     协议版本 0x10
+03    checksum  1     整包 uint8 累加低 8 位 == 0xFF
+04-07 swVer     4     软件版本（位域编码，见 2.6）
+08-09 cmdSeq    2     包序号（数据帧/命令帧独立计数）
+10-11 datLen    2     dat 部分长度
+12-15 userVal   4     用户自定义（时间同步epoch秒）
+16+   dat       变长   EVENT_PAK / FIRMWARE_PAK / FIRMWARE_INFO_DAT
+```
+
+- 校验算法（PDF 附录）：整包所有字节按 uint8 累加，结果低 8 位**必须等于 0xFF**。
+- 多字节字段一律**大端序**。
+
+### 2.3 COMMAND 定义（PDF §3.1.1）
+
+| 编码 | 命令 | 方向 | 说明 |
+|------|------|------|------|
+| 0x00 | CMD_CHECKIN | 设备→服务器 | 定时签到，表示工作正常 |
+| 0x01 | CMD_ALARM | 设备→服务器 | 告警，信号灯异常 |
+| 0x03 | CMD_POWER_ON | 设备→服务器 | 上电/重启完成 |
+| 0x20 | CMD_UPDATE_CONFIG | 服务器→设备 | 下发配置更新 |
+| 0x30 | CMD_CHECK_FW | 设备→服务器 | 查询是否有新固件 |
+| 0x31 | CMD_GET_FW | 设备→服务器 | 请求固件数据 |
+| 0x7F | CMD_REBOOT | 服务器→设备 | 远程重启 |
+| 0x80 | CMD_ACK_FLAG | 回应标志 | bit7=1 表示回应帧 |
+
+### 2.4 EVENT_PAK / EVENT_RECORD（PDF §3.1.2）
+
+- cmd 为 CHECKIN/ALARM 时，dat 按 EVENT_PAK：`eventRecordNum(2) + datLen(2) + EVENT_RECORD[]`
+- EVENT_RECORD（本实现按 24 字节、1 字节对齐、大端）：
+  `ledHwId(4) + subHwId(4) + swVer(4) + confVer(4) + [ledState|reserved](1) + errCode(1) + current[3](6)`
+
+> ⚠️ **协议歧义（PDF 内部不一致，需硬件确认）**：
+> - PDF P8 typedef：`ledState(1) + errCode(1)`
+> - PDF P10 示例：`reserved(1) + errCode(1)`
+> 系统当前按 PRD 旧版采用 `ledState` 于字节 16。**正式定稿前应与设备厂商确认字节 16 语义**，若为 `reserved` 则需调整解析。
+
+### 2.5 swVer / confVer 编码（PDF P6/P8）
+
+- `swVer`：`bit[31:28]=major, bit[27:24]=minor, bit[23:18]=year(2000+n), bit[17:14]=month, bit[13:8]=day, bit[7:0]=build#`
+- `confVer`：`0xYYMMDDnn`（16 进制，YYYY=年 MM=月 DD=日 nn=当日版本），例 `0x26030801`
+
+### 2.6 时间同步（PDF §3.2/§3.4）
+
+- CMD_CHECKIN / CMD_POWER_ON 收到后，后台返回：`cmd|0x80`，`userVal = 当前 epoch seconds（UTC+8×3600）`。
+- CMD_ALARM 不需要回应。
+
+### 2.7 固件相关（PDF §3.1.3-3.1.5、§3.5）
+
+- 设备 CMD_CHECK_FW：服务器如有新固件，回 `CMD_CHECK_FW|0x80` + `FIRMWARE_INFO_DAT`（`swVer(4)+fwLen(2)+fwChecksum(1)+reserved(1)`）；无可升级版本则直接丢弃、不回应。
+- 设备 CMD_GET_FW：服务器回 `CMD_GET_FW|0x80` + `FIRMWARE_PAK`（`target(1)+datLen(1)+offset(2)+dat[](1-256)`，分块传输，除末块外均满 256 字节）。
+- **当前实现：仅记录 CMD_CHECK_FW/CMD_GET_FW 日志，不响应。属后续迭代。**
+
+---
+
+## 三、设备参数配置（PDF §4）
+
+设备参数由 `trafficLightConf` + `mqtt.ini` + `trafficLight.ini` 配置，参数如下（与故障触发条件强相关，见 §4.2）：
+
+| 参数 | 说明 | 默认示例 |
+|------|------|----------|
+| checkinMin | 签到周期（分钟） | 2 |
+| gapSec | 信号灯切换间隙（秒） | 2 |
+| ledMaxPeriodSecR/Y/G | 红/黄/绿最长周期（秒），超时上报 | 100/5/120 |
+| powerLossSec | 断电最长等待（秒），三灯同灭超时上报断电 | 200 |
+| ledDimThresholdR/Y/G | 红/黄/绿缺亮阈值（暂未启用） | 200 |
+| mqttServerIp/Port/UserName/Password | MQTT 连接信息（用户/密码最长8位） | - |
+| mqttTopicPrefix / networkCode / stationCode | Topic 前缀与网/站号 | trafficLight/0/0 |
+| confVer | 配置版本（YYMMDDBB） | 26040400 |
+
+> ⚠️ 系统**尚未实现后台 CMD_UPDATE_CONFIG 配置下发**（后续迭代）。当前设备参数以设备端 `trafficLightConf` 配置为准，后台仅读取上报的 `confVer`。
+
+---
+
+## 四、故障研判（严格依据《信号灯检测器_故障含义.docx》）
+
+故障类型、errCode、触发条件是系统故障研判的**权威依据**，全量如下：
+
+### 4.1 故障含义总表（DOCX 原文）
+
+| 故障类型 | errCode | 触发条件 |
+|----------|---------|----------|
+| 正常 | 0 | 无错误 |
+| 红灯周期全灭 | -1 | 当前处于红灯周期，但检测到所有灯全灭 |
+| 黄灯周期全灭 | -2 | 当前处于黄灯周期，但检测到所有灯全灭 |
+| 绿灯周期全灭 | -3 | 当前处于绿灯周期，但检测到所有灯全灭 |
+| 红黄同亮 | -4 | 红灯和黄灯同时亮 |
+| 红绿同亮 | -5 | 红灯和绿灯同时亮 |
+| 黄绿同亮 | -6 | 黄灯和绿灯同时亮 |
+| 红黄绿同亮 | -7 | 红、黄、绿三灯同时亮 |
+| 红灯超时 | -8 | 红灯亮灯时间超过 `ledMaxPeriodSecR` |
+| 黄灯超时 | -9 | 黄灯亮灯时间超过 `ledMaxPeriodSecY` |
+| 绿灯超时 | -10 | 绿灯亮灯时间超过 `ledMaxPeriodSecG` |
+| 红灯缺亮 | -11 | 预留缺亮判断，阈值 `ledDimThresholdR` |
+| 黄灯缺亮 | -12 | 预留缺亮判断，阈值 `ledDimThresholdY` |
+| 绿灯缺亮 | -13 | 预留缺亮判断，阈值 `ledDimThresholdG` |
+| 断电 | -14 | 三个信号灯同时灭灯时间超过 `powerLossSec` |
+
+### 4.2 系统映射（故障类型分类 + 等级）
+
+| 故障类别 | errCode | 等级 | 自动建单 | 实现 |
+|----------|---------|------|----------|------|
+| 正常 | 0 | - | 否 | ✅ |
+| 灯全灭 | -1/-2/-3 | critical(严重) | 是 | ✅ |
+| 异常同亮 | -4/-5/-6/-7 | critical(严重) | 是 | ✅ |
+| 亮灯超时 | -8/-9/-10 | normal(一般) | 否 | ✅ |
+| 缺亮 | -11/-12/-13 | normal(一般) | 否 | ✅（DOCX 标注"预留"） |
+| 断电 | -14 | critical(严重) | 是 | ✅ |
+
+### 4.3 去重与更新（系统规则）
+
+- 同一设备同一 errCode 在 **30 分钟窗口**内仅保留一条 active 故障，窗口内持续上报仅更新 `lastSeen` 与电流值。
+- 超窗后：旧故障标记 `resolved`，再创建新故障。
+- `critical` 等级（灯灭/同亮/断电）自动生成维修工单。
+
+---
+
+## 五、核心功能需求（系统实现）
+
+### 5.1 MQTT 设备通信 ✅
+paho 客户端、自动重连、QoS1、订阅 `trafficLight/+/+/+/U`；解析链路 `ParseCmdFrame → ParseEventPak → ParseEventRecord → 分发`；异常报文记 `packet_logs` 并丢弃（recover 兜底）。
+
+### 5.2 故障研判 ✅（对应 §4）
+按 errCode 全量分类、等级、去重、critical 自动建单。
+
+### 5.3 工单运维 ✅
+状态机 `pending → processing → completed | rejected`，`rejected → pending`（重新派发）；编号 `WO{yyyyMMdd}{同日自增4位}`；完成联动故障转 resolved；多条件筛选。
+- **派单**：`PUT /work-orders/:id/assign`（管理员/运维可派单/改派，只能指派给运维或管理员，派单后进入处理中）；列表返回 `assignee_name` 处理人姓名。
+- 可派单人员：`GET /users/assignable`。
+
+### 5.4 数据可视化 🟡
+- ✅ 看板概览 + 故障类型饼图 + 故障趋势柱状图；后端统计接口齐备。
+- 🟠 前端未接入工单状态饼图/设备故障排行（后端已有）；平均闭环时长、CSV、时间区间未实现。
+
+### 5.5 日志与审计 ✅
+报文日志落库 + `/logs/packets`（分页筛选）；操作日志 `operation_logs` + `/logs/operations`（登录/设备/工单审计）；前端日志页已对接。
+
+### 5.6 鉴权与安全 ✅
+JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 生产白名单、生产拒绝弱密钥、操作审计。
+
+### 5.7 健康检查 ✅
+`GET /api/v1/health`（公开），Nginx `/tsloms/health` 探活。
+
+### 5.8 路口管理 ✅（新增）
+- 路口维度设备统计：`GET /api/v1/intersections` 返回各路口设备总数、在线/离线、活跃故障、经纬度。
+- 设备 `devices` 新增 `lat`/`lng`（经纬度，用于地图打点），设备详情可录入/编辑路口名称与坐标。
+- 前端「路口管理」页：路口列表 + 按路口筛选设备 + 跳转地图大屏。
+
+### 5.9 地图大屏 ✅（独立页面，Cesium GIS）
+- 前端「地图大屏」路由 `/map`，基于 **Cesium**，提供 **2D 地图 / 3D 球 / 哥伦布视图** 三种模式切换。
+- **底图**：OSM（默认）/ 高德 / **卫星（高德影像 style=6）** / 百度 四选一，均做 WGS84→GCJ-02/BD-09 坐标转换（AK 复用 WXX 项目）。
+- **默认视角自动聚焦设备**：地图初始化后自动飞行到设备分布区域（单台设备聚焦至约 4000m 高度，清晰可见；多台拟合范围），不显示全世界。点击设备列表可快速精准定位。
+- **设备点位**：纯圆点标记（在线绿/离线红），**不绘制 Canvas 文字标签**——避免中文乱码与标签遮挡地图；设备名称/信息以 **DOM 卡片** 呈现（中文正常渲染）。
+- **交互**：左侧可收起设备列表（搜索/定位/点击飞行）；点击设备 → 右侧信息卡（硬件ID/在线状态/坐标/故障数），并可跳转 故障/工单/监控/反馈 页；右下角操作工具（放大/缩小/复位/全屏）。
+- **视频监控（/video）、问题反馈（/feedback）已独立为菜单页**，不再与地图页面杂糅，地图大屏保持单一职责。
+
+### 5.10 视频与媒体 ✅（新增）
+- `device_media` 表承载三类媒体：举证(evidence)、监控(monitoring)、时间视频(timelapse)。
+- 手机上传：`POST /media/upload`（multipart）存本地，经 nginx `/tsloms/media/` 服务。
+- RTSP/云URL 登记：`POST /media/streams`，支持兼容播放地址（HLS/FLV）。
+- 查询/删除：`GET /media`、`DELETE /media/:id`。
+
+### 5.11 问题反馈 ✅（新增）
+- `feedbacks` 表：设备/路口问题反馈，状态流转 open→processing→resolved/closed，可关联工单。
+- API：列表/提交/更新状态。
+
+### 5.12 维修耗材 ✅（新增）
+- `device_materials` 表：设备备件台账（名称/型号/规格/库存/阈值）。
+- API：列表/增改/删除，供派单与维修参考。
+
+### 5.13 派单参考 ✅（新增）
+- `GET /dispatch/reference`：按设备聚合活跃故障、待处理工单、维修耗材、监控媒体，供派单决策。
+
+### 5.14 角色权限与数据链路 ✅（新增）
+- 三角色：**管理员(admin)** 全部管理（用户管理、删除媒体/耗材）；**运维(operator)** 业务操作（创单/派单/处理/上传/登记）；**查看(viewer)** 只读浏览。
+- 后端：`RequireAdmin`（用户管理）、`RequireOperator`（写操作）、只读接口登录即可访问；数据链路按设备贯通（故障→工单→派单→处理→按设备聚合参考）。
+- 前端按钮按角色控制（viewer 隐藏派单/编辑/上传/删除等）。
+
+### 5.15 中文乱码治理 ✅（新增）
+- Nginx `charset utf-8`；Cesium 地图标签使用中文字体栈；前后端均 UTF-8（MySQL charset=utf8mb4）。
+
+### 5.16 设备/路口/工单管理 CRUD 补齐 ✅（新增）
+- **设备管理**：新增/编辑（运维+管理员）/删除（仅管理员），字段 `hw_id`（编辑时锁定）、路口、网络号、站点号、经纬度；列表修复字段名（`online_status` 布尔、`sw_version`/`last_checkin_at`）；设备ID搜索改为**异步分组下拉**（按路口/ID搜索、在线/离线分组自动补齐）。
+- **路口管理**：重命名路口（批量更新该路口下所有设备）、设置路口经纬度（同步全设备供地图打点）、清空路口（设备回未分配，仅管理员）；修复设备筛选参数。
+- **工单管理**：设备ID异步分组下拉；**新建工单**（从活跃故障发起，自动带出设备，可选维修人员）；**删除工单**（仅管理员，解除故障绑定保留记录）；修复设备筛选参数（后端兼容 `hw_id`/`device_hw_id`）。
+- **问题反馈**：表单默认带出当前登录用户信息（反馈人=用户名、联系方式=手机号）。
+
+### 5.17 AI 故障预分析 ✅（新增）
+- **规则引擎健康评分**（离线，不耗 LLM 额度）：综合灯龄（installed_at）、历史故障频率（近30天）、电流异常（current_r/y/g）、离线次数、关联异常媒体/反馈，输出**健康分 0-100 + 风险等级（低/中/高/极高）+ 预测故障类型 + 剩余寿命预估 + 置信度**。
+- **地图风险可视化**：预测结果按风险等级着色（Cesium 打点），高风险红/极高深红，点击设备聚焦显示健康分、风险、预案。
+- **预测分类清单**：左侧按设备列出健康分/风险/预测类型，可按路口/ID搜索。
+- **LLM 预案增强**（消耗额度）：对单条预测调用智谱 GLM 生成具体应对预案（检修优先级/排查步骤/建议备件/预计耗时），失败时回退规则预案。
+- 持久化：`ai_predictions` 表按设备+批次覆盖，批次 ID 为时间戳。
+
+### 5.18 AI 故障诊断 ✅（新增）
+- 输入：问题反馈（`feedbacks` 文字标题/内容 + 可选图片 `image_url`）关联设备最近故障记录。
+- 处理：**智谱 GLM 多模态（glm-4v 看图 + glm-4 读文）** 自动识别灯珠损坏/线路/供电问题；图片经媒体目录解析为 base64 data URL 送入模型。
+- 输出：诊断结论 + 成因分析 + 解决方案 + 建议备件；无图片走文本模型，无 LLM/超额时回退**规则降级诊断**（按故障码推断）。
+
+### 5.19 AI 生命周期溯源 ✅（新增）
+- 输入：单台设备全流程数据（安装、故障、工单/维修、耗材）。
+- 输出：**全流程时间线**（安装/故障/维修节点）+ **LLM 溯源画像**（总体健康、高频故障、维修闭环、老化风险、保养建议），失败回退规则画像。
+
+### 5.20 AI 额度控制系统 ✅（新增）
+- 表：`ai_config`（单行配置：提供商/文本模型/多模态模型/API Key/开关/每日token上限/每日调用次数上限）、`ai_usage`（每次 LLM 调用流水：用户/动作/模型/token/成败）、`ai_predictions`（预测结果）。
+- **每日额度**：按用户统计今日 token 消耗与调用次数，超限（`day_token_limit`/`day_call_limit`）拒绝并提示；超额 AI 功能自动**降级为规则引擎**（仍可用，不耗额度）。
+- **脱敏**：API Key 仅显示前4后4；`AI_API_KEY` 可由服务器 `.env` 注入（SeedAIConfig）或在后台额度设置页配置。
+- 管理：`GET/PUT /ai/config`（配置，PUT 仅管理员）、`GET /ai/usage`（我的额度）、`GET /ai/usage/logs`（流水，管理员）、`POST /ai/usage/reset`（重置今日额度，管理员）。
+
+### 5.21 AI 菜单 ✅（新增）
+- 侧边栏新增 **“AI 分析”主菜单**（子菜单）：故障预测（/ai/predict）、AI 诊断（/ai/diagnose）、生命周期（/ai/lifecycle）、额度设置（/ai/config）。
+- 主菜单整体整合：运维类（仪表盘/设备/路口/故障/工单/固件）→ 可视化与协同（地图/视频/反馈）→ **AI 分析** → 系统（日志/设置）。
+
+---
+
+## 六、非功能需求
+
+1. **性能**：百级设备并发；**⚠️ 报文日志同步写库为潜在瓶颈，未异步化/压测**。
+2. **可靠性**：原始报文落库、MQTT 自动重连、QoS1；**⚠️ 设备离线超时判定未实现**。
+3. **兼容性**：严格遵循 PDF V0.1.3（token 0x55 / ver 0x10 / 大端 / 校验和 / 时间同步 / 故障表）。
+4. **安全性**：JWT、角色、审计、CORS 白名单；**⚠️ MQTT Broker 未启用用户名/密码认证**。
+5. **可维护性**：与 EQS 共享 MySQL/Redis（独立库/DB1），Nginx 8092 / 后端 8093 独立。
+
+---
+
+## 七、技术栈与部署（现状）
+
+- **后端**：Go 1.22 / Gin / GORM / paho.mqtt.golang / Mosquitto
+- **数据**：MySQL 8.0（库 tsloms）、Redis 7.0（DB 1）
+- **前端**：Vue3 + Vite + Element Plus + ECharts + Cesium（地图）
+- **AI**：智谱 GLM（文本 `glm-4-flash`，多模态 `glm-4v`），key 复用 WXX 项目（服务器 `.env` 的 `AI_API_KEY`）；规则引擎离线可用
+- **部署**：腾讯云 `129.211.223.113`，Nginx 8092（`/tsloms` 前缀统一入口）+ systemd 后端 8093
+- **核心表**：devices / packet_logs / fault_records / work_orders / users / operation_logs / ai_config / ai_usage / ai_predictions
+
+---
+
+## 八、数据模型（与实现一致）
+
+- `devices`：hw_id(唯一)、intersection、lat、lng、network_code、station_code、sw_version、conf_version、online_status、last_checkin_at、installed_at
+- `packet_logs`：device_hw_id、raw_data(blob)、cmd_type、cmd_seq、parsed_result(json)、valid、received_at
+- `fault_records`：device_hw_id、err_code、fault_type(lamp_off/abnormal_on/timeout/dim/power_loss/unknown)、fault_level(critical/normal)、led_state、current_r/y/g、first_seen、last_seen、status(active/resolved)、work_order_id
+- `work_orders`：order_no(唯一)、fault_id、device_hw_id、status(pending/processing/completed/rejected)、assignee_id、result、closed_at
+- `users`：username(唯一)、password_hash、role(admin/operator/viewer)、phone
+- `operation_logs`：user_id、username、action、target、ip、detail、created_at
+- `device_media`：device_hw_id、media_type(evidence/monitoring/timelapse)、category(photo/video)、source(upload/rtsp/url)、url、compatible_url、thumbnail、duration
+- `device_materials`：device_hw_id、name、part_no、spec、quantity、unit、threshold
+- `feedbacks`：device_hw_id(可空)、intersection、title、content、reporter、contact、status、work_order_id、image_url
+- `ai_config`：id(=1)、provider(zhipu/deepseek)、text_model、vision_model、api_key(脱敏)、enabled、day_token_limit、day_call_limit
+- `ai_usage`：user_id、action(predict/diagnose/lifecycle)、model、tokens、ok、error、created_at
+- `ai_predictions`：device_hw_id(设备+批次唯一)、intersection、batch_id、health_score、risk_level(low/medium/high/critical)、predict_type、remain_days、confidence、factors(json)、plan、source(规则/LLM增强)
+
+---
+
+## 九、迭代路线（V3.2+）
+
+| 优先级 | 工作项 | 依据 |
+|--------|--------|------|
+| P0 | 单元测试覆盖率 ≥80%（当前 40+ 例起步） | AGENTS.md |
+| P0 | **协议澄清**：与硬件确认 EVENT_RECORD 字节16（ledState vs reserved） | PDF 歧义 |
+| ✅ | 设备离线超时判定（签到 3 倍周期，OFFLINE_AFTER_MIN） | 已实现 |
+| ✅ | 看板补全（工单饼图/故障排行/平均闭环/CSV/时间区间） | 已实现 |
+| ✅ | 用户/角色管理 CRUD | 已实现 |
+| ✅ | 路口管理（路口维度统计）+ 地图大屏（ECharts geo 打点） | 已实现（无地图 AK 依赖） |
+| ✅ | 设备管理 CRUD（新增/编辑/删除） | 已实现 |
+| ✅ | 路口管理 CRUD（重命名/设坐标/清空） | 已实现 |
+| ✅ | 工单管理补齐（新建/删除/异步设备下拉） | 已实现 |
+| ✅ | **AI 故障预分析**（规则引擎健康分/风险 + 地图着色 + LLM 预案增强） | 已实现 |
+| ✅ | **AI 故障诊断**（反馈文字/图片多模态 → 诊断+方案+备件） | 已实现 |
+| ✅ | **AI 生命周期溯源**（全流程时间线 + LLM 画像） | 已实现 |
+| ✅ | **AI 额度控制**（每日 token/调用限额、超额降级、流水审计） | 已实现 |
+| P1 | MQTT 消息异步化 + 报文日志批量写 | 性能 |
+| P1 | MQTT Broker 用户/密码认证 | 安全 |
+| P1 | 报文日志按月分区/归档 | 可靠性 |
+| P2 | CMD_UPDATE_CONFIG 配置下发 | PDF §3.1.1/§4 |
+| P2 | 固件 OTA（CMD_CHECK_FW/GET_FW 响应 + 上传校验） | PDF §3.1.3-3.5 |
+| P2 | CMD_REBOOT 远程重启 | PDF |
+| P3 | 移动端 APP、短信告警、多级审批、大数据分析、地图实景图层 | 扩展 |
+
+---
+
+## 十、文档索引
+
+| 文档 | 路径 |
+|------|------|
+| 本需求文档 V3.1 | `docs/PRD-TSLOMS-v3.1.md` |
+| 历史需求 V3.0 | `docs/PRD-TSLOMS-v3.0.md` |
+| 通信协议（权威） | `docs/信号灯设备通信协议第三版本.pdf` |
+| 故障含义（权威） | `docs/信号灯检测器_故障含义.docx` |
+| 软件审核报告 | `docs/SAR-TSLOMS-v1.0.md` |
+| 历史需求 V2.0 | `docs/PRD-TSLOMS-v2.0.md` |
+| 部署故障排查 | `docs/部署故障排查-腾讯云请求失败.md` |
