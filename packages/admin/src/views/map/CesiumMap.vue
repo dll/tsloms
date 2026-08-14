@@ -32,7 +32,7 @@
       <div class="panel-title">设备定位</div>
       <el-input v-model="searchKw" placeholder="搜索路口/设备ID" size="small" clearable />
       <div class="dev-list">
-        <div v-for="d in filteredDevices" :key="d.hw_id" class="dev-item" @click="focusDevice(d)">
+        <div v-for="d in filteredDevices" :key="d.hw_id" class="dev-item" @click="focusDevice(d); openDrill(d)">
           <span class="dot" :class="d.online_status ? 'on' : 'off'"></span>
           <span class="nm">{{ d.intersection || '#' + d.hw_id }}</span>
           <span class="loc" v-if="d.lat != null && d.lng != null">{{ d.lat.toFixed(3) }},{{ d.lng.toFixed(3) }}</span>
@@ -41,13 +41,69 @@
         <el-empty v-if="filteredDevices.length === 0" description="暂无设备" :image-size="60" />
       </div>
     </div>
+
+    <!-- 设备联动下钻面板：点击点位后展示 -->
+    <div v-if="drill.visible" class="drill-panel">
+      <div class="drill-head">
+        <span class="drill-title">{{ drill.intersection || ('设备#' + drill.hw_id) }}</span>
+        <el-button size="small" circle @click="closeDrill">×</el-button>
+      </div>
+      <div class="drill-body">
+        <el-tabs v-model="drill.tab">
+          <el-tab-pane label="派单参考" name="dispatch">
+            <div class="sec">
+              <div class="sec-title">活跃故障（{{ drill.ref.faults.length }}）</div>
+              <div v-for="f in drill.ref.faults" :key="f.id" class="row">
+                <el-tag size="small" :type="f.fault_level === 'critical' ? 'danger' : 'warning'">{{ errLabel(f.err_code) }}</el-tag>
+                <span class="row-sub">{{ f.last_seen?.slice(0,16) }}</span>
+              </div>
+              <div v-if="drill.ref.faults.length === 0" class="empty">暂无活跃故障</div>
+            </div>
+            <div class="sec">
+              <div class="sec-title">进行中工单（{{ drill.ref.work_orders.length }}）</div>
+              <div v-for="w in drill.ref.work_orders" :key="w.id" class="row">
+                <span class="row-main">{{ w.order_no }}</span>
+                <el-tag size="small">{{ woStatus(w.status) }}</el-tag>
+              </div>
+              <div v-if="drill.ref.work_orders.length === 0" class="empty">暂无进行中工单</div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="维修耗材" name="material">
+            <div v-for="m in drill.ref.materials" :key="m.id" class="m-row">
+              <span class="m-name">{{ m.name }}</span>
+              <span class="m-part">{{ m.part_no || '-' }}</span>
+              <el-tag size="small" :type="m.quantity <= m.threshold ? 'danger' : 'success'">库存 {{ m.quantity }} {{ m.unit || '' }}</el-tag>
+            </div>
+            <div v-if="drill.ref.materials.length === 0" class="empty">暂无耗材记录</div>
+          </el-tab-pane>
+
+          <el-tab-pane label="监控/视频" name="media">
+            <div v-for="m in drill.ref.media" :key="m.id" class="media-row" @click="playDevMedia(m)">
+              <span class="m-name">{{ m.title || (m.media_type === 'monitoring' ? '监控' : m.media_type) }}</span>
+              <el-tag size="small">{{ m.source }}</el-tag>
+            </div>
+            <div v-if="drill.ref.media.length === 0" class="empty">暂无媒体记录</div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+      <div class="drill-foot">
+        <el-button size="small" @click="goPanel('video')">打开视频与监控</el-button>
+        <el-button size="small" @click="goPanel('feedback')">打开问题反馈</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import * as Cesium from 'cesium'
 import { getAllDevices } from '@/api/map'
+import { getDispatchReference } from '@/api/dispatch'
+
+// 组件 emit：通知父级切换标签页（video/feedback）
+const emit = defineEmits<{ (e: 'goPanel', name: string): void }>()
 
 // Cesium 静态资源（vite 构建时拷贝到 /cesium，见 vite.config.js）
 ;(Cesium as any).buildModuleUrl.setBaseUrl('/tsloms/admin/cesium/')
@@ -70,6 +126,56 @@ const filteredDevices = computed(() => {
   if (!kw) return devices.value
   return devices.value.filter((d) => (d.intersection || '').includes(kw) || String(d.hw_id).includes(kw))
 })
+
+// 设备联动下钻：选中设备的聚合信息（反馈参考）
+const drill = ref({
+  visible: false,
+  hw_id: 0 as number,
+  intersection: '' as string,
+  tab: 'dispatch' as string,
+  ref: {
+    faults: [] as any[], work_orders: [] as any[], materials: [] as any[], media: [] as any[],
+  },
+})
+
+// 故障码中文名
+const errLabel = (code: number) => {
+  const map: Record<number, string> = {
+    [0]: '正常',
+    [-1]: '红灯周期全灭', [-2]: '黄灯周期全灭', [-3]: '绿灯周期全灭',
+    [-4]: '红黄同亮', [-5]: '红绿同亮', [-6]: '黄绿同亮', [-7]: '红黄绿同亮',
+    [-8]: '红灯超时', [-9]: '黄灯超时', [-10]: '绿灯超时',
+    [-11]: '红灯缺亮', [-12]: '黄灯缺亮', [-13]: '绿灯缺亮', [-14]: '断电',
+  }
+  return map[code] ?? '未知'
+}
+const woStatus = (s: string) => ({ pending: '待处理', processing: '处理中', completed: '已完成', rejected: '已驳回' } as Record<string, string>)[s] || s
+
+// 点击设备点位 → 拉取派单参考并打开下钻面板
+function openDrill(d: Dev) {
+  drill.value.visible = true
+  drill.value.hw_id = d.hw_id || 0
+  drill.value.intersection = d.intersection || '设备#' + d.hw_id
+  drill.value.tab = 'dispatch'
+  // 拉取聚合数据
+  getDispatchReference(d.hw_id || 0).then((res) => {
+    const ref = res.data || {}
+    drill.value.ref = {
+      faults: ref.faults || [], work_orders: ref.work_orders || [],
+      materials: ref.materials || [], media: ref.media || [],
+    }
+  }).catch(() => { ElMessage.error('下钻数据加载失败') })
+}
+function closeDrill() { drill.value.visible = false }
+function goPanel(name: string) { emit('goPanel', name) }
+function playDevMedia(m: any) {
+  // 有可播放 url 时提示，否则跳转视频面板
+  if (m.url && !/^rtsp?:\/\//i.test(m.url)) {
+    window.open(m.url.startsWith('/media/') ? '/tsloms' + m.url : m.url, '_blank')
+  } else {
+    emit('goPanel', 'video')
+  }
+}
 
 // 初始化 Cesium 视图
 function initCesium() {
@@ -98,6 +204,18 @@ function initCesium() {
   // 默认视角：中国东部
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(105, 35, 6000000) })
   applySceneMode()
+
+  // 点击设备点位 → 联动下钻
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  handler.setInputAction((evt: any) => {
+    const picked = viewer?.scene.pick(evt.position)
+    if (picked && picked.id && (picked.id as any).id && String((picked.id as any).id).startsWith('dev-')) {
+      const props = (picked.id as any).properties
+      const hw = props && props.hw_id !== undefined ? props.hw_id.getValue() : undefined
+      const dev = devices.value.find((d) => d.hw_id === hw)
+      if (dev) openDrill(dev)
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
 
 // 应用 2D/3D/哥伦布 模式
@@ -203,4 +321,26 @@ onUnmounted(() => {
 .nm { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .loc { color: #909399; font-size: 12px; flex-shrink: 0; }
 .nl { color: #c0c4cc; }
+
+/* 联动下钻面板 */
+.drill-panel {
+  position: absolute; right: 12px; top: 56px; width: 320px; max-height: 72%;
+  background: #fff; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,21,41,0.15);
+  display: flex; flex-direction: column; z-index: 10;
+}
+.drill-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eee; }
+.drill-title { font-weight: 600; font-size: 14px; }
+.drill-body { flex: 1; overflow-y: auto; padding: 0 12px 8px; }
+.drill-foot { border-top: 1px solid #eee; padding: 8px 12px; display: flex; gap: 8px; }
+.sec { margin: 8px 0; }
+.sec-title { font-size: 12px; color: #606266; margin-bottom: 6px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.row-main { font-size: 13px; flex: 1; }
+.row-sub { font-size: 12px; color: #909399; }
+.m-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #f0f0f0; }
+.m-name { font-size: 13px; flex: 1; }
+.m-part { font-size: 12px; color: #909399; }
+.media-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }
+.media-row:hover { background: #f0f7ff; }
+.empty { color: #c0c4cc; font-size: 13px; padding: 10px 0; }
 </style>

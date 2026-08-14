@@ -3,7 +3,7 @@
     <el-tabs v-model="tab" type="border-card">
       <!-- 2D/3D 地图定位大屏 -->
       <el-tab-pane label="地图定位（2D/3D）" name="map">
-        <CesiumMap />
+        <CesiumMap @go-panel="goPanel" />
       </el-tab-pane>
 
       <!-- 视频与监控 -->
@@ -26,6 +26,12 @@ import VideoPanel from './VideoPanel.vue'
 import FeedbackPanel from './FeedbackPanel.vue'
 
 const tab = ref('map')
+
+// 地图联动下钻 → 切换到对应面板
+function goPanel(name: string) {
+  if (name === 'video') tab.value = 'video'
+  else if (name === 'feedback') tab.value = 'feedback'
+}
 </script>
 
 <style scoped>
