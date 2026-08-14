@@ -147,6 +147,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/devices/stats", handler.DeviceStats)
 			auth.GET("/devices/:id", handler.GetDevice)
 			auth.PUT("/devices/:id", middleware.RequireOperator(), handler.UpdateDevice)
+			auth.GET("/intersections", handler.ListIntersections)
 
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)

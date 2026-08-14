@@ -4,10 +4,13 @@ import "time"
 
 // Device 设备表
 // 记录信号灯监控设备的台账信息，hw_id 为出厂唯一硬件 ID
+// 路口维度：intersection 为路口名称，lat/lng 为设备经纬度（用于地图打点）
 type Device struct {
 	ID            uint       `json:"id" gorm:"primaryKey"`
 	HwID          uint32     `json:"hw_id" gorm:"uniqueIndex;comment:设备硬件ID(出厂唯一)"`
-	Intersection  string     `json:"intersection" gorm:"size:128;comment:路口位置描述"`
+	Intersection  string     `json:"intersection" gorm:"size:128;index;comment:路口位置描述"`
+	Lat           *float64   `json:"lat" gorm:"comment:纬度"`
+	Lng           *float64   `json:"lng" gorm:"comment:经度"`
 	NetworkCode   int        `json:"network_code" gorm:"comment:网络号"`
 	StationCode   int        `json:"station_code" gorm:"comment:站点号"`
 	SwVersion     uint32     `json:"sw_version" gorm:"comment:固件版本号"`

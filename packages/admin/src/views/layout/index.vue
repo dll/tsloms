@@ -23,6 +23,14 @@
           <el-icon><Cpu /></el-icon>
           <template #title>设备管理</template>
         </el-menu-item>
+        <el-menu-item index="/intersection">
+          <el-icon><Location /></el-icon>
+          <template #title>路口管理</template>
+        </el-menu-item>
+        <el-menu-item index="/map">
+          <el-icon><MapLocation /></el-icon>
+          <template #title>地图大屏</template>
+        </el-menu-item>
         <el-menu-item index="/fault">
           <el-icon><Warning /></el-icon>
           <template #title>故障管理</template>

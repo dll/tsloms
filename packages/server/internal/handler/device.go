@@ -92,10 +92,12 @@ func UpdateDevice(c *gin.Context) {
 	}
 
 	var req struct {
-		Intersection string `json:"intersection"`
-		NetworkCode  *int   `json:"network_code"`
-		StationCode  *int   `json:"station_code"`
-		InstalledAt  string `json:"installed_at"`
+		Intersection string   `json:"intersection"`
+		NetworkCode  *int     `json:"network_code"`
+		StationCode  *int     `json:"station_code"`
+		InstalledAt  string   `json:"installed_at"`
+		Lat          *float64 `json:"lat"`
+		Lng          *float64 `json:"lng"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -117,6 +119,13 @@ func UpdateDevice(c *gin.Context) {
 		if t, err := time.Parse("2006-01-02", req.InstalledAt); err == nil {
 			updates["installed_at"] = t
 		}
+	}
+	// 经纬度更新（用于地图打点）
+	if req.Lat != nil {
+		updates["lat"] = *req.Lat
+	}
+	if req.Lng != nil {
+		updates["lng"] = *req.Lng
 	}
 
 	if len(updates) > 0 {

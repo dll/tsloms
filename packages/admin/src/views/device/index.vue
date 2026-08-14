@@ -65,31 +65,52 @@
     </el-card>
 
     <!-- 设备详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="设备详情" width="600px">
+    <el-dialog v-model="detailVisible" title="设备详情" width="620px">
       <el-descriptions :column="2" border v-if="currentDevice">
         <el-descriptions-item label="设备ID">{{ currentDevice.id }}</el-descriptions-item>
         <el-descriptions-item label="硬件ID">{{ currentDevice.hw_id }}</el-descriptions-item>
-        <el-descriptions-item label="路口位置">{{ currentDevice.intersection }}</el-descriptions-item>
+        <el-descriptions-item label="路口位置">{{ currentDevice.intersection || '-' }}</el-descriptions-item>
         <el-descriptions-item label="在线状态">
-          <el-tag :type="currentDevice.online_status === 'online' ? 'success' : 'info'" size="small">
-            {{ currentDevice.online_status === 'online' ? '在线' : '离线' }}
+          <el-tag :type="currentDevice.online_status ? 'success' : 'info'" size="small">
+            {{ currentDevice.online_status ? '在线' : '离线' }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="固件版本">{{ currentDevice.firmware_version }}</el-descriptions-item>
+        <el-descriptions-item label="固件版本">{{ currentDevice.sw_version }}</el-descriptions-item>
+        <el-descriptions-item label="配置版本">{{ currentDevice.conf_version }}</el-descriptions-item>
         <el-descriptions-item label="网络编码">{{ currentDevice.network_code }}</el-descriptions-item>
         <el-descriptions-item label="站点编码">{{ currentDevice.station_code }}</el-descriptions-item>
-        <el-descriptions-item label="安装时间">{{ currentDevice.installed_at }}</el-descriptions-item>
-        <el-descriptions-item label="最后签到时间">{{ currentDevice.last_seen_at }}</el-descriptions-item>
+        <el-descriptions-item label="纬度">{{ currentDevice.lat ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="经度">{{ currentDevice.lng ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="最后签到">{{ currentDevice.last_checkin_at }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ currentDevice.created_at }}</el-descriptions-item>
       </el-descriptions>
+
+      <!-- 编辑路口与坐标（供地图打点） -->
+      <el-divider content-position="left">编辑路口与坐标</el-divider>
+      <el-form v-if="currentDevice" :model="editForm" label-width="90px">
+        <el-form-item label="路口名称">
+          <el-input v-model="editForm.intersection" placeholder="如：人民路口" />
+        </el-form-item>
+        <el-form-item label="纬度">
+          <el-input v-model="editForm.lat" placeholder="如：31.2304" />
+        </el-form-item>
+        <el-form-item label="经度">
+          <el-input v-model="editForm.lng" placeholder="如：121.4737" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="saving" @click="saveEdit">保存坐标</el-button>
+          <span class="coord-tip">录入经纬度后可在「地图大屏」查看设备分布</span>
+        </el-form-item>
+      </el-form>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { getDevices } from '@/api/device'
+import { getDevices, updateDevice } from '@/api/device'
 
 // 搜索表单
 const searchForm = reactive({
@@ -111,6 +132,10 @@ const pagination = reactive({
 // 设备详情弹窗
 const detailVisible = ref(false)
 const currentDevice = ref<Record<string, any> | null>(null)
+
+// 坐标/路口编辑
+const saving = ref(false)
+const editForm = reactive({ intersection: '', lat: '', lng: '' })
 
 // 获取设备列表
 async function fetchData() {
@@ -148,7 +173,36 @@ function handleReset() {
 // 查看设备详情
 async function handleDetail(row: Record<string, any>) {
   currentDevice.value = row
+  // 初始化编辑表单
+  editForm.intersection = row.intersection || ''
+  editForm.lat = row.lat != null ? String(row.lat) : ''
+  editForm.lng = row.lng != null ? String(row.lng) : ''
   detailVisible.value = true
+}
+
+// 保存路口与坐标
+async function saveEdit() {
+  if (!currentDevice.value) return
+  saving.value = true
+  const data: Record<string, any> = {}
+  if (editForm.intersection.trim()) data.intersection = editForm.intersection.trim()
+  if (editForm.lat.trim() !== '') {
+    const lat = parseFloat(editForm.lat)
+    if (isNaN(lat) || lat < -90 || lat > 90) { ElMessage.warning('纬度范围应为 -90 ~ 90'); saving.value = false; return }
+    data.lat = lat
+  }
+  if (editForm.lng.trim() !== '') {
+    const lng = parseFloat(editForm.lng)
+    if (isNaN(lng) || lng < -180 || lng > 180) { ElMessage.warning('经度范围应为 -180 ~ 180'); saving.value = false; return }
+    data.lng = lng
+  }
+  try {
+    await updateDevice(currentDevice.value.id, data)
+    ElMessage.success('路口与坐标已保存')
+    // 更新行数据
+    Object.assign(currentDevice.value, data)
+    fetchData()
+  } catch { /* 后端已提示 */ } finally { saving.value = false }
 }
 
 onMounted(() => {
@@ -169,5 +223,10 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+.coord-tip {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

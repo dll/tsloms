@@ -210,6 +210,15 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 ### 5.7 健康检查 ✅
 `GET /api/v1/health`（公开），Nginx `/tsloms/health` 探活。
 
+### 5.8 路口管理 ✅（新增）
+- 路口维度设备统计：`GET /api/v1/intersections` 返回各路口设备总数、在线/离线、活跃故障、经纬度。
+- 设备 `devices` 新增 `lat`/`lng`（经纬度，用于地图打点），设备详情可录入/编辑路口名称与坐标。
+- 前端「路口管理」页：路口列表 + 按路口筛选设备 + 跳转地图大屏。
+
+### 5.9 地图大屏 ✅（新增）
+- 前端「地图大屏」路由 `/map`：基于 ECharts `geo` + 内置中国简图，按设备经纬度打点，显示在线（绿）/离线（红）状态。
+- **不依赖第三方地图 AK**（百度/高德），离线可用；后续如需实景地图可在页面内接入地图 SDK。
+
 ---
 
 ## 六、非功能需求
@@ -234,7 +243,7 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 
 ## 八、数据模型（与实现一致）
 
-- `devices`：hw_id(唯一)、intersection、network_code、station_code、sw_version、conf_version、online_status、last_checkin_at、installed_at
+- `devices`：hw_id(唯一)、intersection、lat、lng、network_code、station_code、sw_version、conf_version、online_status、last_checkin_at、installed_at
 - `packet_logs`：device_hw_id、raw_data(blob)、cmd_type、cmd_seq、parsed_result(json)、valid、received_at
 - `fault_records`：device_hw_id、err_code、fault_type(lamp_off/abnormal_on/timeout/dim/power_loss/unknown)、fault_level(critical/normal)、led_state、current_r/y/g、first_seen、last_seen、status(active/resolved)、work_order_id
 - `work_orders`：order_no(唯一)、fault_id、device_hw_id、status(pending/processing/completed/rejected)、assignee_id、result、closed_at
@@ -247,18 +256,19 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 
 | 优先级 | 工作项 | 依据 |
 |--------|--------|------|
-| P0 | 单元测试覆盖率 ≥80%（已有 27 例起步） | AGENTS.md |
+| P0 | 单元测试覆盖率 ≥80%（当前 40+ 例起步） | AGENTS.md |
 | P0 | **协议澄清**：与硬件确认 EVENT_RECORD 字节16（ledState vs reserved） | PDF 歧义 |
-| P1 | 设备离线超时判定（签到 3 倍周期 / LWT） | 可靠性 |
-| P1 | 看板补全（工单饼图/故障排行/平均闭环/CSV/时间区间） | §5.4 |
-| P1 | 用户/角色管理 CRUD | 基础管理 |
+| ✅ | 设备离线超时判定（签到 3 倍周期，OFFLINE_AFTER_MIN） | 已实现 |
+| ✅ | 看板补全（工单饼图/故障排行/平均闭环/CSV/时间区间） | 已实现 |
+| ✅ | 用户/角色管理 CRUD | 已实现 |
+| ✅ | 路口管理（路口维度统计）+ 地图大屏（ECharts geo 打点） | 已实现（无地图 AK 依赖） |
 | P1 | MQTT 消息异步化 + 报文日志批量写 | 性能 |
 | P1 | MQTT Broker 用户/密码认证 | 安全 |
 | P1 | 报文日志按月分区/归档 | 可靠性 |
 | P2 | CMD_UPDATE_CONFIG 配置下发 | PDF §3.1.1/§4 |
 | P2 | 固件 OTA（CMD_CHECK_FW/GET_FW 响应 + 上传校验） | PDF §3.1.3-3.5 |
 | P2 | CMD_REBOOT 远程重启 | PDF |
-| P3 | 移动端 APP、短信告警、多级审批、大数据分析、地图 | 扩展 |
+| P3 | 移动端 APP、短信告警、多级审批、大数据分析、地图实景图层 | 扩展 |
 
 ---
 

@@ -16,6 +16,8 @@ export interface DeviceUpdate {
   network_code?: string
   station_code?: string
   installed_at?: string
+  lat?: number
+  lng?: number
 }
 
 // 获取设备列表（分页）

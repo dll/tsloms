@@ -18,6 +18,10 @@ const router = createRouter({
         { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/index.vue'), meta: { title: '仪表盘' } },
         // 设备管理 - 信号灯设备台账
         { path: 'device', name: 'Device', component: () => import('@/views/device/index.vue'), meta: { title: '设备管理' } },
+        // 路口管理 - 路口维度设备统计
+        { path: 'intersection', name: 'Intersection', component: () => import('@/views/intersection/index.vue'), meta: { title: '路口管理' } },
+        // 地图大屏 - 设备分布地图
+        { path: 'map', name: 'Map', component: () => import('@/views/map/index.vue'), meta: { title: '地图大屏' } },
         // 故障管理 - 设备故障记录与研判
         { path: 'fault', name: 'Fault', component: () => import('@/views/fault/index.vue'), meta: { title: '故障管理' } },
         // 工单管理 - 维修工单流转
