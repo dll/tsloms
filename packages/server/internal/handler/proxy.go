@@ -66,7 +66,7 @@ func GaodeTileProxy(c *gin.Context) {
 		return
 	}
 	sub := mustParseInt(x)%4 + 1
-	host := "webrd" // 路网
+	host := "wprd" // 路网（current web raster endpoint; webrd 已废弃返回 404）
 	if style == "6" {
 		host = "webst" // 卫星
 	}
