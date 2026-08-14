@@ -258,17 +258,24 @@ async function load() {
   } catch { /* 忽略 */ }
 }
 
-// 自动聚焦（带重试）：2D/3D 变形与相机就绪需时间，多次尝试直到相机真正移动
+// 自动聚焦（带重试）：等待 2D 变形(morphTo2D) 完成后相机就绪，再聚焦到目标
 function focusWithRetry(attempt: number) {
   if (!viewer) return
-  if (attempt > 5) return
+  if (attempt > 6) return
   setTimeout(() => {
+    const ready = ensureMorphDone()
+    if (!ready) { focusWithRetry(attempt + 1); return }
     autoFocusUserOrDevices()
-    // 判断相机是否已离开初始默认视角（未移动则重试）
-    const c = viewer?.camera.positionCartographic
-    const stillHome = c && c.longitude === 0 && c.latitude === 0
-    if (stillHome) focusWithRetry(attempt + 1)
-  }, attempt === 0 ? 400 : attempt * 700)
+  }, attempt === 0 ? 300 : attempt * 600)
+}
+
+// 确保场景变形完成（2D/3D morph 结束后相机才稳定），返回是否就绪
+function ensureMorphDone(): boolean {
+  if (!viewer) return false
+  // scene.morphTime：0=3D, 1=2D(哥伦布)；接近目标即视为完成
+  const morph = viewer.scene.morphTime
+  const target = sceneMode.value === 2 || sceneMode.value === 1 ? 1 : 0
+  return Math.abs((morph as number) - target) < 0.05
 }
 
 // 自动聚焦：当前用户设置了中心点则以其为中心，否则聚焦设备分布
