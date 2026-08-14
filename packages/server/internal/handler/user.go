@@ -7,6 +7,21 @@ import (
 	"github.com/tsloms/server/internal/model"
 )
 
+// ListAssignableUsers 可派单人员列表（operator + admin）
+// 供工单派单下拉选择，登录用户（运维/管理员/查看）均可调用
+func ListAssignableUsers(c *gin.Context) {
+	var users []model.User
+	model.DB.Select("id, username, role").
+		Where("role IN ?", []string{model.RoleAdmin, model.RoleOperator}).
+		Order("id ASC").
+		Find(&users)
+	list := make([]gin.H, 0, len(users))
+	for _, u := range users {
+		list = append(list, gin.H{"id": u.ID, "username": u.Username, "role": u.Role})
+	}
+	ok(c, gin.H{"list": list, "total": len(list)})
+}
+
 // ListUsers 用户列表查询（分页 + 角色筛选）
 // 仅管理员可访问
 func ListUsers(c *gin.Context) {

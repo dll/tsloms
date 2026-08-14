@@ -161,6 +161,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/work-orders", handler.ListWorkOrders)
 			auth.POST("/work-orders", middleware.RequireOperator(), handler.CreateWorkOrder)
 			auth.PUT("/work-orders/:id/status", middleware.RequireOperator(), handler.UpdateWorkOrderStatus)
+			auth.PUT("/work-orders/:id/assign", middleware.RequireOperator(), handler.AssignWorkOrder)
 
 			// 数据看板（只读）
 			auth.GET("/dashboard/overview", handler.DashboardOverview)
@@ -202,6 +203,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 派单参考（设备聚合：故障/工单/耗材/媒体）
 			auth.GET("/dispatch/reference", handler.DispatchReference)
+
+			// 可派单人员（运维/管理员），供工单派单
+			auth.GET("/users/assignable", handler.ListAssignableUsers)
 		}
 	}
 

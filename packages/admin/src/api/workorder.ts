@@ -38,3 +38,13 @@ export function createWorkOrder(data: WorkOrderCreate): Promise<ApiResponse> {
 export function updateWorkOrderStatus(id: number | string, data: WorkOrderStatusUpdate): Promise<ApiResponse> {
   return request.put(`/work-orders/${id}/status`, data) as unknown as Promise<ApiResponse>
 }
+
+// 派单（指派/更换维修人员）
+export function assignWorkOrder(id: number | string, assigneeId: number): Promise<ApiResponse> {
+  return request.put(`/work-orders/${id}/assign`, { assignee_id: assigneeId }) as unknown as Promise<ApiResponse>
+}
+
+// 可派单人员（运维/管理员）
+export function getAssignableUsers(): Promise<ApiResponse> {
+  return request.get('/users/assignable') as unknown as Promise<ApiResponse>
+}

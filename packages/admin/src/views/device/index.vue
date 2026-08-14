@@ -98,7 +98,8 @@
           <el-input v-model="editForm.lng" placeholder="如：121.4737" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="saving" @click="saveEdit">保存坐标</el-button>
+          <el-button v-if="canEdit" type="primary" :loading="saving" @click="saveEdit">保存坐标</el-button>
+          <span v-else class="coord-tip">仅运维/管理员可编辑坐标</span>
           <span class="coord-tip">录入经纬度后可在「地图大屏」查看设备分布</span>
         </el-form-item>
       </el-form>
@@ -107,10 +108,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { getDevices, updateDevice } from '@/api/device'
+import { useAuthStore } from '@/store/auth'
+
+// 登录角色（用于按钮权限控制）
+const authStore = useAuthStore()
+const canEdit = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
 
 // 搜索表单
 const searchForm = reactive({

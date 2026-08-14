@@ -58,35 +58,41 @@
             {{ row.result || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
+        <el-table-column label="操作" width="210" align="center" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 'pending'"
+              v-if="isOperator && (row.status === 'pending' || !row.assignee_id)"
               type="primary"
-              link
+              size="small"
+              @click="openAssignDialog(row)"
+            >
+              {{ row.assignee_id ? '改派' : '派单' }}
+            </el-button>
+            <el-button
+              v-if="isOperator && row.status === 'pending' && row.assignee_id"
+              type="warning"
               size="small"
               @click="handleUpdateStatus(row, 'processing')"
             >
               处理
             </el-button>
             <el-button
-              v-if="row.status === 'pending' || row.status === 'processing'"
+              v-if="isOperator && (row.status === 'processing')"
               type="success"
-              link
               size="small"
               @click="openCompleteDialog(row)"
             >
               完成
             </el-button>
             <el-button
-              v-if="row.status === 'pending' || row.status === 'processing'"
+              v-if="isOperator && (row.status === 'pending' || row.status === 'processing')"
               type="danger"
-              link
               size="small"
               @click="handleUpdateStatus(row, 'rejected')"
             >
               驳回
             </el-button>
+            <span v-if="!isOperator" class="viewer-tip">只读</span>
           </template>
         </el-table-column>
       </el-table>
@@ -124,14 +130,45 @@
         <el-button type="primary" :loading="submitLoading" @click="handleComplete">确认完成</el-button>
       </template>
     </el-dialog>
+
+    <!-- 派单弹窗，选择维修人员 -->
+    <el-dialog v-model="assignDialogVisible" title="工单派单" width="460px">
+      <el-form label-width="90px">
+        <el-form-item label="工单编号">
+          <span>{{ assignTarget?.order_no }}</span>
+        </el-form-item>
+        <el-form-item label="维修人员" required>
+          <el-select v-model="assignUserId" placeholder="选择维修人员（运维/管理员）" style="width: 100%">
+            <el-option
+              v-for="u in assignableUsers"
+              :key="u.id"
+              :label="u.username + '（' + (u.role === 'admin' ? '管理员' : '运维') + '）'"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="说明">
+          <span class="assign-tip">派单后工单进入「处理中」，由所选维修人员处理</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="assignDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="assignLoading" @click="handleAssign">确认派单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { getWorkOrders, updateWorkOrderStatus } from '@/api/workorder'
+import { getWorkOrders, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers } from '@/api/workorder'
+import { useAuthStore } from '@/store/auth'
+
+// 当前登录用户角色（用于按钮权限控制）
+const authStore = useAuthStore()
+const isOperator = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
 
 // 搜索表单
 const searchForm = reactive({
@@ -159,6 +196,13 @@ const completeForm = reactive({
   order_no: '',
   result: '',
 })
+
+// 派单弹窗（指派维修人员）
+const assignDialogVisible = ref(false)
+const assignLoading = ref(false)
+const assignTarget = ref<Record<string, any> | null>(null)
+const assignUserId = ref<number | undefined>()
+const assignableUsers = ref<{ id: number; username: string; role: string }[]>([])
 
 // 状态标签类型映射
 function statusTagType(status: string): string {
@@ -264,7 +308,43 @@ async function handleComplete() {
   }
 }
 
-onMounted(() => {
+// 打开派单弹窗（管理员/运维可派单）
+async function openAssignDialog(row: Record<string, any>) {
+  assignTarget.value = row
+  assignUserId.value = row.assignee_id || undefined
+  assignDialogVisible.value = true
+  if (assignableUsers.value.length === 0) {
+    try {
+      const res = await getAssignableUsers()
+      assignableUsers.value = res.data?.list || []
+    } catch { /* 忽略 */ }
+  }
+}
+
+// 确认派单
+async function handleAssign() {
+  if (!assignTarget.value || !assignUserId.value) {
+    ElMessage.warning('请选择维修人员')
+    return
+  }
+  assignLoading.value = true
+  try {
+    await assignWorkOrder(assignTarget.value.id, assignUserId.value)
+    ElMessage.success('派单成功')
+    assignDialogVisible.value = false
+    fetchData()
+  } catch {
+    // 失败由后端提示
+  } finally {
+    assignLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  // 拉取用户信息以决定按钮权限（若尚未获取）
+  if (authStore.token && !authStore.user) {
+    try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
+  }
   fetchData()
 })
 </script>
@@ -282,5 +362,13 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+.assign-tip {
+  font-size: 12px;
+  color: #909399;
+}
+.viewer-tip {
+  color: #c0c4cc;
+  font-size: 12px;
 }
 </style>

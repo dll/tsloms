@@ -124,13 +124,15 @@ function plotDevices() {
         point: { pixelSize: 12, color, outlineColor: Cesium.Color.WHITE, outlineWidth: 2 },
         label: {
           text: d.intersection || ('#' + d.hw_id),
-          font: '12px sans-serif',
-          pixelOffset: new Cesium.Cartesian2(0, -16),
+          font: 'bold 13px "Microsoft YaHei","PingFang SC","Noto Sans CJK SC",sans-serif',
+          pixelOffset: new Cesium.Cartesian2(0, -18),
           fillColor: Cesium.Color.WHITE,
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
           showBackground: true,
           backgroundColor: Cesium.Color.fromCssColorString('rgba(0,21,41,0.7)'),
+          backgroundPadding: new Cesium.Cartesian2(6, 4),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         properties: d as any,
       })

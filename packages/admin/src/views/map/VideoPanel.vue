@@ -14,13 +14,14 @@
       </div>
       <div class="toolbar-actions">
         <el-upload
+          v-if="canEdit"
           :show-file-list="false"
           :http-request="doUpload"
           accept=".mp4,.mov,.webm,.avi,.jpg,.png"
         >
           <el-button type="primary">手机上传举证</el-button>
         </el-upload>
-        <el-button @click="openStreamDialog">登记RTSP/URL</el-button>
+        <el-button v-if="canEdit" @click="openStreamDialog">登记RTSP/URL</el-button>
       </div>
     </div>
 
@@ -47,7 +48,7 @@
           <div class="md">设备#{{ m.device_hw_id }} · {{ m.created_at?.slice(0, 16) }}</div>
           <div class="ops">
             <el-button size="small" @click="playMedia(m)">播放</el-button>
-            <el-button size="small" type="danger" @click="del(m)">删除</el-button>
+            <el-button v-if="canEdit" size="small" type="danger" @click="del(m)">删除</el-button>
           </div>
         </div>
       </div>
@@ -110,6 +111,11 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getAllDevices } from '@/api/map'
 import { getDeviceMedia, uploadDeviceMedia, createStreamMedia, deleteDeviceMedia, type DeviceMedia } from '@/api/media'
+import { useAuthStore } from '@/store/auth'
+
+// 登录角色（运维/管理员可上传/删除）
+const authStore = useAuthStore()
+const canEdit = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
 
 const BASE_URL = '/tsloms'
 

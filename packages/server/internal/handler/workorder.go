@@ -65,12 +65,36 @@ func ListWorkOrders(c *gin.Context) {
 		Limit(int(pageSize)).
 		Find(&orders)
 
+	// 关联处理人姓名
+	list := make([]gin.H, 0, len(orders))
+	for _, o := range orders {
+		item := workOrderView(o)
+		list = append(list, item)
+	}
+
 	ok(c, gin.H{
-		"list":      orders,
+		"list":      list,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// workOrderView 工单视图：附带处理人姓名
+func workOrderView(o model.WorkOrder) gin.H {
+	assigneeName := ""
+	if o.AssigneeID != nil {
+		var u model.User
+		if err := model.DB.Select("id, username").First(&u, *o.AssigneeID).Error; err == nil {
+			assigneeName = u.Username
+		}
+	}
+	return gin.H{
+		"id": o.ID, "order_no": o.OrderNo, "fault_id": o.FaultID,
+		"device_hw_id": o.DeviceHwID, "status": o.Status,
+		"assignee_id": o.AssigneeID, "assignee_name": assigneeName,
+		"result": o.Result, "created_at": o.CreatedAt, "closed_at": o.ClosedAt,
+	}
 }
 
 // CreateWorkOrder 手动创建工单
@@ -92,6 +116,19 @@ func CreateWorkOrder(c *gin.Context) {
 	if err := model.DB.First(&fault, req.FaultID).Error; err != nil {
 		notFound(c, "故障记录不存在")
 		return
+	}
+
+	// 校验处理人存在且为运维/管理员
+	if req.AssigneeID != nil {
+		var u model.User
+		if err := model.DB.First(&u, *req.AssigneeID).Error; err != nil {
+			notFound(c, "处理人不存在")
+			return
+		}
+		if u.Role != model.RoleAdmin && u.Role != model.RoleOperator {
+			badRequest(c, "只能指派给运维人员或管理员")
+			return
+		}
 	}
 
 	// 生成工单编号：WO{yyyyMMdd}{4位自增序号}
@@ -187,4 +224,54 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 	recordOperation(c, model.OpUpdate, fmt.Sprintf("work-order/%d", wo.ID), "更新工单状态为 "+req.Status)
 
 	ok(c, gin.H{"work_order": wo, "message": "工单状态更新成功"})
+}
+
+// AssignWorkOrder 派单：指派/更换工单处理人（管理员/运维）
+// 派单后工单进入处理中（processing）
+func AssignWorkOrder(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "工单ID无效")
+		return
+	}
+
+	var req struct {
+		AssigneeID uint `json:"assignee_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "请选择维修人员")
+		return
+	}
+
+	// 校验处理人存在且为运维/管理员
+	var u model.User
+	if err := model.DB.First(&u, req.AssigneeID).Error; err != nil {
+		notFound(c, "处理人不存在")
+		return
+	}
+	if u.Role != model.RoleAdmin && u.Role != model.RoleOperator {
+		badRequest(c, "只能指派给运维人员或管理员")
+		return
+	}
+
+	var wo model.WorkOrder
+	if err := model.DB.First(&wo, id).Error; err != nil {
+		notFound(c, "工单不存在")
+		return
+	}
+
+	updates := map[string]interface{}{
+		"assignee_id": req.AssigneeID,
+	}
+	// 待处理→派单后进入处理中
+	if wo.Status == model.WorkOrderStatusPending {
+		updates["status"] = model.WorkOrderStatusProcessing
+	}
+	if err := model.DB.Model(&wo).Updates(updates).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	recordOperation(c, model.OpDispatch, fmt.Sprintf("work-order/%d", wo.ID), "派单给用户"+u.Username)
+	ok(c, gin.H{"work_order": wo, "message": "派单成功（已指派给 " + u.Username + "）"})
 }

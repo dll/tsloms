@@ -20,7 +20,8 @@
           <el-input v-model="form.contact" placeholder="联系方式" style="width: 45%; margin-left: 8px" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="submit">提交</el-button>
+          <el-button v-if="canEdit" type="primary" :loading="submitting" @click="submit">提交</el-button>
+          <span v-else class="tip">仅运维/管理员可提交反馈</span>
         </el-form-item>
       </el-form>
     </el-card>
@@ -51,12 +52,13 @@
         <el-table-column prop="created_at" label="时间" width="160" align="center" />
         <el-table-column label="操作" width="140" align="center">
           <template #default="{ row }">
-            <el-select :model-value="row.status" size="small" @change="(v:any)=>updateStatus(row, v)">
+            <el-select v-if="canEdit" :model-value="row.status" size="small" @change="(v:any)=>updateStatus(row, v)">
               <el-option label="待处理" value="open" />
               <el-option label="处理中" value="processing" />
               <el-option label="已解决" value="resolved" />
               <el-option label="已关闭" value="closed" />
             </el-select>
+            <span v-else>{{ statusLabel(row.status) }}</span>
           </template>
         </el-table-column>
       </el-table>
@@ -65,10 +67,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getFeedbacks, createFeedback, updateFeedback, type Feedback } from '@/api/feedback'
 import { getAllDevices } from '@/api/map'
+import { useAuthStore } from '@/store/auth'
+
+// 反馈提交/处理状态需运维/管理员
+const authStore = useAuthStore()
+const canEdit = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
 
 const devices = ref<any[]>([])
 const feedbacks = ref<Feedback[]>([])
