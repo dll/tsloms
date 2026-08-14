@@ -9,6 +9,7 @@ import * as Cesium from 'cesium'
 
 // GCJ-02 由 WGS-84 偏移（火星坐标近似算法）
 const a = 6378245.0
+// eslint-disable-next-line no-loss-of-precision -- GCJ-02 标准偏心率常量，社区普遍采用的规范值，精度丢弃不影响坐标换算结果
 const ee = 0.00669342162296594323
 
 function outOfChina(lng, lat) {
@@ -79,7 +80,7 @@ export default class GaodeImageryProvider {
   get hasAlphaChannel() { return true }
   getTileCredits() { return [] }
 
-  requestImage(x, y, level, request) {
+  requestImage(x, y, level, _request) {
     const rect = this._tilingScheme.tileXYToRectangle(x, y, level)
     const cLng = Cesium.Math.toDegrees((rect.west + rect.east) / 2)
     const cLat = Cesium.Math.toDegrees((rect.south + rect.north) / 2)

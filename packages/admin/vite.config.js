@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { resolve, dirname } from 'path'
+import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 
@@ -31,7 +31,7 @@ function copyCesiumAssets() {
     configResolved(config) {
       outDir = config.build.outDir
     },
-    writeBundle(config) {
+    writeBundle(_config) {
       const dest = resolve(__dirname, outDir, 'cesium')
       copyDir(CESIUM_DIR, dest)
     },

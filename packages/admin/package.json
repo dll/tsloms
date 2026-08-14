@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint . --ext .ts,.vue && vue-tsc --noEmit"
+    "lint": "eslint . && vue-tsc --noEmit",
+    "lint:fix": "eslint . --fix && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -22,8 +23,13 @@
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@vitejs/plugin-vue": "^5.0.4",
+    "@vue/eslint-config-typescript": "^14.9.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-vue": "^9.33.0",
     "typescript": "^5.4.5",
+    "typescript-eslint": "^8.67.0",
     "vite": "^5.2.11",
     "vue-tsc": "^2.0.16"
   }

@@ -63,7 +63,7 @@ export default class BaiduImageryProvider {
 
   getTileCredits() { return [] }
 
-  requestImage(x, y, level, request) {
+  requestImage(x, y, level, _request) {
     // 取瓦片中心经纬度（WGS84）
     const rect = this._tilingScheme.tileXYToRectangle(x, y, level)
     const centerLng = Cesium.Math.toDegrees((rect.west + rect.east) / 2)
