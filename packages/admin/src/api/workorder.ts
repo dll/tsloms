@@ -48,3 +48,8 @@ export function assignWorkOrder(id: number | string, assigneeId: number): Promis
 export function getAssignableUsers(): Promise<ApiResponse> {
   return request.get('/users/assignable') as unknown as Promise<ApiResponse>
 }
+
+// 删除工单（仅管理员）
+export function deleteWorkOrder(id: number | string): Promise<ApiResponse> {
+  return request.delete(`/work-orders/${id}`) as unknown as Promise<ApiResponse>
+}

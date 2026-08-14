@@ -11,13 +11,26 @@
             style="width: 200px"
           />
         </el-form-item>
-        <el-form-item label="设备ID">
-          <el-input
+        <el-form-item label="设备">
+          <el-select
             v-model="searchForm.device_hw_id"
-            placeholder="请输入设备硬件ID"
+            placeholder="搜索设备ID或路口"
             clearable
-            style="width: 180px"
-          />
+            filterable
+            remote
+            :remote-method="searchDevices"
+            :loading="devLoading"
+            style="width: 220px"
+          >
+            <el-option-group v-for="g in deviceGroups" :key="g.label" :label="g.label">
+              <el-option
+                v-for="d in g.options"
+                :key="d.hw_id"
+                :label="d.intersection ? d.intersection + ' (#'+d.hw_id+')' : '#'+d.hw_id"
+                :value="d.hw_id"
+              />
+            </el-option-group>
+          </el-select>
         </el-form-item>
         <el-form-item label="工单状态">
           <el-select v-model="searchForm.status" placeholder="全部" clearable style="width: 140px">
@@ -36,6 +49,12 @@
 
     <!-- 工单列表表格 -->
     <el-card shadow="never" class="table-card">
+      <div class="table-toolbar">
+        <div>
+          <el-button v-if="isOperator" type="primary" :icon="Plus" @click="openCreate">新建工单</el-button>
+        </div>
+        <span v-if="!isOperator" class="toolbar-tip">查看角色只读</span>
+      </div>
       <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
         <el-table-column prop="order_no" label="工单编号" width="180" align="center" />
         <el-table-column prop="device_hw_id" label="设备ID" width="160" align="center" />
@@ -92,6 +111,7 @@
             >
               驳回
             </el-button>
+            <el-button v-if="isAdmin" type="danger" plain size="small" @click="handleDelete(row)">删除</el-button>
             <span v-if="!isOperator" class="viewer-tip">只读</span>
           </template>
         </el-table-column>
@@ -156,19 +176,82 @@
         <el-button type="primary" :loading="assignLoading" @click="handleAssign">确认派单</el-button>
       </template>
     </el-dialog>
+
+    <!-- 新建工单弹窗 -->
+    <el-dialog v-model="createVisible" title="新建工单" width="560px">
+      <el-form :model="createForm" label-width="90px">
+        <el-form-item label="关联故障" required>
+          <el-select
+            v-model="createForm.fault_id"
+            placeholder="选择活跃故障（自动带出设备）"
+            filterable
+            :loading="faultLoading"
+            style="width: 100%"
+            @change="onFaultChange"
+          >
+            <el-option v-for="f in activeFaults" :key="f.id" :value="f.id" :label="faultOptionLabel(f)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="设备ID" required>
+          <el-input :model-value="String(createForm.device_hw_id)" disabled placeholder="选择故障后自动填充" />
+        </el-form-item>
+        <el-form-item label="维修人员">
+          <el-select v-model="createForm.assignee_id" placeholder="选填，指派维修人员" clearable style="width: 100%">
+            <el-option
+              v-for="u in assignableUsers"
+              :key="u.id"
+              :label="u.username + '（' + (u.role === 'admin' ? '管理员' : '运维') + '）'"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="说明">
+          <span class="assign-tip">新建后工单状态为「待处理」，再行派单/处理</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createLoading" @click="handleCreate">创建工单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh } from '@element-plus/icons-vue'
-import { getWorkOrders, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers } from '@/api/workorder'
+import { Search, Refresh, Plus } from '@element-plus/icons-vue'
+import { getWorkOrders, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers, createWorkOrder, deleteWorkOrder } from '@/api/workorder'
+import { getDevices } from '@/api/device'
+import { getFaults } from '@/api/fault'
 import { useAuthStore } from '@/store/auth'
 
 // 当前登录用户角色（用于按钮权限控制）
 const authStore = useAuthStore()
 const isOperator = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
+const isAdmin = computed(() => authStore.user?.role === 'admin')
+
+// 设备异步搜索（工单筛选用）：按关键字搜索设备并分组（在线/离线）
+const devLoading = ref(false)
+const deviceGroups = ref<{ label: string; options: any[] }[]>([])
+async function searchDevices(keyword?: string) {
+  devLoading.value = true
+  try {
+    const kw = (keyword || '').trim()
+    const params: Record<string, any> = { page_size: 50 }
+    if (kw && /^\d+$/.test(kw)) params.hw_id = kw
+    else if (kw) params.intersection = kw
+    const res = await getDevices(params)
+    const list: any[] = res.data?.list || []
+    const online = list.filter((d) => d.online_status)
+    const offline = list.filter((d) => !d.online_status)
+    const groups: { label: string; options: any[] }[] = []
+    if (online.length) groups.push({ label: `在线（${online.length}）`, options: online })
+    if (offline.length) groups.push({ label: `离线（${offline.length}）`, options: offline })
+    deviceGroups.value = groups
+  } catch { deviceGroups.value = [] }
+  finally { devLoading.value = false }
+}
 
 // 搜索表单
 const searchForm = reactive({
@@ -203,6 +286,63 @@ const assignLoading = ref(false)
 const assignTarget = ref<Record<string, any> | null>(null)
 const assignUserId = ref<number | undefined>()
 const assignableUsers = ref<{ id: number; username: string; role: string }[]>([])
+
+// 新建工单弹窗
+const createVisible = ref(false)
+const createLoading = ref(false)
+const activeFaults = ref<any[]>([])
+const faultLoading = ref(false)
+const createForm = reactive({ fault_id: undefined as number | undefined, device_hw_id: '', assignee_id: undefined as number | undefined })
+
+// 故障下拉文案
+function faultOptionLabel(f: any): string {
+  return `#${f.device_hw_id} ${f.err_code_name || ('故障码'+f.err_code)}（${f.fault_type || '-'}，${f.status === 'active' ? '活跃' : '已解决'}）`
+}
+
+async function loadActiveFaults() {
+  faultLoading.value = true
+  try {
+    const res = await getFaults({ page_size: 200, status: 'active' })
+    activeFaults.value = res.data?.list || []
+  } catch { activeFaults.value = [] }
+  finally { faultLoading.value = false }
+}
+
+function openCreate() {
+  Object.assign(createForm, { fault_id: undefined, device_hw_id: '', assignee_id: undefined })
+  loadActiveFaults()
+  createVisible.value = true
+}
+
+function onFaultChange(fid: number) {
+  const f = activeFaults.value.find((x) => x.id === fid)
+  createForm.device_hw_id = f ? String(f.device_hw_id) : ''
+}
+
+async function handleCreate() {
+  if (!createForm.fault_id) { ElMessage.warning('请选择关联故障'); return }
+  if (!createForm.device_hw_id) { ElMessage.warning('请选择有效故障（需带设备ID）'); return }
+  createLoading.value = true
+  try {
+    await createWorkOrder({
+      fault_id: createForm.fault_id,
+      device_hw_id: createForm.device_hw_id,
+      assignee_id: createForm.assignee_id || 0,
+    } as any)
+    ElMessage.success('工单创建成功')
+    createVisible.value = false
+    fetchData()
+  } catch { /* 后端提示 */ } finally { createLoading.value = false }
+}
+
+async function handleDelete(row: Record<string, any>) {
+  try {
+    await ElMessageBox.confirm(`确认删除工单「${row.order_no}」？关联故障记录会保留（仅解除绑定）。`, '提示', { type: 'warning' })
+    await deleteWorkOrder(row.id)
+    ElMessage.success('工单已删除')
+    fetchData()
+  } catch { /* 取消或失败 */ }
+}
 
 // 状态标签类型映射
 function statusTagType(status: string): string {
@@ -345,6 +485,9 @@ onMounted(async () => {
   if (authStore.token && !authStore.user) {
     try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
   }
+  // 加载设备下拉与可派单人员
+  searchDevices('')
+  try { const r = await getAssignableUsers(); assignableUsers.value = r.data?.list || [] } catch { /* 忽略 */ }
   fetchData()
 })
 </script>
@@ -356,6 +499,17 @@ onMounted(async () => {
 
 .table-card {
   border-radius: 4px;
+}
+
+.table-toolbar {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toolbar-tip {
+  font-size: 12px;
+  color: #909399;
 }
 
 .pagination {

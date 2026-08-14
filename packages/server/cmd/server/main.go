@@ -170,6 +170,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/work-orders", middleware.RequireOperator(), handler.CreateWorkOrder)
 			auth.PUT("/work-orders/:id/status", middleware.RequireOperator(), handler.UpdateWorkOrderStatus)
 			auth.PUT("/work-orders/:id/assign", middleware.RequireOperator(), handler.AssignWorkOrder)
+			auth.DELETE("/work-orders/:id", middleware.RequireAdmin(), handler.DeleteWorkOrder)
 
 			// 数据看板（只读）
 			auth.GET("/dashboard/overview", handler.DashboardOverview)

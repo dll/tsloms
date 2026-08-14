@@ -22,8 +22,12 @@ func ListWorkOrders(c *gin.Context) {
 
 	query := model.DB.Model(&model.WorkOrder{})
 
-	// 按设备硬件 ID 筛选
-	if hwID := c.Query("hw_id"); hwID != "" {
+	// 按设备硬件 ID 筛选（兼容前端 device_hw_id / 后端 hw_id 两种参数）
+	hwID := c.Query("hw_id")
+	if hwID == "" {
+		hwID = c.Query("device_hw_id")
+	}
+	if hwID != "" {
 		query = query.Where("device_hw_id = ?", hwID)
 	}
 
@@ -274,4 +278,35 @@ func AssignWorkOrder(c *gin.Context) {
 
 	recordOperation(c, model.OpDispatch, fmt.Sprintf("work-order/%d", wo.ID), "派单给用户"+u.Username)
 	ok(c, gin.H{"work_order": wo, "message": "派单成功（已指派给 " + u.Username + "）"})
+}
+
+// DeleteWorkOrder 删除工单（仅管理员）
+// 删除工单时将关联故障的 work_order_id 置空（保留故障记录），并记录操作日志
+func DeleteWorkOrder(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "工单ID无效")
+		return
+	}
+
+	var wo model.WorkOrder
+	if err := model.DB.First(&wo, id).Error; err != nil {
+		notFound(c, "工单不存在")
+		return
+	}
+
+	// 解除故障关联（保留故障记录本身）
+	if wo.FaultID != 0 {
+		model.DB.Model(&model.FaultRecord{}).
+			Where("id = ?", wo.FaultID).
+			Update("work_order_id", nil)
+	}
+
+	if err := model.DB.Delete(&wo).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+
+	recordOperation(c, model.OpDelete, fmt.Sprintf("work-order/%d", wo.ID), "删除工单"+wo.OrderNo)
+	ok(c, gin.H{"message": "工单已删除"})
 }
