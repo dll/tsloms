@@ -136,6 +136,8 @@ function initCesium() {
   Cesium.Ion.defaultAccessToken = ''
   viewer = new Cesium.Viewer(container, {
     baseLayerPicker: false,
+    baseLayer: false, // 不加载 Cesium Ion 默认影像，避免构造期请求 api.cesium.com
+    terrainProvider: new (Cesium.EllipsoidTerrainProvider as any)(), // 初始即本地椭球
     geocoder: true,
     homeButton: true,
     sceneModePicker: false, // 用顶部按钮切换
@@ -152,6 +154,7 @@ function initCesium() {
   viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
   ;(window as any).__tslomsViewer = viewer // 便于调试/验证相机
   applyTerrain() // 默认关闭 Ion 在线地形，使用本地椭球
+  switchBaseLayer() // 显式加载默认底图（baseLayer:false 已禁用 Ion 默认影像）
   // 默认视角：先定位到中国东部（避免全世界），设备加载后自动聚焦到设备分布
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(104.0, 30.0, 3000000) })
   applySceneMode()
