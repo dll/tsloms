@@ -196,6 +196,8 @@ paho 客户端、自动重连、QoS1、订阅 `trafficLight/+/+/+/U`；解析链
 
 ### 5.3 工单运维 ✅
 状态机 `pending → processing → completed | rejected`，`rejected → pending`（重新派发）；编号 `WO{yyyyMMdd}{同日自增4位}`；完成联动故障转 resolved；多条件筛选。
+- **派单**：`PUT /work-orders/:id/assign`（管理员/运维可派单/改派，只能指派给运维或管理员，派单后进入处理中）；列表返回 `assignee_name` 处理人姓名。
+- 可派单人员：`GET /users/assignable`。
 
 ### 5.4 数据可视化 🟡
 - ✅ 看板概览 + 故障类型饼图 + 故障趋势柱状图；后端统计接口齐备。
@@ -238,6 +240,14 @@ JWT(HS256,72h)、bcrypt、角色校验（RequireOperator/RequireAdmin）、CORS 
 
 ### 5.13 派单参考 ✅（新增）
 - `GET /dispatch/reference`：按设备聚合活跃故障、待处理工单、维修耗材、监控媒体，供派单决策。
+
+### 5.14 角色权限与数据链路 ✅（新增）
+- 三角色：**管理员(admin)** 全部管理（用户管理、删除媒体/耗材）；**运维(operator)** 业务操作（创单/派单/处理/上传/登记）；**查看(viewer)** 只读浏览。
+- 后端：`RequireAdmin`（用户管理）、`RequireOperator`（写操作）、只读接口登录即可访问；数据链路按设备贯通（故障→工单→派单→处理→按设备聚合参考）。
+- 前端按钮按角色控制（viewer 隐藏派单/编辑/上传/删除等）。
+
+### 5.15 中文乱码治理 ✅（新增）
+- Nginx `charset utf-8`；Cesium 地图标签使用中文字体栈；前后端均 UTF-8（MySQL charset=utf8mb4）。
 
 ---
 
