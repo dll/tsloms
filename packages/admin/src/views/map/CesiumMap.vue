@@ -119,8 +119,14 @@ const filteredDevices = computed(() => {
 
 function initCesium() {
   if (!cesiumRef.value || viewer) return
+  // 等容器有真实尺寸后再初始化，避免 Cesium 回落到 300x150 默认
+  const container = cesiumRef.value
+  if (container.clientWidth < 50 || container.clientHeight < 50) {
+    requestAnimationFrame(() => initCesium())
+    return
+  }
   Cesium.Ion.defaultAccessToken = ''
-  viewer = new Cesium.Viewer(cesiumRef.value, {
+  viewer = new Cesium.Viewer(container, {
     baseLayerPicker: false,
     geocoder: true,
     homeButton: true,
@@ -148,6 +154,9 @@ function initCesium() {
       if (dev) openInfo(dev)
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+  // 布局稳定后强制重算尺寸
+  requestAnimationFrame(() => { try { viewer?.resize() } catch { /* 忽略 */ } })
+  setTimeout(() => { try { viewer?.resize() } catch { /* 忽略 */ } }, 200)
 }
 
 // 设备点位：仅用圆点/3D标记，不带 Canvas 文字（避免乱码与遮挡）
@@ -239,8 +248,11 @@ onMounted(async () => {
   await nextTick()
   initCesium()
   await load()
-  resizeHandler = () => viewer?.resize()
+  resizeHandler = () => { try { viewer?.resize() } catch { /* 忽略 */ } }
   window.addEventListener('resize', resizeHandler)
+  // 布局完全稳定后再次重算（避免 flex/calc 未定导致 canvas 尺寸错误）
+  setTimeout(resizeHandler, 300)
+  setTimeout(resizeHandler, 800)
 })
 onUnmounted(() => {
   window.removeEventListener('resize', resizeHandler)
@@ -263,6 +275,15 @@ onUnmounted(() => {
 
 .map-wrap { position: relative; flex: 1; min-height: 0; border-radius: 6px; overflow: hidden; }
 .cesium-viewer { width: 100%; height: 100%; }
+/* Cesium 全链路高度 100%，避免 canvas 回落到默认 300x150 */
+.cesium-viewer,
+.cesium-viewer .cesium-viewer-cesiumWidget,
+.cesium-viewer .cesium-widget,
+.cesium-viewer .cesium-widget canvas,
+.cesium-viewer canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
 .cesium-viewer.fullscreen { position: fixed; inset: 0; z-index: 100; }
 
 /* 地图工具（右下角） */
