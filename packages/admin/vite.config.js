@@ -55,6 +55,16 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 2000,
+    // 分包：把 Cesium / ECharts / Vue 框架独立成 chunk，改善首屏加载与长期缓存命中
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          cesium: ['cesium'],
+          echarts: ['echarts'],
+          vendor: ['vue', 'vue-router', 'pinia', 'axios', 'element-plus'],
+        },
+      },
+    },
   },
   server: {
     port: 3001,
