@@ -3,13 +3,26 @@
     <!-- 搜索栏 -->
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchForm" @submit.prevent="handleSearch">
-        <el-form-item label="设备ID">
-          <el-input
+        <el-form-item label="设备">
+          <el-select
             v-model="searchForm.device_hw_id"
-            placeholder="请输入设备硬件ID"
+            placeholder="搜索设备ID或路口"
             clearable
-            style="width: 180px"
-          />
+            filterable
+            remote
+            :remote-method="searchDevices"
+            :loading="devLoading"
+            style="width: 220px"
+          >
+            <el-option-group v-for="g in deviceGroups" :key="g.label" :label="g.label">
+              <el-option
+                v-for="d in g.options"
+                :key="d.hw_id"
+                :label="d.intersection ? d.intersection + ' (#'+d.hw_id+')' : '#'+d.hw_id"
+                :value="d.hw_id"
+              />
+            </el-option-group>
+          </el-select>
         </el-form-item>
         <el-form-item label="故障状态">
           <el-select v-model="searchForm.status" placeholder="全部" clearable style="width: 120px">
@@ -107,6 +120,29 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { getFaults } from '@/api/fault'
+import { getDevices } from '@/api/device'
+
+// 设备异步搜索（故障筛选用）：按关键字搜索设备并分组（在线/离线）
+const devLoading = ref(false)
+const deviceGroups = ref<{ label: string; options: any[] }[]>([])
+async function searchDevices(keyword?: string) {
+  devLoading.value = true
+  try {
+    const kw = (keyword || '').trim()
+    const params: Record<string, any> = { page_size: 50 }
+    if (kw && /^\d+$/.test(kw)) params.hw_id = kw
+    else if (kw) params.intersection = kw
+    const res = await getDevices(params)
+    const list: any[] = res.data?.list || []
+    const online = list.filter((d) => d.online_status)
+    const offline = list.filter((d) => !d.online_status)
+    const groups: { label: string; options: any[] }[] = []
+    if (online.length) groups.push({ label: `在线（${online.length}）`, options: online })
+    if (offline.length) groups.push({ label: `离线（${offline.length}）`, options: offline })
+    deviceGroups.value = groups
+  } catch { deviceGroups.value = [] }
+  finally { devLoading.value = false }
+}
 
 // errCode → 故障中文名（依据《信号灯检测器_故障含义》DOCX）
 const errCodeMap: Record<number, string> = {
@@ -193,6 +229,8 @@ function handleReset() {
 
 onMounted(() => {
   fetchData()
+  // 预加载设备下拉（打开即有关键选项）
+  searchDevices('')
 })
 </script>
 

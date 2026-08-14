@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/model"
 )
@@ -80,4 +82,71 @@ func ListIntersections(c *gin.Context) {
 	}
 
 	ok(c, gin.H{"list": result, "total": len(result)})
+}
+
+// RenameIntersection 重命名路口（批量更新该路口下所有设备的 intersection）
+// 仅运维/管理员
+func RenameIntersection(c *gin.Context) {
+	var req struct {
+		Old string `json:"old" binding:"required"`
+		New string `json:"new" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "old 与 new 必填")
+		return
+	}
+	if req.Old == req.New {
+		badRequest(c, "新路口名不能与旧名相同")
+		return
+	}
+	res := model.DB.Model(&model.Device{}).Where("intersection = ?", req.Old).Update("intersection", req.New)
+	if res.Error != nil {
+		serverError(c, res.Error)
+		return
+	}
+	recordOperation(c, model.OpUpdate, "intersection/"+req.Old, fmt.Sprintf("重命名路口 %s → %s（%d 台设备）", req.Old, req.New, res.RowsAffected))
+	ok(c, gin.H{"message": "路口已重命名", "affected": res.RowsAffected})
+}
+
+// SetIntersectionLocation 设置路口经纬度（该路口下所有设备同步 lat/lng，供地图打点）
+func SetIntersectionLocation(c *gin.Context) {
+	var req struct {
+		Intersection string   `json:"intersection" binding:"required"`
+		Lat          float64  `json:"lat" binding:"required"`
+		Lng          float64  `json:"lng" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "路口名与经纬度必填")
+		return
+	}
+	if req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180 {
+		badRequest(c, "经纬度范围非法")
+		return
+	}
+	res := model.DB.Model(&model.Device{}).
+		Where("intersection = ?", req.Intersection).
+		Updates(map[string]interface{}{"lat": req.Lat, "lng": req.Lng})
+	if res.Error != nil {
+		serverError(c, res.Error)
+		return
+	}
+	recordOperation(c, model.OpUpdate, "intersection/"+req.Intersection, fmt.Sprintf("设置路口 %s 经纬度（%d 台设备）", req.Intersection, res.RowsAffected))
+	ok(c, gin.H{"message": "路口经纬度已设置", "affected": res.RowsAffected})
+}
+
+// ClearIntersection 清空路口（将该路口下设备的 intersection 置空，设备回到未分配）
+// 仅管理员
+func ClearIntersection(c *gin.Context) {
+	intersection := c.Query("intersection")
+	if intersection == "" {
+		badRequest(c, "intersection 必填")
+		return
+	}
+	res := model.DB.Model(&model.Device{}).Where("intersection = ?", intersection).Update("intersection", "")
+	if res.Error != nil {
+		serverError(c, res.Error)
+		return
+	}
+	recordOperation(c, model.OpDelete, "intersection/"+intersection, fmt.Sprintf("清空路口 %s（%d 台设备）", intersection, res.RowsAffected))
+	ok(c, gin.H{"message": "路口已清空", "affected": res.RowsAffected})
 }

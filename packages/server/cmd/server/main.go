@@ -157,6 +157,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.PUT("/devices/:id", middleware.RequireOperator(), handler.UpdateDevice)
 			auth.DELETE("/devices/:id", middleware.RequireAdmin(), handler.DeleteDevice)
 			auth.GET("/intersections", handler.ListIntersections)
+			auth.PUT("/intersections/rename", middleware.RequireOperator(), handler.RenameIntersection)
+			auth.PUT("/intersections/location", middleware.RequireOperator(), handler.SetIntersectionLocation)
+			auth.DELETE("/intersections/clear", middleware.RequireAdmin(), handler.ClearIntersection)
 
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)

@@ -113,6 +113,12 @@ async function updateStatus(row: Feedback, status: string) {
 onMounted(async () => {
   const d = await getAllDevices()
   devices.value = d.data?.list || []
+  // 默认带出当前登录用户信息（反馈人=用户名，联系方式=手机号）
+  if (!authStore.user) { try { await authStore.fetchUserInfo() } catch { /* 忽略 */ } }
+  if (authStore.user) {
+    form.reporter = authStore.user.username || form.reporter
+    form.contact = authStore.user.phone || form.contact
+  }
   await load()
 })
 </script>
