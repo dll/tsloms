@@ -12,9 +12,6 @@
  */
 import * as Cesium from 'cesium'
 
-// 百度子域名
-const SUB = [0, 1, 2, 3]
-
 // BD-09 由 GCJ-02 通过固定二次偏移得到（国测局加密后的近似），
 // 百度坐标 ≈ WGS84 加约 0.003~0.006 度偏移。此处用简化的近似换算（偏差在瓦片级可忽略）。
 function wgs84ToBd09(lng, lat) {
@@ -79,8 +76,8 @@ export default class BaiduImageryProvider {
     const bz = Math.min(level, this._maximumLevel)
     const bt = lngLatToBaidiTile(bd.lng, bd.lat, bz)
 
-    const idx = level % 4
-    const url = `https://maponline${SUB[idx]}.bdimg.com/tile/?qt=vtile&x=${bt.x}&y=${bt.y}&z=${bz}&styles=pl&scaler=1`
+    // 走同源代理（百度瓦片对跨域浏览器请求 403，必须由后端转发）
+    const url = `/tsloms/api/v1/proxy/baidu?x=${bt.x}&y=${bt.y}&z=${bz}`
 
     return Cesium.ImageryProvider.loadImage(this, url).catch(() => {
       // 瓦片失败返回透明占位

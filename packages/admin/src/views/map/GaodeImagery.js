@@ -7,8 +7,6 @@
  */
 import * as Cesium from 'cesium'
 
-const SUB = [1, 2, 3, 4] // webrd0{1-4}
-
 // GCJ-02 由 WGS-84 偏移（火星坐标近似算法）
 const a = 6378245.0
 const ee = 0.00669342162296594323
@@ -88,8 +86,8 @@ export default class GaodeImageryProvider {
     const gc = wgs84ToGcj02(cLng, cLat)
     const bz = Math.min(level, this._maximumLevel)
     const t = lngLatToTile(gc.lng, gc.lat, bz)
-    const idx = level % 4
-    const url = `https://webrd0${SUB[idx]}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=${this._style}&x=${t.x}&y=${t.y}&z=${bz}`
+    // 走同源代理（后端转发，避免高德对某些子域/浏览器的跨域限制，卫星更稳定）
+    const url = `/tsloms/api/v1/proxy/gaode?x=${t.x}&y=${t.y}&z=${bz}&style=${this._style}`
     return Cesium.ImageryProvider.loadImage(this, url).catch(() => undefined)
   }
 }

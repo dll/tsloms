@@ -137,6 +137,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 公开接口（无需登录）
 		api.POST("/auth/login", handler.Login)
 		api.GET("/health", handler.Health)
+		// 地图瓦片代理（无鉴权，供 Cesium 图片加载使用）
+		api.GET("/proxy/baidu", handler.BaiduTileProxy)
+		api.GET("/proxy/gaode", handler.GaodeTileProxy)
 
 		// 受保护接口（需登录）
 		auth := api.Group("")
@@ -150,7 +153,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/devices", handler.ListDevices)
 			auth.GET("/devices/stats", handler.DeviceStats)
 			auth.GET("/devices/:id", handler.GetDevice)
+			auth.POST("/devices", middleware.RequireOperator(), handler.CreateDevice)
 			auth.PUT("/devices/:id", middleware.RequireOperator(), handler.UpdateDevice)
+			auth.DELETE("/devices/:id", middleware.RequireAdmin(), handler.DeleteDevice)
 			auth.GET("/intersections", handler.ListIntersections)
 
 			// 故障查询（只读）

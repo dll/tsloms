@@ -39,3 +39,13 @@ export function getDevice(id: number | string): Promise<ApiResponse> {
 export function updateDevice(id: number | string, data: DeviceUpdate): Promise<ApiResponse> {
   return request.put(`/devices/${id}`, data) as unknown as Promise<ApiResponse>
 }
+
+// 新增设备
+export function createDevice(data: Record<string, any>): Promise<ApiResponse> {
+  return request.post('/devices', data) as unknown as Promise<ApiResponse>
+}
+
+// 删除设备
+export function deleteDevice(id: number | string): Promise<ApiResponse> {
+  return request.delete(`/devices/${id}`) as unknown as Promise<ApiResponse>
+}

@@ -139,6 +139,63 @@ func UpdateDevice(c *gin.Context) {
 	ok(c, gin.H{"device": device, "message": "更新成功"})
 }
 
+// CreateDevice 新增设备台账（运维/管理员）
+func CreateDevice(c *gin.Context) {
+	var req struct {
+		HwID         uint32   `json:"hw_id" binding:"required"`
+		Intersection string   `json:"intersection"`
+		NetworkCode  int      `json:"network_code"`
+		StationCode  int      `json:"station_code"`
+		Lat          *float64 `json:"lat"`
+		Lng          *float64 `json:"lng"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "硬件ID必填")
+		return
+	}
+	// 校验硬件ID唯一
+	var count int64
+	model.DB.Model(&model.Device{}).Where("hw_id = ?", req.HwID).Count(&count)
+	if count > 0 {
+		badRequest(c, "该硬件ID设备已存在")
+		return
+	}
+	device := model.Device{
+		HwID:         req.HwID,
+		Intersection: req.Intersection,
+		NetworkCode:  req.NetworkCode,
+		StationCode:  req.StationCode,
+		Lat:          req.Lat,
+		Lng:          req.Lng,
+	}
+	if err := model.DB.Create(&device).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpCreate, fmt.Sprintf("device/%d", device.ID), "新增设备台账")
+	ok(c, gin.H{"device": device, "message": "设备已新增"})
+}
+
+// DeleteDevice 删除设备台账（仅管理员）
+func DeleteDevice(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "设备ID无效")
+		return
+	}
+	var device model.Device
+	if err := model.DB.First(&device, id).Error; err != nil {
+		notFound(c, "设备不存在")
+		return
+	}
+	if err := model.DB.Delete(&device).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpDelete, fmt.Sprintf("device/%d", id), "删除设备台账")
+	ok(c, gin.H{"message": "设备已删除"})
+}
+
 // DeviceStats 设备统计（在线/离线数量）
 func DeviceStats(c *gin.Context) {
 	var onlineCount, offlineCount int64
