@@ -128,6 +128,10 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger())
 
+	// 媒体静态文件（手机上传的举证/监控片段，供前端播放/展示，同源访问）
+	// 存储目录经 MEDIA_DIR 配置，默认 ./uploads/media
+	r.Static("/media", handler.MediaDir())
+
 	api := r.Group("/api/v1")
 	{
 		// 公开接口（无需登录）
@@ -179,6 +183,25 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				users.PUT("/:id/password", handler.ResetUserPassword)
 				users.DELETE("/:id", handler.DeleteUser)
 			}
+
+			// 设备媒体（视频举证/监控/时间视频）
+			auth.GET("/media", handler.ListDeviceMedia)
+			auth.POST("/media/upload", handler.UploadDeviceMedia)
+			auth.POST("/media/streams", handler.CreateRTSPMedia)
+			auth.DELETE("/media/:id", middleware.RequireOperator(), handler.DeleteDeviceMedia)
+
+			// 维修耗材
+			auth.GET("/materials", handler.ListMaterials)
+			auth.POST("/materials", middleware.RequireOperator(), handler.UpsertMaterial)
+			auth.DELETE("/materials/:id", middleware.RequireOperator(), handler.DeleteMaterial)
+
+			// 问题反馈
+			auth.GET("/feedbacks", handler.ListFeedbacks)
+			auth.POST("/feedbacks", handler.CreateFeedback)
+			auth.PUT("/feedbacks/:id", handler.UpdateFeedbackStatus)
+
+			// 派单参考（设备聚合：故障/工单/耗材/媒体）
+			auth.GET("/dispatch/reference", handler.DispatchReference)
 		}
 	}
 

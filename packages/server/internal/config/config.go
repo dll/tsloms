@@ -28,6 +28,8 @@ type Config struct {
 	MQTTTopicPrefix string // MQTT Topic 前缀
 	AllowedOrigins  string // CORS 生产白名单（逗号分隔，可为空）
 	OfflineAfterMin int    // 设备离线判定阈值（分钟，默认6=3倍签到周期）
+	MediaDir        string // 媒体文件存储目录（默认 ./uploads/media）
+	MediaURLPrefix  string // 媒体对外访问前缀（默认 /media）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -52,6 +54,8 @@ func Load() *Config {
 		MQTTTopicPrefix: getEnv("MQTT_TOPIC_PREFIX", "trafficLight"),
 		AllowedOrigins:  getEnv("ALLOWED_ORIGINS", ""),
 		OfflineAfterMin: getEnvInt("OFFLINE_AFTER_MIN", 6),
+		MediaDir:        getEnv("MEDIA_DIR", ""),
+		MediaURLPrefix:  getEnv("MEDIA_URL_PREFIX", "/media"),
 	}
 }
 
