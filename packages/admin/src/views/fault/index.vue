@@ -19,10 +19,11 @@
         </el-form-item>
         <el-form-item label="故障类型">
           <el-select v-model="searchForm.fault_type" placeholder="全部" clearable style="width: 150px">
-            <el-option label="灯泡故障" value="lamp_fault" />
-            <el-option label="通信故障" value="comm_fault" />
-            <el-option label="电源故障" value="power_fault" />
-            <el-option label="检测器故障" value="detector_fault" />
+            <el-option label="灯灭" value="lamp_off" />
+            <el-option label="异常同亮" value="abnormal_on" />
+            <el-option label="亮灯超时" value="timeout" />
+            <el-option label="缺亮" value="dim" />
+            <el-option label="断电" value="power_loss" />
           </el-select>
         </el-form-item>
         <el-form-item label="故障级别">
@@ -53,7 +54,11 @@
     <el-card shadow="never" class="table-card">
       <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
         <el-table-column prop="device_hw_id" label="设备ID" width="160" align="center" />
-        <el-table-column prop="fault_type" label="故障类型" width="120" align="center" />
+        <el-table-column label="故障类型" width="150" align="center">
+          <template #default="{ row }">
+            {{ errCodeLabel(row.err_code) }}
+          </template>
+        </el-table-column>
         <el-table-column label="故障级别" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.fault_level === 'critical' ? 'danger' : 'warning'" size="small">
@@ -61,8 +66,12 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="error_code" label="错误码" width="100" align="center" />
-        <el-table-column prop="lamp_status" label="灯组状态" width="120" align="center" show-overflow-tooltip />
+        <el-table-column prop="err_code" label="错误码" width="90" align="center" />
+        <el-table-column label="灯组状态" width="110" align="center">
+          <template #default="{ row }">
+            {{ ledStateLabel(row.led_state) }}
+          </template>
+        </el-table-column>
         <el-table-column label="电流值(R/Y/G)" width="160" align="center">
           <template #default="{ row }">
             <span>{{ row.current_r ?? '-' }} / {{ row.current_y ?? '-' }} / {{ row.current_g ?? '-' }}</span>
@@ -98,6 +107,24 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { getFaults } from '@/api/fault'
+
+// errCode → 故障中文名（依据《信号灯检测器_故障含义》DOCX）
+const errCodeMap: Record<number, string> = {
+  [0]: '正常',
+  [-1]: '红灯周期全灭', [-2]: '黄灯周期全灭', [-3]: '绿灯周期全灭',
+  [-4]: '红黄同亮', [-5]: '红绿同亮', [-6]: '黄绿同亮', [-7]: '红黄绿同亮',
+  [-8]: '红灯超时', [-9]: '黄灯超时', [-10]: '绿灯超时',
+  [-11]: '红灯缺亮', [-12]: '黄灯缺亮', [-13]: '绿灯缺亮', [-14]: '断电',
+}
+function errCodeLabel(code: number): string {
+  return errCodeMap[code] ?? `未知(${code})`
+}
+
+// ledState → 灯组状态中文名
+const ledStateMap: Record<number, string> = { 0: '红灯', 1: '黄灯', 2: '绿灯', [-1]: '未知' }
+function ledStateLabel(state: number): string {
+  return ledStateMap[state] ?? `未知(${state})`
+}
 
 // 搜索表单
 const searchForm = reactive({
