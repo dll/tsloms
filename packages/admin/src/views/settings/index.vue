@@ -173,7 +173,11 @@ async function handleSave() {
 const centerForm = reactive({ lat: '', lng: '' })
 const centerSaving = ref(false)
 const hasCenter = ref(false)
-function loadCenter() {
+async function loadCenter() {
+  // 尽量从服务端拉取最新用户信息（含地图中心点），避免依赖登录时的快照
+  if (authStore.token) {
+    try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
+  }
   const u = authStore.user as any
   if (u && u.center_lat != null && u.center_lng != null) {
     centerForm.lat = String(u.center_lat)
