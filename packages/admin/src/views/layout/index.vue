@@ -163,11 +163,15 @@ onMounted(async () => {
 .sidebar {
   background-color: #001529;
   transition: width 0.3s;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   overflow: hidden;
 }
 
 .logo {
   height: 60px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -184,6 +188,25 @@ onMounted(async () => {
 
 .sidebar .el-menu {
   border-right: none;
+  flex: 1 1 auto;
+  height: 0; /* 配合 overflow 让菜单在剩余空间内滚动 */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 菜单滚动条样式（深色侧边栏上更协调） */
+.sidebar .el-menu::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar .el-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+.sidebar .el-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+.sidebar .el-menu::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 菜单项可读性优化：提升非激活项对比度，激活项底色高亮 */
