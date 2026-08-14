@@ -253,26 +253,37 @@ async function load() {
     const res = await getAllDevices(1000)
     devices.value = res.data?.list || []
     plotDevices()
-    // 自动聚焦：优先以当前登录用户为中心点，否则聚焦到设备区域
-    requestAnimationFrame(() => autoFocusUserOrDevices())
+    // 自动聚焦：优先以当前登录用户为中心点，否则聚焦到设备分布
+    focusWithRetry(0)
   } catch { /* 忽略 */ }
+}
+
+// 自动聚焦（带重试）：2D/3D 变形与相机就绪需时间，多次尝试直到相机真正移动
+function focusWithRetry(attempt: number) {
+  if (!viewer) return
+  if (attempt > 5) return
+  setTimeout(() => {
+    autoFocusUserOrDevices()
+    // 判断相机是否已离开初始默认视角（未移动则重试）
+    const c = viewer?.camera.positionCartographic
+    const stillHome = c && c.longitude === 0 && c.latitude === 0
+    if (stillHome) focusWithRetry(attempt + 1)
+  }, attempt === 0 ? 400 : attempt * 700)
 }
 
 // 自动聚焦：当前用户设置了中心点则以其为中心，否则聚焦设备分布
 function autoFocusUserOrDevices() {
   if (!viewer) return
   const userCenter = userCenterRef.value
-  let hadCenter = false
   if (userCenter && userCenter.lat != null && userCenter.lng != null) {
-    hadCenter = true
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(userCenter.lng, userCenter.lat, 5000),
       orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
       duration: 1.2,
     })
+  } else {
+    autoFocusDevices()
   }
-  // 无用户中心或聚焦后仍可看到设备：设备仍打点，若完全没设备则保持用户中心
-  if (!hadCenter) autoFocusDevices()
 }
 
 // 自动聚焦到设备分布：有设备则贴合设备范围；单台设备聚焦到清晰高度
