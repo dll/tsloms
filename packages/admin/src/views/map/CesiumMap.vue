@@ -141,6 +141,8 @@ function initCesium() {
     infoBox: false,
     selectionIndicator: false,
   })
+  // 禁用 Cesium Ion 在线地形（使用本地椭球面），避免访问 api.cesium.com 造成 404/超时
+  viewer.terrainProvider = new (Cesium.EllipsoidTerrainProvider as any)()
   viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100
   viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
   ;(window as any).__tslomsViewer = viewer // 便于调试/验证相机
