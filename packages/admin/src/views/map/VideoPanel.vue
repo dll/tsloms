@@ -201,7 +201,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.video-panel { padding: 4px; }
+.video-panel { padding: 12px; background: #f0f2f5; border-radius: 6px; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .toolbar-grid { display: flex; gap: 8px; align-items: center; }
 .toolbar-actions { display: flex; gap: 8px; }

@@ -22,6 +22,8 @@ const router = createRouter({
         { path: 'intersection', name: 'Intersection', component: () => import('@/views/intersection/index.vue'), meta: { title: '路口管理' } },
         // 地图大屏 - 设备分布地图
         { path: 'map', name: 'Map', component: () => import('@/views/map/index.vue'), meta: { title: '地图大屏' } },
+        { path: 'video', name: 'Video', component: () => import('@/views/map/VideoPanel.vue'), meta: { title: '视频监控' } },
+        { path: 'feedback', name: 'Feedback', component: () => import('@/views/map/FeedbackPanel.vue'), meta: { title: '问题反馈' } },
         // 故障管理 - 设备故障记录与研判
         { path: 'fault', name: 'Fault', component: () => import('@/views/fault/index.vue'), meta: { title: '故障管理' } },
         // 工单管理 - 维修工单流转

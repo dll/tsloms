@@ -31,6 +31,14 @@
           <el-icon><MapLocation /></el-icon>
           <template #title>地图大屏</template>
         </el-menu-item>
+        <el-menu-item index="/video">
+          <el-icon><VideoCamera /></el-icon>
+          <template #title>视频监控</template>
+        </el-menu-item>
+        <el-menu-item index="/feedback">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>问题反馈</template>
+        </el-menu-item>
         <el-menu-item index="/fault">
           <el-icon><Warning /></el-icon>
           <template #title>故障管理</template>

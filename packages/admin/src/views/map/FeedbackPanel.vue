@@ -118,6 +118,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.feedback-panel { padding: 12px; }
 .submit-card { margin-bottom: 16px; }
 .list-header { display: flex; justify-content: space-between; align-items: center; }
 </style>
