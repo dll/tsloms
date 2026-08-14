@@ -11,6 +11,7 @@
         <el-radio-group v-model="baseLayer" size="small" @change="switchBaseLayer">
           <el-radio-button value="osm">OSM</el-radio-button>
           <el-radio-button value="gaode">高德</el-radio-button>
+          <el-radio-button value="satellite">卫星</el-radio-button>
           <el-radio-button value="baidu">百度</el-radio-button>
         </el-radio-group>
       </div>
@@ -140,8 +141,8 @@ function initCesium() {
   })
   viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100
   viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
-  // 默认视角中国东部
-  viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(105, 35, 5000000) })
+  // 默认视角：先定位到中国东部（避免全世界），设备加载后自动聚焦到设备分布
+  viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(104.0, 30.0, 3000000) })
   applySceneMode()
   // 点击设备点位
   const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -188,7 +189,11 @@ function closeInfo() { selDev.value = null }
 
 function focusDevice(d: any) {
   if (!viewer || d.lat == null || d.lng == null) return
-  viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(d.lng, d.lat, 2000), duration: 0.8 })
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(d.lng, d.lat, 2000),
+    orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
+    duration: 0.8,
+  })
 }
 function flyToAll() {
   const mapped = devices.value.filter((d) => d.lat != null && d.lng != null)
@@ -213,6 +218,10 @@ function switchBaseLayer() {
   viewer.imageryLayers.removeAll()
   try {
     if (baseLayer.value === 'gaode') viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)())
+    else if (baseLayer.value === 'satellite') {
+      // 高德纯卫星影像（style=6，无路网、更清晰）
+      viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)({ style: 6 }))
+    }
     else if (baseLayer.value === 'baidu') viewer.imageryLayers.addImageryProvider(new (BaiduImageryProvider as any)())
     else viewer.imageryLayers.addImageryProvider(new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }))
   } catch { ElMessage.error('底图加载失败') }
@@ -241,7 +250,27 @@ async function load() {
     const res = await getAllDevices(1000)
     devices.value = res.data?.list || []
     plotDevices()
+    // 自动聚焦到设备区域（快速定位，避免默认是全球视角）
+    requestAnimationFrame(() => autoFocusDevices())
   } catch { /* 忽略 */ }
+}
+
+// 自动聚焦到设备分布：有设备则贴合设备范围；单台设备聚焦到清晰高度
+function autoFocusDevices() {
+  if (!viewer) return
+  const mapped = devices.value.filter((d) => d.lat != null && d.lng != null)
+  if (mapped.length === 0) return
+  if (mapped.length === 1) {
+    const d = mapped[0]
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(d.lng, d.lat, 4000),
+      orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
+      duration: 1.2,
+    })
+  } else {
+    const pos = mapped.map((d) => Cesium.Cartesian3.fromDegrees(d.lng, d.lat))
+    viewer.camera.flyToBoundingSphere(Cesium.BoundingSphere.fromPoints(pos), { duration: 1.2 })
+  }
 }
 
 onMounted(async () => {
