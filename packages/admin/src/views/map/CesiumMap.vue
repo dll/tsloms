@@ -89,6 +89,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import * as Cesium from 'cesium'
 import { getAllDevices } from '@/api/map'
+import { getUserInfo } from '@/api/auth'
 // @ts-ignore 百度/高德瓦片
 import BaiduImageryProvider from './BaiduImagery.js'
 // @ts-ignore
@@ -101,13 +102,14 @@ const cesiumRef = ref<HTMLElement>()
 let viewer: Cesium.Viewer | null = null
 let resizeHandler: () => void = () => {}
 
-const sceneMode = ref(3)
-const baseLayer = ref('osm')
+const sceneMode = ref(2) // 默认 2D 地图
+const baseLayer = ref('gaode') // 默认高德地图
 const searchKw = ref('')
 const panelOpen = ref(true)
 const isFullscreen = ref(false)
 const devices = ref<any[]>([])
 const selDev = ref<any | null>(null)
+const userCenterRef = ref<{ lat: number; lng: number } | null>(null)
 
 const onlineCount = computed(() => devices.value.filter((d) => d.online_status).length)
 const offlineCount = computed(() => devices.value.filter((d) => !d.online_status).length)
@@ -251,9 +253,26 @@ async function load() {
     const res = await getAllDevices(1000)
     devices.value = res.data?.list || []
     plotDevices()
-    // 自动聚焦到设备区域（快速定位，避免默认是全球视角）
-    requestAnimationFrame(() => autoFocusDevices())
+    // 自动聚焦：优先以当前登录用户为中心点，否则聚焦到设备区域
+    requestAnimationFrame(() => autoFocusUserOrDevices())
   } catch { /* 忽略 */ }
+}
+
+// 自动聚焦：当前用户设置了中心点则以其为中心，否则聚焦设备分布
+function autoFocusUserOrDevices() {
+  if (!viewer) return
+  const userCenter = userCenterRef.value
+  let hadCenter = false
+  if (userCenter && userCenter.lat != null && userCenter.lng != null) {
+    hadCenter = true
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(userCenter.lng, userCenter.lat, 5000),
+      orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
+      duration: 1.2,
+    })
+  }
+  // 无用户中心或聚焦后仍可看到设备：设备仍打点，若完全没设备则保持用户中心
+  if (!hadCenter) autoFocusDevices()
 }
 
 // 自动聚焦到设备分布：有设备则贴合设备范围；单台设备聚焦到清晰高度
@@ -277,6 +296,14 @@ function autoFocusDevices() {
 onMounted(async () => {
   await nextTick()
   initCesium()
+  // 读取当前登录用户的地图中心点（该用户管辖区域）
+  try {
+    const ui = await getUserInfo()
+    const u = ui.data?.user
+    if (u && u.center_lat != null && u.center_lng != null) {
+      userCenterRef.value = { lat: u.center_lat, lng: u.center_lng }
+    }
+  } catch { /* 忽略 */ }
   await load()
   resizeHandler = () => { try { viewer?.resize() } catch { /* 忽略 */ } }
   window.addEventListener('resize', resizeHandler)

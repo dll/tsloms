@@ -15,3 +15,8 @@ export function getUserInfo(): Promise<ApiResponse> {
 export function updateMyPhone(phone: string): Promise<ApiResponse> {
   return request.put('/user/phone', { phone }) as unknown as Promise<ApiResponse>
 }
+
+// 设置当前用户地图中心点（该用户管辖区域）
+export function updateMyCenter(lat: number | null, lng: number | null): Promise<ApiResponse> {
+  return request.put('/user/center', { lat, lng }) as unknown as Promise<ApiResponse>
+}

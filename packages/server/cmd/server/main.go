@@ -150,6 +150,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)
 			auth.PUT("/user/phone", handler.UpdateMyPhone)
+			auth.PUT("/user/center", handler.UpdateMyCenter)
 
 			// 设备管理（查看：所有角色，修改：管理员/运维）
 			auth.GET("/devices", handler.ListDevices)

@@ -82,10 +82,12 @@ func GetUserInfo(c *gin.Context) {
 
 	ok(c, gin.H{
 		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"role":     user.Role,
-			"phone":    user.Phone,
+			"id":         user.ID,
+			"username":   user.Username,
+			"role":       user.Role,
+			"phone":      user.Phone,
+			"center_lat": user.CenterLat,
+			"center_lng": user.CenterLng,
 		},
 	})
 }

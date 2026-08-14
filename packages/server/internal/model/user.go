@@ -14,6 +14,8 @@ type User struct {
 	PasswordHash string    `json:"-" gorm:"size:255;comment:密码哈希(bcrypt)"`
 	Role         string    `json:"role" gorm:"size:16;default:viewer;comment:角色(admin/operator/viewer)"`
 	Phone        string    `json:"phone" gorm:"size:20;comment:手机号"`
+	CenterLat    *float64  `json:"center_lat" gorm:"comment:地图中心纬度(该用户管辖区域)"`
+	CenterLng    *float64  `json:"center_lng" gorm:"comment:地图中心经度(该用户管辖区域)"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 

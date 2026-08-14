@@ -24,6 +24,23 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <el-card shadow="never" class="form-card">
+          <template #header><span>地图中心点（地图大屏以当前用户为中心定位）</span></template>
+          <el-form label-width="100px" style="max-width: 500px">
+            <el-form-item label="经度">
+              <el-input v-model="centerForm.lng" placeholder="如 121.4737" />
+            </el-form-item>
+            <el-form-item label="纬度">
+              <el-input v-model="centerForm.lat" placeholder="如 31.2304" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="centerSaving" @click="handleSaveCenter">保存中心点</el-button>
+              <el-button v-if="hasCenter" @click="handleClearCenter">清除</el-button>
+              <span class="tip">不设置时地图自动聚焦到设备分布区域</span>
+            </el-form-item>
+          </el-form>
+        </el-card>
       </el-tab-pane>
 
       <!-- 用户管理（仅管理员） -->
@@ -152,6 +169,49 @@ async function handleSave() {
   })
 }
 
+// ---- 地图中心点（当前用户管辖区域） ----
+const centerForm = reactive({ lat: '', lng: '' })
+const centerSaving = ref(false)
+const hasCenter = ref(false)
+function loadCenter() {
+  const u = authStore.user as any
+  if (u && u.center_lat != null && u.center_lng != null) {
+    centerForm.lat = String(u.center_lat)
+    centerForm.lng = String(u.center_lng)
+    hasCenter.value = true
+  } else {
+    centerForm.lat = ''
+    centerForm.lng = ''
+    hasCenter.value = false
+  }
+}
+async function handleSaveCenter() {
+  const lat = parseFloat(centerForm.lat)
+  const lng = parseFloat(centerForm.lng)
+  if (isNaN(lat) || lat < -90 || lat > 90) { ElMessage.warning('纬度范围 -90~90'); return }
+  if (isNaN(lng) || lng < -180 || lng > 180) { ElMessage.warning('经度范围 -180~180'); return }
+  centerSaving.value = true
+  try {
+    const { updateMyCenter } = await import('@/api/auth')
+    await updateMyCenter(lat, lng)
+    ;(authStore.user as any).center_lat = lat
+    ;(authStore.user as any).center_lng = lng
+    hasCenter.value = true
+    ElMessage.success('地图中心点已保存（地图大屏将以该点为中心）')
+  } catch { /* 后端提示 */ } finally { centerSaving.value = false }
+}
+async function handleClearCenter() {
+  try {
+    await ElMessageBox.confirm('确认清除地图中心点？清除后地图自动聚焦到设备分布区域。', '提示', { type: 'warning' })
+    const { updateMyCenter } = await import('@/api/auth')
+    await updateMyCenter(null, null)
+    ;(authStore.user as any).center_lat = null
+    ;(authStore.user as any).center_lng = null
+    loadCenter()
+    ElMessage.success('已清除')
+  } catch { /* 取消 */ }
+}
+
 // ---- 用户管理 ----
 const loading = ref(false)
 const users = ref<UserItem[]>([])
@@ -238,6 +298,7 @@ onMounted(async () => {
   if (authStore.token && !authStore.user) {
     try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
   }
+  loadCenter()
   if (authStore.user?.role === 'admin') loadUsers()
 })
 </script>

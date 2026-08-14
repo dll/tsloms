@@ -234,3 +234,35 @@ func UpdateMyPhone(c *gin.Context) {
 	recordOperation(c, model.OpUpdate, "user/self/phone", "修改个人手机号")
 	ok(c, gin.H{"message": "手机号已更新"})
 }
+
+// UpdateMyCenter 设置/清除当前用户的地图中心（该用户管辖区域中心点）
+func UpdateMyCenter(c *gin.Context) {
+	var req struct {
+		Lat *float64 `json:"lat"`
+		Lng *float64 `json:"lng"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "参数错误")
+		return
+	}
+	userID := c.GetUint("user_id")
+	if userID == 0 {
+		unauthorized(c, "未登录")
+		return
+	}
+	updates := map[string]interface{}{"center_lat": req.Lat, "center_lng": req.Lng}
+	if req.Lat != nil && (req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90)) {
+		badRequest(c, "纬度范围 -90~90")
+		return
+	}
+	if req.Lng != nil && (*req.Lng < -180 || *req.Lng > 180) {
+		badRequest(c, "经度范围 -180~180")
+		return
+	}
+	if err := model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpUpdate, "user/self/center", "设置个人地图中心点")
+	ok(c, gin.H{"message": "地图中心点已更新"})
+}
