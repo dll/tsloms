@@ -10,7 +10,8 @@
         </el-radio-group>
         <el-radio-group v-model="baseLayer" size="small" style="margin-left: 12px" @change="switchBaseLayer">
           <el-radio-button value="osm">OSM</el-radio-button>
-          <el-radio-button value="baidu">百度实景</el-radio-button>
+          <el-radio-button value="gaode">高德</el-radio-button>
+          <el-radio-button value="baidu">百度</el-radio-button>
         </el-radio-group>
       </div>
       <div class="stats">
@@ -29,6 +30,14 @@
     <!-- Cesium 容器 -->
     <div class="cesium-container">
       <div ref="cesiumRef" class="cesium-viewer"></div>
+      <!-- 地图操作工具条 -->
+      <div class="map-tools">
+        <div class="tool-col" title="放大"><el-icon @click="zoomIn"><ZoomIn /></el-icon></div>
+        <div class="tool-col" title="缩小"><el-icon @click="zoomOut"><ZoomOut /></el-icon></div>
+        <div class="tool-col" title="复位视角"><el-icon @click="resetView"><Aim /></el-icon></div>
+        <div class="tool-col" title="全览设备"><el-icon @click="flyToAll"><MapLocation /></el-icon></div>
+        <div class="tool-col" title="全屏"><el-icon @click="toggleFullscreen"><FullScreen /></el-icon></div>
+      </div>
     </div>
 
     <!-- 左侧：设备列表定位 -->
@@ -105,8 +114,10 @@ import { ElMessage } from 'element-plus'
 import * as Cesium from 'cesium'
 import { getAllDevices } from '@/api/map'
 import { getDispatchReference } from '@/api/dispatch'
-// @ts-ignore 百度瓦片 ImageryProvider
+// @ts-ignore 百度/高德瓦片 ImageryProvider
 import BaiduImageryProvider from './BaiduImagery.js'
+// @ts-ignore
+import GaodeImageryProvider from './GaodeImagery.js'
 
 // 组件 emit：通知父级切换标签页（video/feedback）
 const emit = defineEmits<{ (e: 'goPanel', name: string): void }>()
@@ -190,15 +201,22 @@ function initCesium() {
   // 去掉默认的 Cesium Ion token（离线使用默认地球）
   Cesium.Ion.defaultAccessToken = ''
   viewer = new Cesium.Viewer(cesiumRef.value, {
+    // 开启地图操作工具：搜索、主页复位、全屏、导航帮助、比例尺、罗盘
     baseLayerPicker: false,
-    geocoder: false,
-    homeButton: false,
+    geocoder: true,
+    homeButton: true,
     sceneModePicker: true,
-    navigationHelpButton: false,
+    navigationHelpButton: true,
     animation: false,
     timeline: false,
-    fullscreenButton: false,
+    fullscreenButton: true,
+    infoBox: true,
+    selectionIndicator: true,
+    shouldAnimate: false,
   })
+  // 比例尺
+  viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100
+  viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
   // 使用真实影像底图（OpenStreetMap，无需 token）
   try {
     viewer.scene.imageryLayers.removeAll()
@@ -225,12 +243,15 @@ function initCesium() {
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
 
-// 切换底图（OSM / 百度实景）
+// 切换底图（OSM / 高德 / 百度）
 function switchBaseLayer() {
   if (!viewer) return
   viewer.imageryLayers.removeAll()
   try {
-    if (baseLayer.value === 'baidu') {
+    if (baseLayer.value === 'gaode') {
+      viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)())
+      ElMessage.success('已切换到高德地图底图')
+    } else if (baseLayer.value === 'baidu') {
       viewer.imageryLayers.addImageryProvider(new (BaiduImageryProvider as any)())
       ElMessage.success('已切换到百度实景底图')
     } else {
@@ -241,6 +262,26 @@ function switchBaseLayer() {
   } catch {
     ElMessage.error('底图加载失败')
   }
+}
+
+// 地图操作工具
+function zoomIn() {
+  if (!viewer) return
+  viewer.camera.zoomIn(viewer.camera.positionCartographic.height * 0.3)
+}
+function zoomOut() {
+  if (!viewer) return
+  viewer.camera.zoomOut(viewer.camera.positionCartographic.height * 0.3)
+}
+function resetView() {
+  if (!viewer) return
+  viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(105, 35, 4000000), duration: 1 })
+}
+function toggleFullscreen() {
+  const el = document.querySelector('.cesium-container') as HTMLElement
+  if (!el) return
+  if (!document.fullscreenElement) el.requestFullscreen?.()
+  else document.exitFullscreen?.()
 }
 
 // 应用 2D/3D/哥伦布 模式
@@ -324,7 +365,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.cesium-map-page { position: relative; height: calc(100vh - 100px); min-height: 560px; }
+.cesium-map-page { position: relative; width: 100%; height: 100%; }
 .map-toolbar { display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: #fff; border-radius: 4px; margin-bottom: 8px; flex-wrap: wrap; }
 .stats { display: flex; gap: 12px; font-size: 13px; color: #606266; flex: 1; }
 .st b { font-size: 15px; color: #303133; }
@@ -332,8 +373,20 @@ onUnmounted(() => {
 .st.offline b { color: #F56C6C; }
 .st.fault b { color: #E6A23C; }
 .actions { display: flex; gap: 8px; }
-.cesium-container { position: absolute; left: 0; right: 0; top: 44px; bottom: 0; border-radius: 6px; overflow: hidden; border: 1px solid #e0e0e0; }
+.cesium-container { position: relative; width: 100%; height: calc(100% - 44px); border-radius: 6px; overflow: hidden; border: 1px solid #e0e0e0; }
 .cesium-viewer { width: 100%; height: 100%; }
+
+/* 地图操作工具条（右上角） */
+.map-tools {
+  position: absolute; top: 12px; right: 12px; z-index: 20;
+  display: flex; flex-direction: column; gap: 2px;
+  background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); overflow: hidden;
+}
+.tool-col {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #303133; font-size: 18px;
+}
+.tool-col:hover { background: #409eff; color: #fff; }
 .side-panel { position: absolute; left: 12px; top: 56px; width: 240px; max-height: 60%; background: rgba(255,255,255,0.95); border-radius: 6px; box-shadow: 0 2px 12px rgba(0,21,41,0.15); display: flex; flex-direction: column; z-index: 10; }
 .panel-title { font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
 .side-panel .el-input { margin: 8px 12px; width: auto; }
