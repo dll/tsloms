@@ -209,9 +209,12 @@ function flyToAll() {
 // 场景模式
 function applySceneMode() {
   if (!viewer) return
-  if (sceneMode.value === 2) viewer.scene.morphTo2D(2.0)
-  else if (sceneMode.value === 1) viewer.scene.morphToColumbusView(2.0)
-  else viewer.scene.morphTo3D(2.0)
+  // 直接设置场景模式（同步生效，避免动画未完成导致 morphTime 卡在 3D）
+  if (sceneMode.value === 2) viewer.scene.mode = Cesium.SceneMode.SCENE2D
+  else if (sceneMode.value === 1) viewer.scene.mode = Cesium.SceneMode.COLUMBUS_VIEW
+  else viewer.scene.mode = Cesium.SceneMode.SCENE3D
+  // 2D/哥伦布下锁定相机俯仰为正上（俯视图）
+  viewer.scene.screenSpaceCameraController.enableTilt = sceneMode.value !== 2
 }
 function changeSceneMode() { applySceneMode() }
 
@@ -258,24 +261,17 @@ async function load() {
   } catch { /* 忽略 */ }
 }
 
-// 自动聚焦（带重试）：等待 2D 变形(morphTo2D) 完成后相机就绪，再聚焦到目标
+// 自动聚焦（带重试）：场景模式切换后相机就绪需短暂时间，多次尝试直到相机移动到目标
 function focusWithRetry(attempt: number) {
   if (!viewer) return
   if (attempt > 6) return
   setTimeout(() => {
-    const ready = ensureMorphDone()
-    if (!ready) { focusWithRetry(attempt + 1); return }
     autoFocusUserOrDevices()
-  }, attempt === 0 ? 300 : attempt * 600)
-}
-
-// 确保场景变形完成（2D/3D morph 结束后相机才稳定），返回是否就绪
-function ensureMorphDone(): boolean {
-  if (!viewer) return false
-  // scene.morphTime：0=3D, 1=2D(哥伦布)；接近目标即视为完成
-  const morph = viewer.scene.morphTime
-  const target = sceneMode.value === 2 || sceneMode.value === 1 ? 1 : 0
-  return Math.abs((morph as number) - target) < 0.05
+    // 判断相机是否已聚焦（离开初始高点则视为成功），否则重试
+    const c = viewer?.camera.positionCartographic
+    const home = c != null && Math.abs((c.longitude as number) * 180 / Math.PI) < 0.5 && Math.abs((c.latitude as number) * 180 / Math.PI) < 0.5 && (c.height as number) > 10000000
+    if (home) focusWithRetry(attempt + 1)
+  }, attempt === 0 ? 400 : attempt * 600)
 }
 
 // 自动聚焦：当前用户设置了中心点则以其为中心，否则聚焦设备分布
