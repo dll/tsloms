@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -96,13 +97,10 @@ func FaultTrendStats(c *gin.Context) {
 		results = append(results, TrendResult{Period: period, Count: count})
 	}
 
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[i].Period > results[j].Period {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
+	// 按时间升序排列结果
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Period < results[j].Period
+	})
 
 	ok(c, gin.H{
 		"trend":     results,

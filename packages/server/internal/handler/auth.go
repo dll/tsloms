@@ -90,8 +90,3 @@ func GetUserInfo(c *gin.Context) {
 	})
 }
 
-// HashPassword 使用 bcrypt 哈希密码
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
-}
