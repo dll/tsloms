@@ -21,6 +21,10 @@
         <span class="s">已定位 <b>{{ mappedCount }}</b></span>
       </div>
       <div class="tb-actions">
+        <el-tooltip :content="useIonTerrain ? '已开启 Ion 在线地形' : '关闭 Ion 在线地形'" placement="bottom">
+          <el-switch v-model="useIonTerrain" @change="toggleIonTerrain"
+                     inline-prompt active-text="Ion 地形" inactive-text="" class="ion-switch" />
+        </el-tooltip>
         <el-button size="small" @click="togglePanel">{{ panelOpen ? '收起设备' : '设备列表' }}</el-button>
         <el-button size="small" @click="flyToAll">全览</el-button>
       </div>
@@ -104,6 +108,7 @@ let resizeHandler: () => void = () => {}
 
 const sceneMode = ref(2) // 默认 2D 地图
 const baseLayer = ref('gaode') // 默认高德地图
+const useIonTerrain = ref(false) // 默认关闭 Cesium Ion 在线地形（避免访问 api.cesium.com）
 const searchKw = ref('')
 const panelOpen = ref(true)
 const isFullscreen = ref(false)
@@ -141,11 +146,12 @@ function initCesium() {
     infoBox: false,
     selectionIndicator: false,
   })
-  // 禁用 Cesium Ion 在线地形（使用本地椭球面），避免访问 api.cesium.com 造成 404/超时
-  viewer.terrainProvider = new (Cesium.EllipsoidTerrainProvider as any)()
+  // 地形：默认关闭 Ion 在线地形，由 applyTerrain() 依据开关设置（本地椭球 / Ion WorldTerrain）
+  applyTerrain()
   viewer.scene.screenSpaceCameraController.minimumZoomDistance = 100
   viewer.scene.screenSpaceCameraController.maximumZoomDistance = 30000000
   ;(window as any).__tslomsViewer = viewer // 便于调试/验证相机
+  applyTerrain() // 默认关闭 Ion 在线地形，使用本地椭球
   // 默认视角：先定位到中国东部（避免全世界），设备加载后自动聚焦到设备分布
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(104.0, 30.0, 3000000) })
   applySceneMode()
@@ -163,6 +169,37 @@ function initCesium() {
   // 布局稳定后强制重算尺寸
   requestAnimationFrame(() => { try { viewer?.resize() } catch { /* 忽略 */ } })
   setTimeout(() => { try { viewer?.resize() } catch { /* 忽略 */ } }, 200)
+}
+
+// 在线地形开关：开启时请求 Cesium Ion 全球 3D 地形，关闭时用本地椭球面
+// 需要在 https://cesium.com/ion/ 申请 Access Token 后填入下方 ION_TOKEN 才有效
+const ION_TOKEN = '' // TODO: 如需 Ion 3D 地形，在此填入 Cesium Ion Access Token
+function toggleIonTerrain(val: boolean) {
+  if (val && !ION_TOKEN.trim()) {
+    ElMessage.warning('未配置 Cesium Ion Token，无法加载在线地形（默认保持椭球面）')
+    useIonTerrain.value = false
+    return
+  }
+  applyTerrain()
+}
+function applyTerrain() {
+  if (!viewer) return
+  if (useIonTerrain.value && ION_TOKEN.trim()) {
+    ;(Cesium as any).Ion.defaultAccessToken = ION_TOKEN.trim()
+    ;(Cesium as any).createWorldTerrainAsync().then((t: any) => {
+      if (viewer && useIonTerrain.value) {
+        viewer.terrainProvider = t
+        ElMessage.success('已启用 Ion 在线 3D 地形')
+      }
+    }).catch(() => {
+      // 访问 api.cesium.com 失败，回退到椭球面，避免地图卡死
+      if (viewer) viewer.terrainProvider = new (Cesium.EllipsoidTerrainProvider as any)()
+      ElMessage.error('Ion 在线地形加载失败（可能无法访问 api.cesium.com），已回退到本地椭球面')
+    })
+  } else {
+    ;(Cesium as any).Ion.defaultAccessToken = ''
+    viewer.terrainProvider = new (Cesium.EllipsoidTerrainProvider as any)()
+  }
 }
 
 // 设备点位：仅用圆点/3D标记，不带 Canvas 文字（避免乱码与遮挡）
@@ -344,7 +381,9 @@ onUnmounted(() => {
 .tb-stats .s b { font-size: 15px; }
 .s.on b { color: #67C23A; }
 .s.off b { color: #F56C6C; }
-.tb-actions { display: flex; gap: 8px; }
+.tb-actions { display: flex; gap: 8px; align-items: center; }
+.ion-switch { --el-switch-on-color: #409eff; margin-right: 4px; }
+.ion-switch :deep(.el-switch__label) { color: #409eff; font-size: 12px; }
 
 .map-wrap { position: relative; flex: 1; min-height: 0; border-radius: 6px; overflow: hidden; }
 .cesium-viewer { width: 100%; height: 100%; }
