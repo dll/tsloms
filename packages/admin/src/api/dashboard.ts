@@ -25,3 +25,8 @@ export function getFaultTrend(params: { dimension?: string; days?: number }): Pr
 export function getDeviceFaultRank(params: { limit?: number; days?: number }): Promise<ApiResponse> {
   return request.get('/dashboard/device-fault-rank', { params }) as unknown as Promise<ApiResponse>
 }
+
+// 工单平均闭环时长
+export function getWorkOrderAvgClosure(params: { days?: number }): Promise<ApiResponse> {
+  return request.get('/dashboard/work-order-avg-closure', { params }) as unknown as Promise<ApiResponse>
+}

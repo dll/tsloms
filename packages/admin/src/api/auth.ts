@@ -10,3 +10,8 @@ export function login(data: { username: string; password: string }): Promise<Api
 export function getUserInfo(): Promise<ApiResponse> {
   return request.get('/user/info') as unknown as Promise<ApiResponse>
 }
+
+// 修改当前用户手机号
+export function updateMyPhone(phone: string): Promise<ApiResponse> {
+  return request.put('/user/phone', { phone }) as unknown as Promise<ApiResponse>
+}

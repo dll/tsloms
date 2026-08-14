@@ -70,7 +70,11 @@ func GetDevice(c *gin.Context) {
 		return
 	}
 
-	ok(c, gin.H{"device": device})
+	ok(c, gin.H{
+		"device": device,
+		"sw_ver_info":  model.DecodeSwVer(device.SwVersion),
+		"conf_ver_info": model.DecodeConfVer(device.ConfVersion),
+	})
 }
 
 // UpdateDevice 更新设备信息（路口位置、安装日期等台账信息）

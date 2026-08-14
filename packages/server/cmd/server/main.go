@@ -15,6 +15,7 @@ import (
 	"github.com/tsloms/server/internal/middleware"
 	"github.com/tsloms/server/internal/model"
 	"github.com/tsloms/server/internal/mqtt"
+	"github.com/tsloms/server/internal/service"
 	"gorm.io/gorm"
 )
 
@@ -76,6 +77,11 @@ func main() {
 
 	r := setupRouter(db, cfg)
 
+	// 启动设备离线检测协程（签到超时自动置离线）
+	offlineCtx, offlineCancel := context.WithCancel(context.Background())
+	offlineSvc := service.NewOfflineCheck(cfg)
+	offlineSvc.Start(offlineCtx)
+
 	// 可信代理：仅信任本机 nginx/Caddy
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
@@ -97,6 +103,9 @@ func main() {
 	<-quit
 
 	log.Println("正在优雅关闭服务...")
+
+	// 停止离线检测协程
+	offlineCancel()
 
 	// 断开 MQTT 连接（等待 2 秒处理完剩余消息）
 	if mqttClient != nil {
@@ -131,6 +140,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		{
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)
+			auth.PUT("/user/phone", handler.UpdateMyPhone)
 
 			// 设备管理（查看：所有角色，修改：管理员/运维）
 			auth.GET("/devices", handler.ListDevices)
@@ -153,10 +163,21 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/dashboard/work-order-stats", handler.WorkOrderStatusStats)
 			auth.GET("/dashboard/fault-trend", handler.FaultTrendStats)
 			auth.GET("/dashboard/device-fault-rank", handler.DeviceFaultRank)
+			auth.GET("/dashboard/work-order-avg-closure", handler.WorkOrderAvgClosure)
 
 			// 日志查询
 			auth.GET("/logs/packets", handler.ListPacketLogs)
 			auth.GET("/logs/operations", handler.ListOperationLogs)
+
+			// 用户管理（仅管理员）
+			users := auth.Group("/users", middleware.RequireAdmin())
+			{
+				users.GET("", handler.ListUsers)
+				users.POST("", handler.CreateUser)
+				users.PUT("/:id", handler.UpdateUser)
+				users.PUT("/:id/password", handler.ResetUserPassword)
+				users.DELETE("/:id", handler.DeleteUser)
+			}
 		}
 	}
 

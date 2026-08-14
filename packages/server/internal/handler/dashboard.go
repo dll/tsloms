@@ -190,3 +190,44 @@ func DashboardOverview(c *gin.Context) {
 		},
 	})
 }
+
+// WorkOrderAvgClosure 工单平均闭环时长（小时）
+// 统计已完成工单从创建到闭环的平均耗时
+func WorkOrderAvgClosure(c *gin.Context) {
+	days := 30
+	if d := c.Query("days"); d != "" {
+		if n, err := fmt.Sscanf(d, "%d", &days); err == nil && n == 1 && days > 0 {
+		}
+	}
+	startTime := time.Now().AddDate(0, 0, -days)
+
+	type closureRow struct {
+		CreatedAt time.Time
+		ClosedAt  *time.Time
+	}
+	var rows []closureRow
+	model.DB.Model(&model.WorkOrder{}).
+		Select("created_at, closed_at").
+		Where("status = ? AND closed_at IS NOT NULL AND created_at >= ?", model.WorkOrderStatusCompleted, startTime).
+		Find(&rows)
+
+	var totalHours float64
+	count := len(rows)
+	for _, r := range rows {
+		if r.ClosedAt != nil {
+			totalHours += r.ClosedAt.Sub(r.CreatedAt).Hours()
+		}
+	}
+
+	avgHours := 0.0
+	if count > 0 {
+		avgHours = totalHours / float64(count)
+	}
+
+	ok(c, gin.H{
+		"avg_hours":        avgHours,
+		"completed_count":  count,
+		"total_hours":      totalHours,
+		"days":             days,
+	})
+}
