@@ -29,6 +29,11 @@ export function getWorkOrders(params: WorkOrderQuery): Promise<ApiResponse> {
   return request.get('/work-orders', { params }) as unknown as Promise<ApiResponse>
 }
 
+// 获取工单详情（含 SLA/关联故障/操作时间线）
+export function getWorkOrderDetail(id: number | string): Promise<ApiResponse> {
+  return request.get(`/work-orders/${id}`) as unknown as Promise<ApiResponse>
+}
+
 // 创建工单
 export function createWorkOrder(data: WorkOrderCreate): Promise<ApiResponse> {
   return request.post('/work-orders', data) as unknown as Promise<ApiResponse>

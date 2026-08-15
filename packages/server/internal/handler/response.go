@@ -69,6 +69,29 @@ func parseUint(s string) (uint, error) {
 	return uint(v), err
 }
 
+// 统一分页参数约束
+const (
+	defaultPageSize = 20
+	maxPageSize     = 100
+)
+
+// paginate 统一解析并校验分页参数：page≥1，1≤page_size≤100。
+// 非法/越界值回退默认，避免超大 Limit/Offset 拖垮查询。
+func paginate(c *gin.Context) (uint, uint) {
+	page, _ := parseUint(c.DefaultQuery("page", "1"))
+	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+	return page, pageSize
+}
+
 // isOperator 判断当前用户是否为运维人员（管理员也具有运维权限）
 func isOperator(c *gin.Context) bool {
 	role := c.GetString("user_role")

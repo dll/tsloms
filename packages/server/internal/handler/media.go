@@ -36,17 +36,7 @@ func mediaURLPrefix() string {
 // ListDeviceMedia 查询设备媒体列表
 // 支持按设备、媒体类型筛选，分页
 func ListDeviceMedia(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.DeviceMedia{})
 	if hwID := c.Query("device_hw_id"); hwID != "" {

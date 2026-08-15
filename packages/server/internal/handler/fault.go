@@ -10,14 +10,7 @@ import (
 // ListFaults 故障记录列表查询
 // 支持按设备、状态、故障类型、时间范围筛选，分页查询
 func ListFaults(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.FaultRecord{})
 
@@ -94,5 +87,25 @@ func GetFault(c *gin.Context) {
 		return
 	}
 
-	ok(c, gin.H{"fault": fault})
+	// 关联设备信息（路口/经纬度/在线状态）
+	dev := gin.H{}
+	var device model.Device
+	if err := model.DB.Where("hw_id = ?", fault.DeviceHwID).First(&device).Error; err == nil {
+		dev = gin.H{
+			"id": device.ID, "hw_id": device.HwID, "intersection": device.Intersection,
+			"lat": device.Lat, "lng": device.Lng, "online_status": device.OnlineStatus,
+			"sw_version": device.SwVersion, "conf_version": device.ConfVersion,
+			"last_checkin_at": device.LastCheckinAt, "created_at": device.CreatedAt,
+		}
+	}
+
+	// 关联工单摘要（按 fault_id 反查，工单可能未回写 fault.WorkOrderID）
+	wo := gin.H{}
+	var order model.WorkOrder
+	err = model.DB.Where("fault_id = ?", fault.ID).Order("created_at DESC").First(&order).Error
+	if err == nil {
+		wo = workOrderView(order)
+	}
+
+	ok(c, gin.H{"fault": fault, "device": dev, "work_order": wo})
 }

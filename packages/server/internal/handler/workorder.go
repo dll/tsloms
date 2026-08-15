@@ -11,14 +11,7 @@ import (
 // ListWorkOrders 工单列表查询
 // 支持按设备、状态、处理人、时间范围筛选，分页查询
 func ListWorkOrders(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.WorkOrder{})
 
@@ -101,6 +94,80 @@ func workOrderView(o model.WorkOrder) gin.H {
 		"result": o.Result, "created_at": o.CreatedAt, "closed_at": o.ClosedAt,
 		"overdue": overdueHours > 0, "overdue_hours": overdueHours,
 	}
+}
+
+// GetWorkOrder 工单详情：工单 + SLA 状态 + 关联故障 + 操作时间线
+func GetWorkOrder(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "工单ID无效")
+		return
+	}
+
+	var o model.WorkOrder
+	if err := model.DB.First(&o, id).Error; err != nil {
+		notFound(c, "工单不存在")
+		return
+	}
+
+	// SLA 状态详情
+	overdueHours := model.WorkOrderOverdueHours(&o)
+	sla := gin.H{
+		"overdue":       overdueHours > 0,
+		"overdue_hours": overdueHours,
+	}
+	switch o.Status {
+	case model.WorkOrderStatusPending:
+		sla["deadline_hours"] = model.WorkOrderPendingSLASeconds / 3600
+		sla["stage"] = "待处理"
+	case model.WorkOrderStatusProcessing:
+		sla["deadline_hours"] = model.WorkOrderProcessingSLASeconds / 3600
+		sla["stage"] = "处理中"
+	case model.WorkOrderStatusCompleted:
+		sla["stage"] = "已完成"
+	case model.WorkOrderStatusRejected:
+		sla["stage"] = "已驳回"
+	}
+
+	// 关联故障 + 设备 + 处理人
+	fault := gin.H{}
+	if o.FaultID > 0 {
+		var f model.FaultRecord
+		if err := model.DB.First(&f, o.FaultID).Error; err == nil {
+			dev := gin.H{}
+			var device model.Device
+			if err := model.DB.Where("hw_id = ?", f.DeviceHwID).First(&device).Error; err == nil {
+				dev = gin.H{"id": device.ID, "hw_id": device.HwID, "intersection": device.Intersection,
+					"lat": device.Lat, "lng": device.Lng, "online_status": device.OnlineStatus}
+			}
+			fault = gin.H{
+				"id": f.ID, "device_hw_id": f.DeviceHwID, "err_code": f.ErrCode,
+				"fault_type": f.FaultType, "fault_level": f.FaultLevel, "status": f.Status,
+				"first_seen": f.FirstSeen, "last_seen": f.LastSeen, "device": dev,
+			}
+		}
+	}
+
+	assigneeName := ""
+	if o.AssigneeID != nil {
+		var u model.User
+		if err := model.DB.Select("id, username, real_name").First(&u, *o.AssigneeID).Error; err == nil {
+			assigneeName = u.Username
+		}
+	}
+
+	// 操作时间线（派单/状态变更/关闭等）
+	var timeline []model.OperationLog
+	model.DB.Where("target = ?", fmt.Sprintf("work-order/%d", o.ID)).
+		Order("created_at DESC").Limit(50).Find(&timeline)
+
+	ok(c, gin.H{
+		"work_order": workOrderView(o),
+		"sla":        sla,
+		"fault":      fault,
+		"assignee":   assigneeName,
+		"timeline":   timeline,
+	})
 }
 
 // CreateWorkOrder 手动创建工单

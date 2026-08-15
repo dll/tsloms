@@ -99,6 +99,11 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="90" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="info" plain size="small" @click="openDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <!-- 分页 -->
@@ -113,13 +118,75 @@
         @current-change="fetchData"
       />
     </el-card>
+
+    <!-- 故障详情抽屉：设备信息 + 关联工单 -->
+    <el-drawer v-model="detailVisible" title="故障详情" size="480px" v-loading="detailLoading">
+      <div v-if="detail" class="detail-body">
+        <el-descriptions :column="1" border class="detail-desc">
+          <el-descriptions-item label="设备ID">{{ detail.fault?.device_hw_id ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item label="故障类型">{{ errCodeLabel(detail.fault?.err_code) }}</el-descriptions-item>
+          <el-descriptions-item label="错误码">{{ detail.fault?.err_code ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item label="故障级别">
+            <el-tag :type="detail.fault?.fault_level === 'critical' ? 'danger' : 'warning'" size="small">
+              {{ detail.fault?.fault_level === 'critical' ? '严重' : '一般' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="故障状态">
+            <el-tag :type="detail.fault?.status === 'active' ? 'danger' : 'success'" size="small">
+              {{ detail.fault?.status === 'active' ? '活跃' : '已解决' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="首次出现">{{ detail.fault?.first_seen || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="最后出现">{{ detail.fault?.last_seen || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="电流值(R/Y/G)">
+            {{ detail.fault?.current_r ?? '-' }} / {{ detail.fault?.current_y ?? '-' }} / {{ detail.fault?.current_g ?? '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 设备信息 -->
+        <h4 class="section-title">设备信息</h4>
+        <div v-if="detail.device?.id" class="fault-card">
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="路口">
+              <el-icon><Location /></el-icon> {{ detail.device.intersection || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="在线状态">
+              <el-tag :type="detail.device.online_status ? 'success' : 'info'" size="small">
+                {{ detail.device.online_status ? '在线' : '离线' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="经纬度">{{ fmtLngLat(detail.device) }}</el-descriptions-item>
+            <el-descriptions-item label="固件版本">{{ detail.device.sw_version ?? '-' }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+        <el-empty v-else description="暂无设备信息" :image-size="60" />
+
+        <!-- 关联工单 -->
+        <h4 class="section-title">关联工单</h4>
+        <div v-if="detail.work_order?.id" class="fault-card">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="工单编号">{{ detail.work_order.order_no }}</el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag :type="woTagType(detail.work_order.status)" size="small">{{ woLabel(detail.work_order.status) }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="处理人">{{ detail.work_order.assignee_name || '未指派' }}</el-descriptions-item>
+            <el-descriptions-item label="超时">
+              <el-tag v-if="detail.work_order.overdue" type="danger" effect="dark" size="small">超时</el-tag>
+              <span v-else class="sla-ok">未超时</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+        <el-empty v-else description="暂无关联工单" :image-size="60" />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { Search, Refresh } from '@element-plus/icons-vue'
-import { getFaults } from '@/api/fault'
+import { ElMessage } from 'element-plus'
+import { Search, Refresh, Location } from '@element-plus/icons-vue'
+import { getFaults, getFault } from '@/api/fault'
 import { getDevices } from '@/api/device'
 
 // 设备异步搜索（故障筛选用）：按关键字搜索设备并分组（在线/离线）
@@ -160,6 +227,44 @@ function errCodeLabel(code: number): string {
 const ledStateMap: Record<number, string> = { 0: '红灯', 1: '黄灯', 2: '绿灯', [-1]: '未知' }
 function ledStateLabel(state: number): string {
   return ledStateMap[state] ?? `未知(${state})`
+}
+
+// ----------------- 故障详情抽屉 -----------------
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detail = ref<Record<string, any> | null>(null)
+
+async function openDetail(row: Record<string, any>) {
+  detailVisible.value = true
+  detailLoading.value = true
+  detail.value = null
+  try {
+    const res = await getFault(row.id)
+    detail.value = res.data
+  } catch {
+    detail.value = null
+    ElMessage.error('故障详情加载失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// 经纬度格式化
+function fmtLngLat(device: Record<string, any>): string {
+  const lat = device.lat
+  const lng = device.lng
+  if (lat == null || lng == null) return '-'
+  return `${lng.toFixed(6)}, ${lat.toFixed(6)}`
+}
+
+// 工单状态标签
+function woTagType(status: string): string {
+  const map: Record<string, string> = { pending: 'warning', processing: '', completed: 'success', rejected: 'info' }
+  return map[status] || 'info'
+}
+function woLabel(status: string): string {
+  const map: Record<string, string> = { pending: '待处理', processing: '处理中', completed: '已完成', rejected: '已驳回' }
+  return map[status] || status
 }
 
 // 搜索表单
@@ -247,5 +352,27 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 故障详情抽屉 */
+.detail-body {
+  padding-right: 6px;
+}
+.detail-desc {
+  margin-bottom: 16px;
+}
+.section-title {
+  margin: 18px 0 10px;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+.fault-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px;
+}
+.sla-ok {
+  color: #c0c4cc;
 }
 </style>

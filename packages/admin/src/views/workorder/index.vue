@@ -120,6 +120,7 @@
               驳回
             </el-button>
             <el-button v-if="isAdmin" type="danger" plain size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button type="info" plain size="small" @click="openDetail(row)">详情</el-button>
             <span v-if="!isOperator" class="viewer-tip">只读</span>
           </template>
         </el-table-column>
@@ -222,14 +223,90 @@
         <el-button type="primary" :loading="createLoading" @click="handleCreate">创建工单</el-button>
       </template>
     </el-dialog>
+
+    <!-- 工单详情抽屉：SLA/关联故障/操作时间线 -->
+    <el-drawer v-model="detailVisible" title="工单详情" size="520px" v-loading="detailLoading">
+      <div v-if="detail" class="detail-body">
+        <!-- 头部概览 -->
+        <div class="detail-head">
+          <div class="order-no">{{ detail.work_order?.order_no }}</div>
+          <el-tag :type="statusTagType(detail.work_order?.status)" size="small">
+            {{ statusLabel(detail.work_order?.status) }}
+          </el-tag>
+        </div>
+        <el-descriptions :column="1" border class="detail-desc">
+          <el-descriptions-item label="设备ID">{{ detail.work_order?.device_hw_id ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item label="处理人">{{ detail.assignee || '未指派' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ detail.work_order?.created_at || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="闭环时间">{{ detail.work_order?.closed_at || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="处理结果">{{ detail.work_order?.result || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- SLA 状态 -->
+        <h4 class="section-title">SLA 状态</h4>
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="阶段">
+            <el-tag :type="statusTagType(detail.work_order?.status)" size="small">{{ detail.sla?.stage || '-' }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="超时">
+            <el-tag v-if="detail.sla?.overdue" type="danger" effect="dark" size="small">
+              超时 {{ formatOverdue(detail.sla?.overdue_hours) }}
+            </el-tag>
+            <span v-else class="sla-ok">未超时</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 关联故障 -->
+        <h4 class="section-title">关联故障</h4>
+        <div v-if="detail.fault?.id" class="fault-card">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="故障类型">{{ errCodeLabel(detail.fault.err_code) }}</el-descriptions-item>
+            <el-descriptions-item label="错误码">{{ detail.fault.err_code ?? '-' }}</el-descriptions-item>
+            <el-descriptions-item label="故障级别">
+              <el-tag :type="detail.fault.fault_level === 'critical' ? 'danger' : 'warning'" size="small">
+                {{ detail.fault.fault_level === 'critical' ? '严重' : '一般' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="故障状态">
+              <el-tag :type="detail.fault.status === 'active' ? 'danger' : 'success'" size="small">
+                {{ detail.fault.status === 'active' ? '活跃' : '已解决' }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-if="detail.fault.device?.intersection" class="fault-device">
+            <el-icon><Location /></el-icon> 路口：{{ detail.fault.device.intersection }}
+          </div>
+        </div>
+        <el-empty v-else description="暂无关联故障" :image-size="60" />
+
+        <!-- 操作时间线 -->
+        <h4 class="section-title">操作时间线</h4>
+        <el-timeline v-if="detail.timeline?.length">
+          <el-timeline-item
+            v-for="item in detail.timeline"
+            :key="item.id"
+            :timestamp="item.created_at"
+            placement="top"
+            type="primary"
+          >
+            <div class="timeline-row">
+              <span class="timeline-action">{{ actionLabel(item.action) }}</span>
+              <span class="timeline-user">{{ item.username }}</span>
+            </div>
+            <div class="timeline-detail">{{ item.detail }}</div>
+          </el-timeline-item>
+        </el-timeline>
+        <el-empty v-else description="暂无操作记录" :image-size="60" />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus } from '@element-plus/icons-vue'
-import { getWorkOrders, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers, createWorkOrder, deleteWorkOrder } from '@/api/workorder'
+import { Search, Refresh, Plus, Location } from '@element-plus/icons-vue'
+import { getWorkOrders, getWorkOrderDetail, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers, createWorkOrder, deleteWorkOrder } from '@/api/workorder'
 import { getDevices } from '@/api/device'
 import { getFaults } from '@/api/fault'
 import { useAuthStore } from '@/store/auth'
@@ -384,6 +461,48 @@ function formatOverdue(hours: number): string {
     return rem > 0 ? `${days}天${rem}h` : `${days}天`
   }
   return `${h}h`
+}
+
+// ----------------- 工单详情抽屉 -----------------
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detail = ref<Record<string, any> | null>(null)
+
+// 打开工单详情
+async function openDetail(row: Record<string, any>) {
+  detailVisible.value = true
+  detailLoading.value = true
+  detail.value = null
+  try {
+    const res = await getWorkOrderDetail(row.id)
+    detail.value = res.data
+  } catch {
+    detail.value = null
+    ElMessage.error('工单详情加载失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// 故障错误码 → 中文名（与故障页一致）
+const errCodeMap: Record<number, string> = {
+  [0]: '正常',
+  [-1]: '红灯周期全灭', [-2]: '黄灯周期全灭', [-3]: '绿灯周期全灭',
+  [-4]: '红黄同亮', [-5]: '红绿同亮', [-6]: '黄绿同亮', [-7]: '红黄绿同亮',
+  [-8]: '红灯超时', [-9]: '黄灯超时', [-10]: '绿灯超时',
+  [-11]: '红灯缺亮', [-12]: '黄灯缺亮', [-13]: '绿灯缺亮', [-14]: '断电',
+}
+function errCodeLabel(code: number): string {
+  return errCodeMap[code] ?? `未知(${code})`
+}
+
+// 操作类型 → 中文名
+function actionLabel(action: string): string {
+  const map: Record<string, string> = {
+    create: '创建', update: '更新', delete: '删除',
+    dispatch: '派单', login: '登录', logout: '登出', read: '查看',
+  }
+  return map[action] || action
 }
 
 // 获取工单列表
@@ -548,5 +667,61 @@ onMounted(async () => {
 .viewer-tip {
   color: #c0c4cc;
   font-size: 12px;
+}
+
+/* 工单详情抽屉 */
+.detail-body {
+  padding-right: 6px;
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.order-no {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+.detail-desc {
+  margin-bottom: 16px;
+}
+.section-title {
+  margin: 18px 0 10px;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+}
+.fault-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 10px;
+}
+.fault-device {
+  margin-top: 10px;
+  color: #606266;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline-action {
+  font-weight: 600;
+  color: #303133;
+}
+.timeline-user {
+  color: #909399;
+  font-size: 12px;
+}
+.timeline-detail {
+  color: #606266;
+  font-size: 13px;
+  margin-top: 2px;
 }
 </style>

@@ -9,17 +9,7 @@ import (
 
 // ListFeedbacks 反馈列表查询
 func ListFeedbacks(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.Feedback{})
 	if status := c.Query("status"); status != "" {

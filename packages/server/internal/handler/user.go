@@ -25,17 +25,7 @@ func ListAssignableUsers(c *gin.Context) {
 // ListUsers 用户列表查询（分页 + 角色/部门/状态筛选）
 // 仅管理员可访问
 func ListUsers(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.User{})
 	if role := c.Query("role"); role != "" {

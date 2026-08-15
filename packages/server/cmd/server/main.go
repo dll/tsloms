@@ -177,6 +177,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 工单管理（查看：所有角色，操作：管理员/运维）
 			auth.GET("/work-orders", handler.ListWorkOrders)
+	auth.GET("/work-orders/:id", handler.GetWorkOrder)
 			auth.POST("/work-orders", middleware.RequireOperator(), handler.CreateWorkOrder)
 			auth.PUT("/work-orders/:id/status", middleware.RequireOperator(), handler.UpdateWorkOrderStatus)
 			auth.PUT("/work-orders/:id/assign", middleware.RequireOperator(), handler.AssignWorkOrder)

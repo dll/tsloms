@@ -92,10 +92,7 @@ func ResetAIUsage(c *gin.Context) {
 
 // AIUsagePage AI 额度使用流水（管理员查看）
 func AIUsagePage(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 { page = 1 }
-	if pageSize > 100 { pageSize = 100 }
+	page, pageSize := paginate(c)
 
 	var list []model.AIUsage
 	var total int64

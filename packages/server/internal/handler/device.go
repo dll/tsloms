@@ -11,14 +11,7 @@ import (
 // ListDevices 设备列表查询
 // 支持按路口位置、在线状态筛选，分页查询
 func ListDevices(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.Device{})
 

@@ -11,17 +11,7 @@ import (
 // ListPacketLogs 报文日志查询
 // 支持按设备、命令类型、有效性筛选，分页查询
 func ListPacketLogs(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.PacketLog{})
 
@@ -69,17 +59,7 @@ func ListPacketLogs(c *gin.Context) {
 // ListOperationLogs 系统操作日志查询
 // 支持按操作人、操作类型、时间范围筛选，分页查询
 func ListOperationLogs(c *gin.Context) {
-	page, _ := parseUint(c.DefaultQuery("page", "1"))
-	pageSize, _ := parseUint(c.DefaultQuery("page_size", "20"))
-	if page == 0 {
-		page = 1
-	}
-	if pageSize == 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	page, pageSize := paginate(c)
 
 	query := model.DB.Model(&model.OperationLog{})
 
