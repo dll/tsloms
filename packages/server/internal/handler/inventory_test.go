@@ -250,7 +250,7 @@ func TestWorkOrderMaterialUse(t *testing.T) {
 
 	// 物料（初始库存 10）
 	doJSON(r, "POST", "/inv/materials", map[string]interface{}{
-		"code": "LED-BULB", "name": "灯珠", "unit": "个", "stock": 10,
+		"code": "LED-BULB", "name": "灯珠", "unit": "个", "stock": 10, "unit_price": 5,
 	})
 	var m model.Material
 	model.DB.First(&m, "code = ?", "LED-BULB")
@@ -293,6 +293,22 @@ func TestWorkOrderMaterialUse(t *testing.T) {
 	}
 	if s.RefType != "repair" {
 		t.Fatalf("流水引用类型应为 repair, got %s", s.RefType)
+	}
+
+	// 领料应自动生成耗材费用单（关联工单/设备，金额=数量*单价）
+	var e model.RepairExpense
+	model.DB.Where("work_order_id = ?", wo.ID).Where("type = ?", model.ExpenseTypeMaterial).First(&e)
+	if e.ID == 0 {
+		t.Fatalf("领料未自动生成耗材费用单")
+	}
+	if e.DeviceHwID != wo.DeviceHwID {
+		t.Fatalf("费用设备ID应为 %d, got %d", wo.DeviceHwID, e.DeviceHwID)
+	}
+	if e.Amount != float64(3*m.UnitPrice) {
+		t.Fatalf("费用金额应为 %.2f, got %.2f", float64(3*m.UnitPrice), e.Amount)
+	}
+	if e.ExpenseNo == "" {
+		t.Fatalf("费用单号为空")
 	}
 
 	// 超额领料应被拒（库存不足）

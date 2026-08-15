@@ -323,12 +323,13 @@ func UseMaterialStock(c *gin.Context) {
 	price := m.UnitPrice
 	amount := float64(-req.Quantity) * price
 
-	// 更新库存 + 写 type=use 出库流水（同一事务保证一致）
+	// 更新库存 + 写 type=use 出库流水 + 自动生成耗材费用（同一事务保证一致）
+	// 领料成本自动归集到关联工单/设备的维修成本，费用统计(material)包含领料支出
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&m).Update("stock", newStock).Error; err != nil {
 			return err
 		}
-		return tx.Create(&model.MaterialStock{
+		if err := tx.Create(&model.MaterialStock{
 			MaterialID:   m.ID,
 			MaterialName: m.Name,
 			Type:         model.StockTypeUse,
@@ -340,6 +341,21 @@ func UseMaterialStock(c *gin.Context) {
 			WorkOrderID:  &req.WorkOrderID,
 			Operator:     operator,
 			Note:         req.Note,
+		}).Error; err != nil {
+			return err
+		}
+		// 自动生成耗材费用单(关联工单+设备)，供维修成本归集
+		expenseNo := model.NextBizNoCol(tx, "repair_expenses", "expense_no", "FE")
+		return tx.Create(&model.RepairExpense{
+			ExpenseNo:  expenseNo,
+			WorkOrderID: &req.WorkOrderID,
+			DeviceHwID: wo.DeviceHwID,
+			Type:       model.ExpenseTypeMaterial,
+			Amount:     float64(req.Quantity) * price,
+			Description: "工单领料: " + m.Name + " x" + fmt.Sprint(req.Quantity),
+			Operator:   operator,
+			Confirmed:  false,
+			Note:       req.Note,
 		}).Error
 	})
 	if err != nil {

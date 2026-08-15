@@ -128,10 +128,14 @@ func SaveRepairExpense(c *gin.Context) {
 		workDate = &t
 	}
 
-	// 关联工单时，自动取设备ID
-	if req.WorkOrderID != nil && req.DeviceHwID == 0 {
+	// 关联工单时，校验工单存在并自动带出设备ID
+	if req.WorkOrderID != nil {
 		var wo model.WorkOrder
-		if err := model.DB.First(&wo, *req.WorkOrderID).Error; err == nil {
+		if err := model.DB.First(&wo, *req.WorkOrderID).Error; err != nil {
+			badRequest(c, "关联工单不存在")
+			return
+		}
+		if req.DeviceHwID == 0 {
 			req.DeviceHwID = wo.DeviceHwID
 		}
 	}
