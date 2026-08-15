@@ -4,3 +4,7 @@ server.exe
 server.linux
 coverage/
 coverage.out
+cov_*.out
+cov_stat.js
+cov_file.js
+cov*.out
