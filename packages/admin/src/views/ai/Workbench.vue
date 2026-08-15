@@ -153,6 +153,67 @@
           </div>
         </el-dialog>
       </el-tab-pane>
+
+      <!-- 决策建议中心 (L6) -->
+      <el-tab-pane label="决策建议中心" name="decision">
+        <div class="toolbar">
+          <el-button type="warning" :loading="decLoading" @click="loadDecision">
+            <el-icon><MagicStick /></el-icon>&nbsp;生成运维健康评分与决策建议
+          </el-button>
+          <el-tag v-if="decData" :type="decData.source === 'LLM' ? 'success' : 'info'" class="ml">
+            {{ decData.source === 'LLM' ? 'AI 决策' : '规则决策' }}
+          </el-tag>
+        </div>
+        <el-empty v-if="!decData" description="点击「生成运维健康评分与决策建议」：AI 综合设备/故障/工单/成本/库存，输出健康评分与可执行的运维决策（L6 自主决策）。" />
+        <template v-else>
+          <el-row :gutter="16" align="middle">
+            <el-col :span="8">
+              <el-card class="health-card" :class="'lvl-' + decData.health.level">
+                <div class="health-score">{{ Math.round(decData.health.total) }}</div>
+                <div class="health-grade">运维健康评分 · {{ decData.health.grade }}</div>
+              </el-card>
+            </el-col>
+            <el-col :span="16">
+              <el-row :gutter="8">
+                <el-col v-for="d in decData.health.dimensions" :key="d.key" :span="8" class="dim-item">
+                  <div class="dim-name">{{ d.name }}</div>
+                  <el-progress :percentage="Math.round(d.score)" :status="d.level === 'bad' ? 'exception' : d.level === 'warn' ? 'warning' : 'success'" :stroke-width="10" />
+                  <div class="dim-hint">{{ d.hint }}</div>
+                </el-col>
+              </el-row>
+            </el-col>
+          </el-row>
+          <el-alert v-if="decData.summary" :title="decData.summary" type="info" :closable="false" class="mt" />
+
+          <el-card v-if="decData.decisions && decData.decisions.length" shadow="never" class="mt">
+            <template #header>决策建议（可一键采纳）</template>
+            <el-table :data="decData.decisions" size="small">
+              <el-table-column label="优先级" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="row.priority === 'high' ? 'danger' : row.priority === 'medium' ? 'warning' : 'info'" size="small">
+                    {{ row.priority === 'high' ? '高' : row.priority === 'medium' ? '中' : '低' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="类别" width="96" prop="category" />
+              <el-table-column label="建议" prop="title" />
+              <el-table-column label="说明" min-width="240">
+                <template #default="{ row }">
+                  <div class="dec-detail">{{ row.detail }}</div>
+                  <div v-if="row.action_hint" class="dec-hint">⚡ {{ row.action_hint }}</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="120">
+                <template #default="{ row }">
+                  <el-button v-if="row.action === 'purchase'" type="primary" size="small" :loading="adopting === row.title" @click="adopt(row)">一键采纳</el-button>
+                  <el-tag v-else size="small" type="info">建议项</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+          <el-empty v-else description="当前无待干预的决策项，运维状态良好" class="mt" />
+        </template>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -164,6 +225,7 @@ import * as echarts from 'echarts'
 import {
   analyzeInventory, analyzeCost, generateReport, listReports,
 } from '@/api/ai'
+import { getDecisionCenter, adoptDecision } from '@/api/copilot'
 
 const activeTab = ref('inventory')
 
@@ -185,6 +247,60 @@ const reports = ref<any[]>([])
 const reportModule = ref('')
 const reportDialog = ref(false)
 const currentReport = ref<any>(null)
+
+// ---- 决策建议中心 (L6) ----
+const decLoading = ref(false)
+const decData = ref<any>(null)
+const adopting = ref('')
+
+async function loadDecision() {
+  decLoading.value = true
+  try {
+    const res: any = await getDecisionCenter()
+    if (res.code === 0 && res.data?.result) {
+      decData.value = res.data.result
+    } else {
+      ElMessage.error(res.msg || '获取决策建议失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '获取决策建议失败')
+  } finally {
+    decLoading.value = false
+  }
+}
+
+async function adopt(row: any) {
+  if (!row?.data || !row.data.length) {
+    ElMessage.warning('该建议无可执行的采购明细')
+    return
+  }
+  adopting.value = row.title
+  try {
+    const items = row.data
+      .filter((d: any) => d && d.name)
+      .map((d: any) => ({
+        material_name: d.name,
+        quantity: Math.max(1, Math.round(d.value || 1)),
+        price: 0,
+      }))
+    const res: any = await adoptDecision({
+      category: row.category,
+      title: row.title,
+      supplier_id: 0,
+      items,
+    })
+    if (res.code === 0) {
+      ElMessage.success(res.data?.message || '已生成采购草稿单')
+      await loadDecision()
+    } else {
+      ElMessage.error(res.msg || '采纳失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '采纳失败')
+  } finally {
+    adopting.value = ''
+  }
+}
 
 let charts: echarts.ECharts[] = []
 
@@ -316,4 +432,15 @@ onBeforeUnmount(() => disposeCharts())
 .chart { height: 260px; }
 .report-summary { white-space: pre-line; margin-bottom: 8px; }
 .report-pre { background: #f5f7fa; padding: 12px; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 12px; }
+.health-card { text-align: center; padding: 12px 0; }
+.health-card.lvl-good { background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%); border-color: #85ce61; }
+.health-card.lvl-warn { background: linear-gradient(135deg, #fdf6ec 0%, #f8e6c9 100%); border-color: #e6a23c; }
+.health-card.lvl-bad { background: linear-gradient(135deg, #fef0f0 0%, #fbdcdc 100%); border-color: #f56c6c; }
+.health-score { font-size: 56px; font-weight: 700; color: #303133; line-height: 1.1; }
+.health-grade { margin-top: 6px; color: #606266; font-weight: 600; }
+.dim-item { padding: 4px 10px; }
+.dim-name { font-size: 13px; color: #606266; margin-bottom: 2px; }
+.dim-hint { font-size: 12px; color: #909399; margin-top: 2px; }
+.dec-detail { white-space: pre-line; color: #606266; }
+.dec-hint { color: #e6a23c; font-size: 12px; margin-top: 2px; }
 </style>

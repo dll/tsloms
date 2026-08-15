@@ -338,6 +338,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/ai/advice/purchase", handler.SuggestPurchaseCopilotAPI)
 			auth.GET("/ai/advices", handler.ListAdvicesAPI)
 			auth.POST("/ai/nl/interact", handler.NLInteractAPI)
+			auth.POST("/ai/decision/center", handler.DecisionCenterAPI)
+			auth.POST("/ai/decision/adopt", middleware.RequirePerm("purchase:manage"), handler.AdoptDecisionAPI)
 		}
 	}
 

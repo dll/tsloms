@@ -226,3 +226,42 @@ func NLInteractAPI(c *gin.Context) {
 	recordOperation(c, opType, "ai/nl/interact", opDesc)
 	ok(c, gin.H{"result": ans})
 }
+
+// ============================================================
+// L6 AI 自主决策：决策建议中心 + 一键采纳（半自动执行）
+// ============================================================
+
+// DecisionCenterAPI 运维健康评分 + 决策建议。只读聚合，不产生写操作。
+func DecisionCenterAPI(c *gin.Context) {
+	uid := userIDFromCtx(c)
+	res, err := ai.DecisionCenter(uid)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpRead, "ai/decision/center", "AI决策建议中心")
+	ok(c, gin.H{"result": res})
+}
+
+// AdoptDecisionAPI 一键采纳建议并执行（当前支持备件采购 → 生成采购草稿单）。写操作。
+// body: {"category":"备件采购","title":"...","supplier_id":0,"items":[{"material_name":"...","quantity":10,"price":0}]}
+func AdoptDecisionAPI(c *gin.Context) {
+	uid := userIDFromCtx(c)
+	var req struct {
+		Category   string            `json:"category" binding:"required"`
+		Title      string            `json:"title"`
+		SupplierID uint              `json:"supplier_id"`
+		Items      []ai.PurchaseLine `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "参数错误")
+		return
+	}
+	orderNo, err := ai.AdoptDecisionApply(uid, req.Category, req.Title, req.SupplierID, req.Items)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	recordOperation(c, model.OpCreate, "ai/decision/adopt", "AI一键采纳：生成采购单 "+orderNo)
+	ok(c, gin.H{"order_no": orderNo, "message": "已生成采购草稿单 " + orderNo})
+}

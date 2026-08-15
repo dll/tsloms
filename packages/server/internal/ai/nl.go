@@ -98,6 +98,7 @@ func classifyIntent(client *LLMClient, userID uint, text string) (NLIntent, erro
 - device_status(设备状态,params: hw_id=设备硬件ID或名称)
 - workorder_stats(工单统计,params: days=天数)
 - expense_summary(费用归因,params: days=天数)
+- ops_health(运维健康评分/决策建议,params: 无)
 - create_fault(自然语言报修→建故障单,params: desc=故障描述,device=设备ID或路口,hw_id=硬件ID,level=critical/normal)
 - create_workorder(命令式建工单,params: device=设备ID或路口,hw_id=硬件ID,note=备注)
 - 查询/统计类归 query，创建工单/故障归 command，业务知识/操作咨询归 fallback(tool=知识库)。
@@ -132,6 +133,9 @@ func ruleClassify(text string) NLIntent {
 		return it
 	}
 	switch {
+	case strings.Contains(text, "健康评分") || strings.Contains(text, "健康分") || strings.Contains(text, "运维健康") || strings.Contains(text, "决策建议") || strings.Contains(text, "健康度") || strings.Contains(text, "健康状态"):
+		it.Intent = "query"
+		it.Tool = "ops_health"
 	case strings.Contains(text, "路口") && (strings.Contains(text, "故障") || strings.Contains(text, "排行") || strings.Contains(text, "最多") || strings.Contains(text, "TOP")):
 		it.Intent = "query"
 		it.Tool = "fault_rank"
@@ -174,6 +178,8 @@ func runTool(userID uint, it NLIntent, raw string) NLAnswer {
 		return runWorkOrderStats(userID, it)
 	case "expense_summary":
 		return runExpenseSummary(userID, it)
+	case "ops_health":
+		return runOpsHealth(userID, it)
 	case "create_fault":
 		return runCreateFault(userID, it, raw)
 	case "create_workorder":
@@ -334,6 +340,34 @@ func runExpenseSummary(userID uint, it NLIntent) NLAnswer {
 		reply += "，暂无费用记录。"
 	}
 	return NLAnswer{Reply: reply, Intent: "query", Tool: "expense_summary", Data: map[string]any{"days": days, "total": total, "by_type": byType}, Source: "规则"}
+}
+
+// runOpsHealth 运维健康评分 + 决策建议（L6 决策中心入口，只读）
+func runOpsHealth(userID uint, it NLIntent) NLAnswer {
+	health, err := BuildOpsHealth()
+	if err != nil {
+		return NLAnswer{Reply: "健康评分失败：" + err.Error(), Intent: "query", Tool: "ops_health", Source: "规则"}
+	}
+	reply := health.Summary
+	// 附决策建议摘要（最多3条）
+	decisions, _ := BuildDecisions()
+	if len(decisions) > 0 {
+		reply += " 决策建议："
+		for i, d := range decisions {
+			if i >= 3 {
+				break
+			}
+			reply += fmt.Sprintf("%s（%s）、", d.Title, d.Priority)
+		}
+		reply = strings.TrimRight(reply, "、") + "。"
+	} else {
+		reply += " 暂无明显需干预的决策项。"
+	}
+	return NLAnswer{
+		Reply: reply, Intent: "query", Tool: "ops_health",
+		Data:   map[string]any{"health_total": health.Total, "level": health.Grade, "decision_count": len(decisions)},
+		Source: "规则",
+	}
 }
 
 // ---- 命令类工具（真实写入） ----

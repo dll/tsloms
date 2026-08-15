@@ -101,3 +101,67 @@ export interface NLAnswer {
 export function nlInteract(text: string): Promise<ApiResponse> {
   return request.post('/ai/nl/interact', { text }) as unknown as Promise<ApiResponse>
 }
+
+// ---- L6 AI 自主决策（决策建议中心） ----
+
+// 运维健康评分维度
+interface HealthDimension {
+  key: string
+  name: string
+  score: number
+  level: 'good' | 'warn' | 'bad'
+  hint: string
+}
+
+// 运维健康评分
+interface OpsHealth {
+  total: number
+  level: 'good' | 'warn' | 'bad'
+  grade: string
+  dimensions: HealthDimension[]
+  summary: string
+  at: string
+}
+
+// 决策建议
+interface DecisionSuggestion {
+  category: string
+  title: string
+  detail: string
+  priority: 'high' | 'medium' | 'low'
+  action: 'purchase' | 'assign' | 'none'
+  action_hint: string
+  data: { name: string; value: number }[]
+}
+
+// 决策中心结果
+interface DecisionCenterResult {
+  health: OpsHealth
+  decisions: DecisionSuggestion[]
+  summary: string
+  source: string
+  tokens_used: number
+}
+
+// 运维健康评分 + 决策建议
+function getDecisionCenter(): Promise<ApiResponse> {
+  return request.post('/ai/decision/center', {}) as unknown as Promise<ApiResponse>
+}
+
+// 一键采纳建议（备件采购 → 生成采购草稿单）
+function adoptDecision(payload: {
+  category: string
+  title: string
+  supplier_id: number
+  items: { material_name: string; quantity: number; price: number }[]
+}): Promise<ApiResponse> {
+  return request.post('/ai/decision/adopt', payload) as unknown as Promise<ApiResponse>
+}
+
+export {
+  getDecisionCenter,
+  adoptDecision,
+  type DecisionCenterResult,
+  type OpsHealth,
+  type DecisionSuggestion,
+}
