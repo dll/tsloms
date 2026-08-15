@@ -1,11 +1,11 @@
-# TSLOMS 结项审核报告（SAR）v4.3 — 平台 AI 化（主动巡检 + 流程 AI 辅助 + 自然语言交互）
+# TSLOMS 结项审核报告（SAR）v4.3 — 平台 AI 化（主动巡检 + 流程 AI 辅助 + 自然语言交互 + 决策建议中心）
 
-> 版本：v4.3 ｜ 日期：2026-08-15 ｜ 基线：commit `0c02e1c`（L1-L3/L4部分）→ `e93f928`（L4全流程）→ `cf84142`（L5 自然语言交互）
+> 版本：v4.3 ｜ 日期：2026-08-15 ｜ 基线：commit `0c02e1c`（L1-L3/L4部分）→ `e93f928`（L4全流程）→ `cf84142`（L5）→ `ef01746`（L6 决策建议中心 + 故障删除接口）
 > 前置：v4.0（AI 预测/诊断/生命周期）、v4.1（AI 原生增强）、v4.2（库存进销存/费用闭环 + RBAC 权限隔离）。
-> 本版范围：A. AI 主动巡检（定时日报 + 异常预警 + 站内推送）；B. 流程 AI 辅助嵌入（全流程）；C. AI 自然语言交互（L5）。
+> 本版范围：A. AI 主动巡检（定时日报 + 异常预警 + 站内推送）；B. 流程 AI 辅助嵌入（全流程）；C. AI 自然语言交互（L5）；D. AI 决策建议中心（L6）+ 故障删除接口。
 
-> **六级 AI 化定位**：本版落地 **L3（AI 主动服务）** 全部 + **L4（流程 AI 辅助）** 全覆盖 + **L5（自然语言交互）** 已在顶部 AI 助手落地；
-> 完整演进路线见 `docs/PRD-TSLOMS-v4.3.md ★ 平台 AI 化六级演进路线`，供后期按层推进（下一层 L6 自主决策）。
+> **六级 AI 化定位**：本版落地 **L3（AI 主动服务）** 全部 + **L4（流程 AI 辅助）** 全覆盖 + **L5（自然语言交互）** + **L6（决策建议中心）**；
+> 完整演进路线见 `docs/PRD-TSLOMS-v4.3.md ★ 平台 AI 化六级演进路线`。
 
 ---
 
@@ -24,6 +24,9 @@
 | `internal/ai/copilot_extra_test.go` | L4 规则兜底单测（采购校验/采购合计/设备空 hw_id） |
 | `internal/ai/nl.go` | **L5 自然语言交互引擎**：意图识别（query/command/fallback）+ 工具执行（故障排行/设备状态/工单统计/费用归因/报修建单/命令式建单）+ 内置知识库 RAG；LLM 识别、规则兜底 |
 | `internal/ai/nl_test.go` | L5 规则识别/参数解析/咨询判断单测 |
+| `internal/ai/decision.go` | **L6 决策建议中心**：`BuildOpsHealth`（运维健康评分 6 维度）、`BuildDecisions`（人力排班/备件采购预测/成本优化/设备运维）、`DecisionCenter`（编排+LLM总结）、`AdoptDecisionApply`（一键采纳→生成采购单） |
+| `internal/ai/decision_test.go` | L6 评分等级/裁剪/排序/规则识别单测 |
+| `internal/handler/fault.go` | 新增 `DeleteFault`（故障删除，有关联未完成工单时拒绝） |
 | `internal/handler/ai_advance.go` | 新增 `SuggestDeviceCopilotAPI`/`SuggestWorkOrderCreateAPI`/`SuggestPurchaseCopilotAPI` + `NLInteractAPI`（L5 自然语言入口） |
 
 ### 前端（Vue3, packages/admin）
@@ -39,7 +42,8 @@
 | `src/views/device/index.vue` | 设备新建/编辑弹窗嵌入 **AI 填写建议**（依据录入字段实时生成） |
 | `src/views/inventory/Purchase.vue` | 采购新建弹窗嵌入 **AI 采购校验**（数量/金额校验 + 供应商建议） |
 | `src/components/AiAssistant.vue` | **L5 AI 助手**：顶部入口，对话式自然语言查询/命令，含快捷建议、结构化表格渲染、来源/工具标注 |
-| `src/api/copilot.ts` | 新增 `nlInteract` + `NLAnswer` 类型（L5 后端对接） |
+| `src/api/copilot.ts` | 新增 `nlInteract` + `NLAnswer` 类型（L5）+ `getDecisionCenter`/`adoptDecision`（L6） |
+| `src/views/ai/Workbench.vue` | 新增「决策建议中心」页签：健康评分仪表 + 决策建议 + 一键采纳（备件采购→生成采购单） |
 
 ---
 
@@ -72,6 +76,14 @@
 - 知识库 RAG：内置运维知识库（操作流程/设备/采购/固件/报告），关键词检索直接回答咨询问题。
 - 设备解析鲁棒性：`设备N` 显式模式 + hw_id 参数 + 路口名/交叉口提取多级兜底，保证「设备1」这类短 ID 也能命中。
 
+### 5. AI 决策建议中心（L6）
+- 新增 **决策建议中心页签**（AI 工作台）+ 后端 `POST /ai/decision/center`：实时聚合设备/故障/工单/成本/库存 → 输出运维健康评分与决策建议。
+- **运维健康评分** `BuildOpsHealth`：0-100 综合分 + 6 维度（设备在线率/未解决故障/工单超时/工单闭环/运维成本/备件库存），每维度带评分、等级（好/关注/告警）与指标提示；纯规则、不依赖 LLM。
+- **决策建议** `BuildDecisions`：人力排班（维修人负载偏高 → 建议转派）、备件采购预测（近30天领用 vs 库存 → 建议补货缺口）、成本优化（按类型/设备归因）、设备运维（离线设备核查）；每条带优先级与可执行动作。
+- **一键采纳（半自动执行）** `AdoptDecisionApply` + `POST /ai/decision/adopt`：备件采购类建议 → 自动生成采购草稿单（复用 `NextBizNo` + `PurchaseOrder`），记录操作日志；需 `purchase:manage` 权限。
+- **NL 工具** `ops_health`：顶部 AI 助手「运维健康评分/决策建议」→ 直接返回评分与建议摘要。
+- 新增 **故障删除接口** `DELETE /faults/:id` + `fault:delete` 权限（RBAC 29 权限点）；有关联未完成工单时拒绝删除避免悬空引用。
+
 ---
 
 ## 三、测试结果
@@ -103,8 +115,12 @@
 | `/ai/nl/interact`（报修「报修：设备1黄灯不亮」） | ✅ 200，tool=create_fault，did_write=true 真实建故障单 |
 | `/ai/nl/interact`（命令式建单「给设备1建工单」） | ✅ 200，tool=create_workorder，真实建工单 |
 | `/ai/nl/interact` 空/缺 text | ✅ 400 + code=-1 |
+| `/ai/nl/interact`（健康评分「运维健康评分」） | ✅ 200，tool=ops_health，返回评分+建议摘要 |
+| `/ai/decision/center` | ✅ 200，健康评分 66.7（关注），6 维度，决策建议数组 |
+| `/ai/decision/adopt`（备件采购建议一键采纳） | ✅ 生成采购草稿单（当前库存充足时跳过） |
+| `DELETE /faults/:id` + fault:delete | ✅ 200 删除真实故障，删除后 404；RBAC 权限 29 含 fault:delete |
 | 服务 active / gateway / admin | ✅ active / 200 / 200 |
-| RBAC 权限未受影响 | ✅ 28 权限点 |
+| RBAC 权限未受影响 | ✅ 29 权限点（含新增 fault:delete） |
 
 > 部署后服务启动即完成一次巡检，自动生成 1 条日报（report）与 1 条预警（alert）通知，验证调度与推送链路真实生效。
 
@@ -114,7 +130,8 @@
 
 - 阶段一（L4 流程 AI 辅助，20260815211932/21542256）：dist + 后端二进制，SHA 校验 → 备份 → 替换 → 重启；
 - 阶段二（L5 自然语言交互，20260815214834/215418/215834/220133）：前端 AiAssistant + 后端 NL 引擎逐步加固（设备解析兜底、咨询判断、空入参校验）；统一脚本 `tsloms_l5_deploy.sh`。
-- 备份：`server.pre-l4-*`/`dist.pre-l4-*`、`server.pre-l5-*`/`dist.pre-l5-*`。
+- 阶段三（L6 决策建议中心 + 故障删除接口，20260815223237）：后端二进制 + 前端 dist（Workbench 决策页签）；部署中修正 dist 嵌套 `dist/dist` 结构（提升到根）后 admin 200；最终新二进制 SHA（远端）= `8318703d…` 与本地一致。
+- 备份：`server.pre-l4-*`/`dist.pre-l4-*`、`server.pre-l5-*`/`dist.pre-l5-*`、`server.pre-l6-*`/`dist.pre-l6-*`。
 - 最终新二进制 SHA（远端）= `99b336e1…`，与本地 `server.linux` 一致。
 - 因 RBAC 阶段发现「二进制真实路径为 `/opt/tsloms/packages/server/server`（app 目录内文件）」，脚本已按正确路径部署。
 - `tsloms-server` active、NRestarts=0，网关/后台 200。
@@ -123,8 +140,7 @@
 
 ## 五、遗留与二期
 
-- 下一层为 **L6 AI 自主决策**：实时异常流检测、AI 决策建议中心（健康评分/智能排班/备件预测/成本优化）、半自动/自动执行、多代理协作。
-- L5 文字交互已上线；**语音输入**属后续增强（外部 ASR 通道）。
+- L6 剩余：**实时异常流检测**（MQTT 实时分析自动联动派单）、自动执行增强（排班自动指派/采购自动下单）、多代理协作、语音输入（外部 ASR）。
 - 巡检仅站内推送；如需短信/邮件告警，属后续外部通道扩展。
 
 ---
