@@ -1,5 +1,21 @@
 <template>
   <div class="workorder-page">
+    <!-- 统计卡片 -->
+    <el-row :gutter="12" class="stat-row">
+      <el-col :span="4" v-for="s in statCards" :key="s.key">
+        <el-card shadow="never" class="stat-card" @click="setStatusFilter(s.key)">
+          <div class="stat-num" :style="{ color: s.color }">{{ s.key === 'avg' ? avgClosure : (statMap[s.key] || 0) }}</div>
+          <div class="stat-label" :class="{ active: searchForm.status === s.key }">{{ s.label }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-num" style="color: #409EFF">{{ totalCount }}</div>
+          <div class="stat-label">工单总数</div>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <!-- 搜索栏 -->
     <el-card shadow="never" class="search-card">
       <el-form :inline="true" :model="searchForm" @submit.prevent="handleSearch">
@@ -8,7 +24,7 @@
             v-model="searchForm.order_no"
             placeholder="请输入工单编号"
             clearable
-            style="width: 200px"
+            style="width: 180px"
           />
         </el-form-item>
         <el-form-item label="设备">
@@ -20,7 +36,7 @@
             remote
             :remote-method="searchDevices"
             :loading="devLoading"
-            style="width: 220px"
+            style="width: 200px"
           >
             <el-option-group v-for="g in deviceGroups" :key="g.label" :label="g.label">
               <el-option
@@ -33,12 +49,19 @@
           </el-select>
         </el-form-item>
         <el-form-item label="工单状态">
-          <el-select v-model="searchForm.status" placeholder="全部" clearable style="width: 140px">
+          <el-select v-model="searchForm.status" placeholder="全部" clearable style="width: 130px">
             <el-option label="待处理" value="pending" />
             <el-option label="处理中" value="processing" />
             <el-option label="已完成" value="completed" />
             <el-option label="已驳回" value="rejected" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="创建时间">
+          <el-date-picker
+            v-model="dateRange" type="daterange" range-separator="至" size="small"
+            start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD"
+            style="width: 230px" @change="handleDateChange"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
@@ -307,6 +330,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Location } from '@element-plus/icons-vue'
 import { getWorkOrders, getWorkOrderDetail, updateWorkOrderStatus, assignWorkOrder, getAssignableUsers, createWorkOrder, deleteWorkOrder } from '@/api/workorder'
+import { getWorkOrderStats, getWorkOrderAvgClosure } from '@/api/dashboard'
 import { getDevices } from '@/api/device'
 import { getFaults } from '@/api/fault'
 import { useAuthStore } from '@/store/auth'
@@ -344,6 +368,49 @@ const searchForm = reactive({
   device_hw_id: '',
   status: '',
 })
+const dateRange = ref<[string, string] | null>(null)
+
+// 统计卡片
+const statCards = [
+  { key: 'pending', label: '待处理', color: '#F56C6C' },
+  { key: 'processing', label: '处理中', color: '#E6A23C' },
+  { key: 'completed', label: '已完成', color: '#67C23A' },
+  { key: 'overdue', label: '超时', color: '#D03050' },
+  { key: 'avg', label: '平均闭环(小时)', color: '#409EFF' },
+]
+const statMap = ref<Record<string, number>>({})
+const avgClosure = ref<string>('-')
+const totalCount = ref(0)
+
+async function loadStats() {
+  try {
+    const [statsRes, avgRes] = await Promise.all([getWorkOrderStats(), getWorkOrderAvgClosure({ days: 30 })])
+    const d = statsRes.data || {}
+    statMap.value = {
+      pending: d.pending || 0,
+      processing: d.processing || 0,
+      completed: d.completed || 0,
+      overdue: d.overdue || 0,
+    }
+    totalCount.value = (d.pending || 0) + (d.processing || 0) + (d.completed || 0)
+    const a = avgRes.data
+    if (a && a.avg_hours != null) {
+      avgClosure.value = (Math.round(a.avg_hours * 10) / 10).toString()
+    } else if (a && a.avg_closure_hours != null) {
+      avgClosure.value = (Math.round(a.avg_closure_hours * 10) / 10).toString()
+    }
+  } catch { /* 忽略统计失败 */ }
+}
+
+function setStatusFilter(key: string) {
+  if (key === 'avg') return
+  searchForm.status = key
+  handleSearch()
+}
+
+function handleDateChange() {
+  handleSearch()
+}
 
 // 表格数据
 const loading = ref(false)
@@ -515,6 +582,8 @@ async function fetchData() {
       order_no: searchForm.order_no || undefined,
       device_hw_id: searchForm.device_hw_id || undefined,
       status: searchForm.status || undefined,
+      start_time: dateRange.value?.[0] || undefined,
+      end_time: dateRange.value?.[1] || undefined,
     })
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
@@ -536,6 +605,7 @@ function handleReset() {
   searchForm.order_no = ''
   searchForm.device_hw_id = ''
   searchForm.status = ''
+  dateRange.value = null
   pagination.page = 1
   fetchData()
 }
@@ -628,10 +698,34 @@ onMounted(async () => {
   searchDevices('')
   try { const r = await getAssignableUsers(); assignableUsers.value = r.data?.list || [] } catch { /* 忽略 */ }
   fetchData()
+  loadStats()
 })
 </script>
 
 <style scoped>
+/* 统计卡片 */
+.stat-row {
+  margin-bottom: 12px;
+}
+.stat-card {
+  text-align: center;
+  cursor: pointer;
+}
+.stat-num {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-label {
+  color: #909399;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.stat-label.active {
+  color: #409eff;
+  font-weight: 600;
+}
+
 .search-card {
   margin-bottom: 16px;
 }

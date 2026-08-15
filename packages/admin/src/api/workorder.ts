@@ -9,6 +9,8 @@ export interface WorkOrderQuery {
   status?: string
   assignee_id?: number
   order_no?: string
+  start_time?: string
+  end_time?: string
 }
 
 // 创建工单参数
