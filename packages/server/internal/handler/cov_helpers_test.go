@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/model"
@@ -53,3 +54,6 @@ func mustOK(t *testing.T, code int, body map[string]interface{}, ctx string) {
 		t.Fatalf("%s: 业务 code=%v (%v)", ctx, body["code"], body["message"])
 	}
 }
+
+// now 当前时间（测试用，避免重复 import time）
+func now() time.Time { return time.Now() }
