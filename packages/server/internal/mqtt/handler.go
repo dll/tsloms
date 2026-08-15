@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -89,17 +90,9 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 	case CmdPowerOn:
 		h.HandlePowerOn(frame, eventPak, topic)
 	case CmdCheckFW:
-		h.logger.Info("固件查询请求",
-			zap.String("topic", topic),
-			zap.Uint32("swVer", frame.SwVer),
-			zap.Uint16("cmdSeq", frame.CmdSeq),
-		)
+		h.HandleCheckFW(frame, topic)
 	case CmdGetFW:
-		h.logger.Info("固件数据请求",
-			zap.String("topic", topic),
-			zap.Uint32("swVer", frame.SwVer),
-			zap.Uint16("cmdSeq", frame.CmdSeq),
-		)
+		h.HandleGetFW(frame, topic)
 	default:
 		h.logger.Warn("未知命令类型",
 			zap.String("topic", topic),
@@ -340,6 +333,113 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 	)
 }
 
+// HandleCheckFW 处理设备固件查询（CMD_CHECK_FW 0x30）
+// 设备上报当前 swVer，服务器查询是否有已发布的更高版本固件：
+// 有 -> 回应含目标版本与固件信息，指导设备发起升级；无 -> 回应无新版本（目标版本号填 0）
+func (h *Handler) HandleCheckFW(frame *CmdFrame, uplinkTopic string) {
+	deviceHwID := frameHwID(frame)
+	h.logger.Info("固件查询请求",
+		zap.Uint32("hwId", deviceHwID),
+		zap.Uint32("swVer", frame.SwVer),
+		zap.Uint16("cmdSeq", frame.CmdSeq),
+	)
+
+	// 查询最新已发布固件
+	var fw model.FirmwarePackage
+	err := model.DB.Where("published = ?", true).Order("major DESC, minor DESC, build DESC").First(&fw).Error
+	if err != nil {
+		// 无可用固件，回应无新版本
+		h.sendFWCheckAck(frame, uplinkTopic, 0, "")
+		return
+	}
+
+	// 是否可升级：比较版本（优先位域值，其次大/次版本号）
+	targetSwVer := fw.SwVersion
+	if targetSwVer == 0 {
+		// 位域值未设置时，按解析版本号比较
+		if swVerMajor(frame.SwVer) > fw.Major ||
+			(swVerMajor(frame.SwVer) == fw.Major && swVerMinor(frame.SwVer) >= fw.Minor) {
+			h.sendFWCheckAck(frame, uplinkTopic, 0, "")
+			return
+		}
+	} else if frame.SwVer >= targetSwVer {
+		h.sendFWCheckAck(frame, uplinkTopic, 0, "")
+		return
+	}
+
+	// 有可升级固件：回应目标版本位域值
+	h.logger.Info("检测到设备固件可升级",
+		zap.Uint32("hwId", deviceHwID),
+		zap.String("target", fw.Version),
+		zap.Uint32("targetSwVer", fw.SwVersion),
+	)
+	h.sendFWCheckAck(frame, uplinkTopic, fw.SwVersion, fw.Version)
+}
+
+// sendFWCheckAck 发送固件查询回应帧
+// targetSwVer 为目标固件位域值；0 表示无新版本
+func (h *Handler) sendFWCheckAck(frame *CmdFrame, uplinkTopic string, targetSwVer uint32, targetVer string) {
+	if h.mqttClient == nil || !h.mqttClient.IsConnected() {
+		return
+	}
+	// 数据部分：目标固件位域值(4字节)。0 表示无新版本
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data, targetSwVer)
+	ackCmd := MakeAckCmd(CmdCheckFW)
+	payload := BuildCmdFrame(ackCmd, frame.SwVer, frame.CmdSeq, targetSwVer, data)
+	downTopic := buildDownTopic(uplinkTopic, frame.CmdSeq)
+	if err := h.mqttClient.Publish(downTopic, 1, payload); err != nil {
+		h.logger.Error("发送固件查询回应失败",
+			zap.String("topic", downTopic),
+			zap.Error(err),
+		)
+		return
+	}
+	h.logger.Info("已发送固件查询回应",
+		zap.String("topic", downTopic),
+		zap.Uint32("targetSwVer", targetSwVer),
+		zap.String("targetVersion", targetVer),
+	)
+}
+
+// HandleGetFW 处理设备固件数据请求（CMD_GET_FW 0x31）
+// 设备请求固件升级数据，服务器回应最新已发布固件包的位域值供其校验
+func (h *Handler) HandleGetFW(frame *CmdFrame, uplinkTopic string) {
+	deviceHwID := frameHwID(frame)
+	h.logger.Info("固件数据请求",
+		zap.Uint32("hwId", deviceHwID),
+		zap.Uint32("swVer", frame.SwVer),
+		zap.Uint16("cmdSeq", frame.CmdSeq),
+	)
+
+	var fw model.FirmwarePackage
+	err := model.DB.Where("published = ?", true).Order("major DESC, minor DESC, build DESC").First(&fw).Error
+	if err != nil {
+		h.sendFWCheckAck(frame, uplinkTopic, 0, "")
+		return
+	}
+	h.sendFWCheckAck(frame, uplinkTopic, fw.SwVersion, fw.Version)
+}
+
+// buildDownTopic 从上行 Topic 构造下行 Topic：将末尾 /U 替换为 /D
+func buildDownTopic(uplinkTopic string, cmdSeq uint16) string {
+	down := strings.TrimSuffix(uplinkTopic, "/U") + "/D"
+	if down == "/D" {
+		down = fmt.Sprintf("trafficLight/down/%d/ack", cmdSeq)
+	}
+	return down
+}
+
+// frameHwID 从命令帧中提取设备硬件 ID
+// 固件命令帧不含事件记录，无法直接取 LedHwID；此处返回 0（无事件数据时）
+func frameHwID(frame *CmdFrame) uint32 {
+	return 0
+}
+
+// swVerMajor / swVerMinor 提取位域版本号主/次版本（bit31:28 / bit27:24）
+func swVerMajor(v uint32) uint32 { return (v >> 28) & 0xF }
+func swVerMinor(v uint32) uint32 { return (v >> 24) & 0xF }
+
 // sendTimeSyncAck 发送时间同步回应
 // 对 CMD_CHECKIN 和 CMD_POWER_ON，通过 userVal 返回当前 epoch seconds（UTC+8）
 // uplinkTopic 为设备上行 Topic，将末尾 /U 替换为 /D 构造下行 Topic
@@ -356,11 +456,7 @@ func (h *Handler) sendTimeSyncAck(frame *CmdFrame, uplinkTopic string) {
 	ackPayload := BuildTimeSyncAck(frame.Cmd, frame.SwVer, frame.CmdSeq, epochSeconds)
 
 	// 从上行 Topic 构造下行 Topic：将末尾 /U 替换为 /D
-	downTopic := strings.TrimSuffix(uplinkTopic, "/U") + "/D"
-	if downTopic == "/D" {
-		// 降级处理：Topic 格式异常时使用默认格式
-		downTopic = fmt.Sprintf("trafficLight/down/%d/ack", frame.CmdSeq)
-	}
+	downTopic := buildDownTopic(uplinkTopic, frame.CmdSeq)
 
 	if err := h.mqttClient.Publish(downTopic, 1, ackPayload); err != nil {
 		h.logger.Error("发送时间同步回应失败",

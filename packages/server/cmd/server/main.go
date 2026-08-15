@@ -224,6 +224,17 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/media/streams", handler.CreateRTSPMedia)
 			auth.DELETE("/media/:id", middleware.RequireOperator(), handler.DeleteDeviceMedia)
 
+			// 固件管理（OTA 升级）
+			auth.GET("/firmwares", handler.ListFirmwares)
+			auth.GET("/firmwares/:id", handler.GetFirmware)
+			auth.POST("/firmwares/upload", middleware.RequireOperator(), handler.UploadFirmware)
+			auth.PUT("/firmwares/:id", middleware.RequireOperator(), handler.UpdateFirmware)
+			auth.PUT("/firmwares/:id/publish", middleware.RequireOperator(), handler.PublishFirmware)
+			auth.DELETE("/firmwares/:id", middleware.RequireAdmin(), handler.DeleteFirmware)
+			auth.GET("/firmware-upgrades", handler.ListFirmwareUpgrades)
+			auth.POST("/firmware-upgrades", middleware.RequireOperator(), handler.CreateFirmwareUpgrade)
+			auth.DELETE("/firmware-upgrades/:id", middleware.RequireAdmin(), handler.DeleteFirmwareUpgrade)
+
 			// 维修耗材
 			auth.GET("/materials", handler.ListMaterials)
 			auth.POST("/materials", middleware.RequireOperator(), handler.UpsertMaterial)

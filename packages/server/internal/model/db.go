@@ -68,6 +68,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&AIConfig{},
 		&AIUsage{},
 		&AIPrediction{},
+		&FirmwarePackage{},
+		&FirmwareUpgradeRecord{},
 	); err != nil {
 		return err
 	}
