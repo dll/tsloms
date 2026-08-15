@@ -40,7 +40,7 @@ func newUserEngine(t *testing.T) *gin.Engine {
 func TestCreateUser_AndList(t *testing.T) {
 	r := newUserEngine(t)
 	// 创建用户
-	body := `{"username":"operator1","password":"pass123","role":"operator","phone":"13800000000"}`
+	body := `{"username":"operator1","password":"StrongPass123","role":"operator","phone":"13800000000"}`
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("POST", "/users", bodyReader(body)))
 	if w.Code != http.StatusOK {
@@ -69,7 +69,7 @@ func TestCreateUser_AndList(t *testing.T) {
 
 func TestCreateUser_Duplicate(t *testing.T) {
 	r := newUserEngine(t)
-	post := `{"username":"u1","password":"pass123","role":"viewer"}`
+	post := `{"username":"u1","password":"StrongPass123","role":"viewer"}`
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(post)))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("POST", "/users", bodyReader(post)))
@@ -90,7 +90,7 @@ func TestCreateUser_WeakPassword(t *testing.T) {
 func TestDeleteUser_NotSelf(t *testing.T) {
 	r := newUserEngine(t)
 	// 先建一个用户 id=1
-	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"a","password":"pass123","role":"viewer"}`)))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"a","password":"StrongPass123","role":"viewer"}`)))
 	// 当前模拟 user_id=1，删除自己应被拒
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("DELETE", "/users/1", nil))
@@ -101,9 +101,9 @@ func TestDeleteUser_NotSelf(t *testing.T) {
 
 func TestResetUserPassword(t *testing.T) {
 	r := newUserEngine(t)
-	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"b","password":"pass123","role":"viewer"}`)))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"b","password":"StrongPass123","role":"viewer"}`)))
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest("PUT", "/users/1/password", bodyReader(`{"password":"newpass9"}`)))
+	r.ServeHTTP(w, httptest.NewRequest("PUT", "/users/1/password", bodyReader(`{"password":"NewPass2024"}`)))
 	if w.Code != http.StatusOK {
 		t.Fatalf("重置密码状态码 = %d body=%s", w.Code, w.Body.String())
 	}
@@ -111,10 +111,10 @@ func TestResetUserPassword(t *testing.T) {
 	// 用 model 直接验证哈希
 	var u model.User
 	model.DB.First(&u, 1)
-	if err := verifyPassword(u.PasswordHash, "newpass9"); err != nil {
+	if err := verifyPassword(u.PasswordHash, "NewPass2024"); err != nil {
 		t.Errorf("新密码校验失败: %v", err)
 	}
-	if err := verifyPassword(u.PasswordHash, "pass123"); err == nil {
+	if err := verifyPassword(u.PasswordHash, "StrongPass123"); err == nil {
 		t.Error("旧密码不应再有效")
 	}
 }

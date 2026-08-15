@@ -88,7 +88,7 @@ func TestDepartment_DeleteWithMembers_Rejected(t *testing.T) {
 	// 建部门
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/departments", bodyReader(`{"name":"技术部"}`)))
 	// 建用户并关联部门 1
-	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"op1","password":"pass123","role":"operator","department_id":1}`)))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users", bodyReader(`{"username":"op1","password":"StrongPass123","role":"operator","department_id":1}`)))
 	// 删除该部门应被拒（仍有成员）
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("DELETE", "/departments/1", nil))
@@ -101,7 +101,7 @@ func TestUser_CreateWithDepartmentAndFilter(t *testing.T) {
 	r := newDeptEngine(t)
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/departments", bodyReader(`{"name":"运维二部"}`)))
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/users",
-		bodyReader(`{"username":"op2","password":"pass123","role":"operator","real_name":"王五","phone":"13900000000","department_id":1}`)))
+		bodyReader(`{"username":"op2","password":"StrongPass123","role":"operator","real_name":"王五","phone":"13900000000","department_id":1}`)))
 	// 按部门筛选
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/users?department_id=1", nil))

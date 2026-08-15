@@ -91,11 +91,32 @@ func ListUsers(c *gin.Context) {
 	ok(c, gin.H{"list": safeUsers, "total": total, "page": page, "page_size": pageSize})
 }
 
+// validatePasswordStrength 强密码校验：至少10位，且同时包含字母与数字（审计 #2 建议）
+func validatePasswordStrength(pw string) string {
+	if len(pw) < 10 {
+		return "密码至少10位"
+	}
+	hasLetter := false
+	hasDigit := false
+	for _, r := range pw {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			hasLetter = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return "密码需同时包含字母和数字"
+	}
+	return ""
+}
+
 // CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
 	var req struct {
 		Username     string `json:"username" binding:"required"`
-		Password     string `json:"password" binding:"required,min=6"`
+		Password     string `json:"password" binding:"required"`
 		Role         string `json:"role" binding:"required"`
 		RealName     string `json:"real_name"`
 		Phone        string `json:"phone"`
@@ -103,7 +124,11 @@ func CreateUser(c *gin.Context) {
 		DepartmentID *uint  `json:"department_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, "参数错误（用户名/密码必填，密码至少6位）")
+		badRequest(c, "参数错误（用户名/密码必填）")
+		return
+	}
+	if msg := validatePasswordStrength(req.Password); msg != "" {
+		badRequest(c, msg)
 		return
 	}
 	if !validRole(req.Role) {
@@ -220,10 +245,14 @@ func ResetUserPassword(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Password string `json:"password" binding:"required,min=6"`
+		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, "密码必填且至少6位")
+		badRequest(c, "密码必填")
+		return
+	}
+	if msg := validatePasswordStrength(req.Password); msg != "" {
+		badRequest(c, msg)
 		return
 	}
 
