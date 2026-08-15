@@ -51,7 +51,7 @@
           <el-icon><Tickets /></el-icon>
           <template #title>工单管理</template>
         </el-menu-item>
-        <el-sub-menu index="/ai">
+        <el-sub-menu v-if="authStore.hasPerm('ai:ops') || authStore.hasPerm('ai:config')" index="/ai">
           <template #title>
             <el-icon><TrendCharts /></el-icon>
             <span>AI 分析</span>
@@ -60,7 +60,7 @@
           <el-menu-item index="/ai/workbench">AI 工作台</el-menu-item>
           <el-menu-item index="/ai/diagnose">AI 诊断</el-menu-item>
           <el-menu-item index="/ai/lifecycle">生命周期</el-menu-item>
-          <el-menu-item index="/ai/config">额度设置</el-menu-item>
+          <el-menu-item v-if="authStore.hasPerm('ai:config')" index="/ai/config">额度设置</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/firmware">
           <el-icon><Upload /></el-icon>
@@ -80,7 +80,7 @@
           <el-icon><Document /></el-icon>
           <template #title>系统日志</template>
         </el-menu-item>
-        <el-menu-item index="/settings">
+        <el-menu-item v-if="authStore.hasPerm('user:manage') || authStore.hasPerm('dept:manage') || authStore.hasPerm('role:manage')" index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
         </el-menu-item>
@@ -173,6 +173,8 @@ onMounted(async () => {
       // 获取用户信息失败，忽略
     }
   }
+  // 拉取当前用户功能权限（供菜单/按钮联动）
+  await authStore.loadPermissions()
 })
 </script>
 

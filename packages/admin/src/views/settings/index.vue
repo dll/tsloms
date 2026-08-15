@@ -43,8 +43,8 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- 用户管理（仅管理员） -->
-      <el-tab-pane v-if="authStore.user?.role === 'admin'" label="用户管理" name="users">
+      <!-- 用户管理（仅“用户-管理”权限） -->
+      <el-tab-pane v-if="authStore.hasPerm('user:manage')" label="用户管理" name="users">
         <el-card shadow="never">
           <div class="user-toolbar">
             <div class="user-search">
@@ -113,8 +113,42 @@
         </el-card>
       </el-tab-pane>
 
-      <!-- 组织/部门管理（仅管理员） -->
-      <el-tab-pane v-if="authStore.user?.role === 'admin'" label="组织管理" name="departments">
+      <el-tab-pane v-if="authStore.hasPerm('role:manage')" label="角色管理" name="roles">
+        <el-card shadow="never">
+          <div class="user-toolbar">
+            <span class="dept-tip">角色决定用户默认拥有的功能权限；可为用户单独覆写（更多粒度）</span>
+            <el-button type="primary" @click="openRoleCreate">新增角色</el-button>
+          </div>
+          <el-table :data="roles" border stripe style="width: 100%" v-loading="roleLoading">
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="name" label="角色名称" width="120" align="center">
+              <template #default="{ row }">
+                {{ row.name }}
+                <el-tag v-if="row.builtin" size="small" effect="plain" type="info" style="margin-left:4px">内置</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="code" label="角色编码" width="130" align="center" />
+            <el-table-column label="功能权限" min-width="260">
+              <template #default="{ row }">{{ permNames(row.permissions) }}</template>
+            </el-table-column>
+            <el-table-column prop="description" label="描述" min-width="140">
+              <template #default="{ row }">{{ row.description || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" align="center" fixed="right">
+              <template #default="{ row }">
+                <template v-if="!row.builtin">
+                  <el-button size="small" @click="openRoleEdit(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="handleRoleDelete(row)">删除</el-button>
+                </template>
+                <el-tag v-else size="small" effect="plain">内置不可改</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
+
+      <!-- 组织/部门管理（仅“组织-管理”权限） -->
+      <el-tab-pane v-if="authStore.hasPerm('dept:manage')" label="组织管理" name="departments">
         <el-card shadow="never">
           <div class="user-toolbar">
             <span class="dept-tip">部门用于组织用户、按管辖区域分工管理</span>
@@ -183,6 +217,20 @@
             <el-radio value="disabled">停用</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="功能权限">
+          <div style="width: 100%">
+            <el-checkbox v-model="permCustom">自定义功能权限（不勾选则继承角色默认）</el-checkbox>
+            <div v-if="permCustom" class="perm-box">
+              <div v-for="group in permGroups" :key="group.module" class="perm-group">
+                <div class="perm-module">{{ moduleName(group.module) }}</div>
+                <el-checkbox-group v-model="permSelected">
+                  <el-checkbox v-for="p in group.permissions" :key="p.code" :value="p.code">{{ p.name }}</el-checkbox>
+                </el-checkbox-group>
+              </div>
+            </div>
+            <div v-else class="perm-box perm-inherit">当前角色将提供默认权限，保存后仍可在“角色管理”中查看</div>
+          </div>
+        </el-form-item>
       </el-form>
       <div class="role-hint" v-if="!editingId">
         <span>角色权限：</span>
@@ -220,6 +268,35 @@
       </template>
     </el-dialog>
 
+    <!-- 角色新增/编辑对话框 -->
+    <el-dialog v-model="roleVisible" :title="roleEditingId ? '编辑角色' : '新增角色'" width="640px">
+      <el-form :model="roleForm" label-width="90px">
+        <el-form-item label="角色编码" required>
+          <el-input v-model="roleForm.code" :disabled="!!roleEditingId" placeholder="如：area_admin（小写字母/数字/下划线）" />
+        </el-form-item>
+        <el-form-item label="角色名称" required>
+          <el-input v-model="roleForm.name" placeholder="如：片区管理员" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="roleForm.description" placeholder="角色职责描述（选填）" />
+        </el-form-item>
+        <el-form-item label="功能权限">
+          <div class="perm-box">
+            <div v-for="group in permGroups" :key="group.module" class="perm-group">
+              <div class="perm-module">{{ moduleName(group.module) }}</div>
+              <el-checkbox-group v-model="roleForm.permissions">
+                <el-checkbox v-for="p in group.permissions" :key="p.code" :value="p.code">{{ p.name }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="roleVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingRole" @click="saveRole">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 重置密码对话框 -->
     <el-dialog v-model="resetVisible" title="重置密码" width="420px">
       <el-form label-width="90px">
@@ -236,12 +313,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { updateMyPhone } from '@/api/auth'
 import { getUsers, createUser, updateUser, resetUserPassword, deleteUser, type UserItem } from '@/api/user'
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment, type DepartmentItem } from '@/api/department'
+import { listPermissions, listRoles, createRole, updateRole, deleteRole, getUserPermissions, setUserPermissions, type RoleItem } from '@/api/rbac'
 
 const authStore = useAuthStore()
 const activeTab = ref('profile')
@@ -361,6 +439,8 @@ const editForm = reactive({ username: '', password: '', role: 'viewer', real_nam
 function openCreate() {
   editingId.value = null
   Object.assign(editForm, { username: '', password: '', role: 'viewer', real_name: '', phone: '', email: '', department_id: undefined, status: 'enabled' })
+  permCustom.value = false
+  permSelected.value = [...(rolePermMap.value['viewer'] || [])]
   editVisible.value = true
 }
 function openEdit(row: UserItem) {
@@ -371,6 +451,8 @@ function openEdit(row: UserItem) {
     department_id: row.department_id || undefined, status: row.status || 'enabled',
   })
   editVisible.value = true
+  // 异步预填该用户功能权限
+  prefillUserPerms()
 }
 async function saveUser() {
   if (!editingId.value && (!editForm.username || editForm.password.length < 6)) {
@@ -381,14 +463,35 @@ async function saveUser() {
   try {
     if (editingId.value) {
       await updateUser(editingId.value, { role: editForm.role, real_name: editForm.real_name, phone: editForm.phone, email: editForm.email, department_id: editForm.department_id, status: editForm.status })
+      // 保存功能权限覆写
+      await saveUserPerms(editingId.value)
       ElMessage.success('用户已更新')
     } else {
-      await createUser({ username: editForm.username, password: editForm.password, role: editForm.role, real_name: editForm.real_name, phone: editForm.phone, email: editForm.email, department_id: editForm.department_id })
+      const created = await createUser({ username: editForm.username, password: editForm.password, role: editForm.role, real_name: editForm.real_name, phone: editForm.phone, email: editForm.email, department_id: editForm.department_id })
+      // 若选择了自定义权限，则对新建用户设置覆写
+      if (permCustom.value) {
+        const uid = created.data?.id
+        if (uid) await saveUserPerms(uid)
+      }
       ElMessage.success('用户已创建')
     }
     editVisible.value = false
     loadUsers()
   } catch { /* 后端已提示 */ } finally { savingUser.value = false }
+}
+
+// 保存用户功能权限覆写：
+//  - 未自定义 → 清空覆写（继承角色默认）
+//  - 自定义   → 以勾选项为显式授权；角色默认中未勾选的记为显式拒绝
+async function saveUserPerms(uid: number) {
+  if (!permCustom.value) {
+    await setUserPermissions(uid, { grants: [], denies: [] })
+    return
+  }
+  const roleDefaults = rolePermMap.value[editForm.role] || []
+  const grants = [...permSelected.value]
+  const denies = roleDefaults.filter((c) => !permSelected.value.includes(c))
+  await setUserPermissions(uid, { grants, denies })
 }
 
 // 重置密码
@@ -416,6 +519,123 @@ async function handleDelete(row: UserItem) {
     loadUsers()
   } catch { /* 取消或失败 */ }
 }
+
+// ---- 功能权限（权限字典 + 用户权限覆写） ----
+const permGroups = ref<{ module: string; permissions: { code: string; name: string }[] }[]>([])
+const permCustom = ref(false) // 用户对话框是否自定义权限
+const permSelected = ref<string[]>([]) // 用户对话框已选权限
+// 角色默认权限映射（用于新建用户时预填）
+const rolePermMap = ref<Record<string, string[]>>({})
+
+function moduleName(mod: string) {
+  const map: Record<string, string> = {
+    device: '设备管理', intersection: '路口管理', fault: '故障管理', workorder: '工单管理',
+    media: '媒体管理', firmware: '固件管理', inventory: '库存管理', supplier: '供应商',
+    purchase: '采购管理', expense: '维修费用', user: '用户管理', dept: '组织管理', role: '角色管理', ai: 'AI 功能',
+  }
+  return map[mod] || mod
+}
+
+async function loadPermissionsDict() {
+  try {
+    const res = await listPermissions()
+    permGroups.value = res.data?.list || []
+  } catch { /* 权限字典加载失败 */ }
+}
+
+// 角色列表（含每个角色默认权限），用于新建用户预填 + 角色管理
+const roleLoading = ref(false)
+const roles = ref<RoleItem[]>([])
+async function loadRoles() {
+  roleLoading.value = true
+  try {
+    const res = await listRoles()
+    roles.value = res.data?.list || []
+    const map: Record<string, string[]> = {}
+    for (const r of roles.value) map[r.code] = r.permissions || []
+    rolePermMap.value = map
+  } catch { /* 忽略 */ } finally { roleLoading.value = false }
+}
+
+function permNames(codes: string[]) {
+  if (!codes || !codes.length) return '—'
+  const byCode = new Map<string, string>()
+  for (const g of permGroups.value) for (const p of g.permissions) byCode.set(p.code, p.name)
+  return codes.map((c) => byCode.get(c) || c).join('、')
+}
+
+// 打开新增/编辑用户时，预填权限
+function prefillUserPerms() {
+  permCustom.value = false
+  permSelected.value = []
+  if (editingId.value) {
+    // 编辑：拉取该用户当前有效权限
+    getUserPermissions(editingId.value).then((res) => {
+      const d = res.data
+      if (d && d.user_grants && d.user_grants.length) {
+        permSelected.value = d.user_grants
+        permCustom.value = true
+      } else if (d && d.user_denies && d.user_denies.length) {
+        // 有显式拒绝：默认全选角色默认，去掉被拒项，并开启自定义
+        const defs = [...(d.role_defaults || [])]
+        permSelected.value = defs.filter((c) => !d.user_denies.includes(c))
+        permCustom.value = true
+      } else {
+        permSelected.value = d?.role_defaults || []
+      }
+    }).catch(() => {})
+  } else {
+    // 新建：以当前选择角色默认权限预填
+    permSelected.value = [...(rolePermMap.value[editForm.role] || [])]
+  }
+}
+
+// ---- 角色管理 ----
+const roleVisible = ref(false)
+const roleEditingId = ref<number | null>(null)
+const savingRole = ref(false)
+const roleForm = reactive({ code: '', name: '', description: '', permissions: [] as string[] })
+
+function openRoleCreate() {
+  roleEditingId.value = null
+  Object.assign(roleForm, { code: '', name: '', description: '', permissions: [] })
+  roleVisible.value = true
+}
+function openRoleEdit(row: RoleItem) {
+  roleEditingId.value = row.id
+  Object.assign(roleForm, { code: row.code, name: row.name, description: row.description || '', permissions: [...(row.permissions || [])] })
+  roleVisible.value = true
+}
+async function saveRole() {
+  if (!roleForm.code || !roleForm.name) { ElMessage.warning('角色编码与名称必填'); return }
+  savingRole.value = true
+  try {
+    if (roleEditingId.value) {
+      await updateRole(roleEditingId.value, { name: roleForm.name, description: roleForm.description, permissions: roleForm.permissions })
+      ElMessage.success('角色已更新')
+    } else {
+      await createRole({ code: roleForm.code, name: roleForm.name, description: roleForm.description, permissions: roleForm.permissions })
+      ElMessage.success('角色已创建')
+    }
+    roleVisible.value = false
+    loadRoles()
+  } catch { /* 后端已提示 */ } finally { savingRole.value = false }
+}
+async function handleRoleDelete(row: RoleItem) {
+  try {
+    await ElMessageBox.confirm(`确认删除角色「${row.name}」？`, '提示', { type: 'warning' })
+    await deleteRole(row.id)
+    ElMessage.success('角色已删除')
+    loadRoles()
+  } catch { /* 取消或失败 */ }
+}
+
+// 新建模式下切换角色时，预填该角色默认权限
+watch(() => editForm.role, (newRole) => {
+  if (!editingId.value && editVisible.value && !permCustom.value) {
+    permSelected.value = [...(rolePermMap.value[newRole] || [])]
+  }
+})
 
 // ---- 组织/部门管理 ----
 const deptLoading = ref(false)
@@ -475,11 +695,16 @@ onMounted(async () => {
   if (authStore.token && !authStore.user) {
     try { await authStore.fetchUserInfo() } catch { /* 忽略 */ }
   }
+  await authStore.loadPermissions()
   loadCenter()
-  if (authStore.user?.role === 'admin') {
-    loadUsers()
-    loadDepartments()
+  const hasUser = authStore.hasPerm('user:manage')
+  const hasRole = authStore.hasPerm('role:manage')
+  if (hasUser || hasRole) {
+    loadPermissionsDict()
+    loadRoles()
   }
+  if (authStore.hasPerm('user:manage')) { loadUsers() }
+  if (authStore.hasPerm('dept:manage')) { loadDepartments() }
 })
 </script>
 
@@ -491,4 +716,17 @@ onMounted(async () => {
 .user-search { display: flex; gap: 8px; flex-wrap: wrap; }
 .dept-tip { color: #909399; font-size: 13px; }
 .role-hint { font-size: 13px; color: #606266; padding: 4px 88px 0 90px; line-height: 1.9; }
+.perm-box {
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 8px 12px;
+  background: #fafafa;
+}
+.perm-group { margin-bottom: 8px; }
+.perm-module { font-weight: 600; font-size: 13px; color: #303133; margin-bottom: 4px; }
+.perm-inherit { color: #909399; font-size: 13px; }
+.perm-box .el-checkbox { margin-right: 18px; margin-bottom: 4px; }
 </style>

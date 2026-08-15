@@ -163,28 +163,28 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/devices", handler.ListDevices)
 			auth.GET("/devices/stats", handler.DeviceStats)
 			auth.GET("/devices/:id", handler.GetDevice)
-			auth.POST("/devices", middleware.RequireOperator(), handler.CreateDevice)
-			auth.PUT("/devices/:id", middleware.RequireOperator(), handler.UpdateDevice)
-			auth.DELETE("/devices/:id", middleware.RequireAdmin(), handler.DeleteDevice)
+			auth.POST("/devices", middleware.RequirePerm("device:create"), handler.CreateDevice)
+			auth.PUT("/devices/:id", middleware.RequirePerm("device:update"), handler.UpdateDevice)
+			auth.DELETE("/devices/:id", middleware.RequirePerm("device:delete"), handler.DeleteDevice)
 			auth.GET("/intersections", handler.ListIntersections)
-			auth.PUT("/intersections/rename", middleware.RequireOperator(), handler.RenameIntersection)
-			auth.PUT("/intersections/location", middleware.RequireOperator(), handler.SetIntersectionLocation)
-			auth.DELETE("/intersections/clear", middleware.RequireAdmin(), handler.ClearIntersection)
+			auth.PUT("/intersections/rename", middleware.RequirePerm("intersection:update"), handler.RenameIntersection)
+			auth.PUT("/intersections/location", middleware.RequirePerm("intersection:update"), handler.SetIntersectionLocation)
+			auth.DELETE("/intersections/clear", middleware.RequirePerm("intersection:delete"), handler.ClearIntersection)
 
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)
 			auth.GET("/faults/:id", handler.GetFault)
 			// 故障管理（确认/负责人/维修人/状态更新：管理员/运维）
-			auth.PUT("/faults/:id", middleware.RequireOperator(), handler.UpdateFault)
-			auth.POST("/faults/:id/dispatch", middleware.RequireOperator(), handler.DispatchFault)
+			auth.PUT("/faults/:id", middleware.RequirePerm("fault:update"), handler.UpdateFault)
+			auth.POST("/faults/:id/dispatch", middleware.RequirePerm("fault:dispatch"), handler.DispatchFault)
 
 			// 工单管理（查看：所有角色，操作：管理员/运维）
 			auth.GET("/work-orders", handler.ListWorkOrders)
-	auth.GET("/work-orders/:id", handler.GetWorkOrder)
-			auth.POST("/work-orders", middleware.RequireOperator(), handler.CreateWorkOrder)
-			auth.PUT("/work-orders/:id/status", middleware.RequireOperator(), handler.UpdateWorkOrderStatus)
-			auth.PUT("/work-orders/:id/assign", middleware.RequireOperator(), handler.AssignWorkOrder)
-			auth.DELETE("/work-orders/:id", middleware.RequireAdmin(), handler.DeleteWorkOrder)
+			auth.GET("/work-orders/:id", handler.GetWorkOrder)
+			auth.POST("/work-orders", middleware.RequirePerm("workorder:create"), handler.CreateWorkOrder)
+			auth.PUT("/work-orders/:id/status", middleware.RequirePerm("workorder:update"), handler.UpdateWorkOrderStatus)
+			auth.PUT("/work-orders/:id/assign", middleware.RequirePerm("workorder:assign"), handler.AssignWorkOrder)
+			auth.DELETE("/work-orders/:id", middleware.RequirePerm("workorder:delete"), handler.DeleteWorkOrder)
 
 			// 数据看板（只读）
 			auth.GET("/dashboard/overview", handler.DashboardOverview)
@@ -193,14 +193,14 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/dashboard/fault-trend", handler.FaultTrendStats)
 			auth.GET("/dashboard/device-fault-rank", handler.DeviceFaultRank)
 			auth.GET("/dashboard/work-order-avg-closure", handler.WorkOrderAvgClosure)
-	auth.GET("/dashboard/ai-overview", handler.AIDashboardOverview)
+			auth.GET("/dashboard/ai-overview", handler.AIDashboardOverview)
 
 			// 日志查询
 			auth.GET("/logs/packets", handler.ListPacketLogs)
 			auth.GET("/logs/operations", handler.ListOperationLogs)
 
-			// 用户管理（仅管理员）
-			users := auth.Group("/users", middleware.RequireAdmin())
+			// 用户管理（仅“用户-管理”权限）
+			users := auth.Group("/users", middleware.RequirePerm("user:manage"))
 			{
 				users.GET("", handler.ListUsers)
 				users.POST("", handler.CreateUser)
@@ -209,63 +209,77 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				users.DELETE("/:id", handler.DeleteUser)
 			}
 
-			// 组织/部门管理（列表所有人可读，增删改仅管理员）
+			// 组织/部门管理（列表所有人可读，增删改仅“组织-管理”权限）
 			auth.GET("/departments", handler.ListDepartments)
-			departments := auth.Group("/departments", middleware.RequireAdmin())
+			departments := auth.Group("/departments", middleware.RequirePerm("dept:manage"))
 			{
 				departments.POST("", handler.CreateDepartment)
 				departments.PUT("/:id", handler.UpdateDepartment)
 				departments.DELETE("/:id", handler.DeleteDepartment)
 			}
 
+			// ---- 角色与权限管理（仅“角色-管理”权限） ----
+			rbac := auth.Group("/rbac", middleware.RequirePerm("role:manage"))
+			{
+				rbac.GET("/permissions", handler.ListPermissions)
+				rbac.GET("/roles", handler.ListRoles)
+				rbac.POST("/roles", handler.CreateRole)
+				rbac.PUT("/roles/:id", handler.UpdateRole)
+				rbac.DELETE("/roles/:id", handler.DeleteRole)
+				rbac.GET("/users/:id/permissions", handler.GetUserPermissions)
+				rbac.PUT("/users/:id/permissions", handler.SetUserPermissions)
+			}
+			// 当前登录用户的有效权限（所有登录用户可读，供前端菜单/按钮联动）
+			auth.GET("/my/permissions", handler.MyPermissions)
+
 			// 设备媒体（视频举证/监控/时间视频）
 			auth.GET("/media", handler.ListDeviceMedia)
-			auth.POST("/media/upload", handler.UploadDeviceMedia)
-			auth.POST("/media/streams", handler.CreateRTSPMedia)
-			auth.DELETE("/media/:id", middleware.RequireOperator(), handler.DeleteDeviceMedia)
+			auth.POST("/media/upload", middleware.RequirePerm("media:upload"), handler.UploadDeviceMedia)
+			auth.POST("/media/streams", middleware.RequirePerm("media:upload"), handler.CreateRTSPMedia)
+			auth.DELETE("/media/:id", middleware.RequirePerm("media:delete"), handler.DeleteDeviceMedia)
 
 			// 固件管理（OTA 升级）
 			auth.GET("/firmwares", handler.ListFirmwares)
 			auth.GET("/firmwares/:id", handler.GetFirmware)
-			auth.POST("/firmwares/upload", middleware.RequireOperator(), handler.UploadFirmware)
-			auth.PUT("/firmwares/:id", middleware.RequireOperator(), handler.UpdateFirmware)
-			auth.PUT("/firmwares/:id/publish", middleware.RequireOperator(), handler.PublishFirmware)
-			auth.DELETE("/firmwares/:id", middleware.RequireAdmin(), handler.DeleteFirmware)
+			auth.POST("/firmwares/upload", middleware.RequirePerm("firmware:manage"), handler.UploadFirmware)
+			auth.PUT("/firmwares/:id", middleware.RequirePerm("firmware:manage"), handler.UpdateFirmware)
+			auth.PUT("/firmwares/:id/publish", middleware.RequirePerm("firmware:manage"), handler.PublishFirmware)
+			auth.DELETE("/firmwares/:id", middleware.RequirePerm("firmware:delete"), handler.DeleteFirmware)
 			auth.GET("/firmware-upgrades", handler.ListFirmwareUpgrades)
-			auth.POST("/firmware-upgrades", middleware.RequireOperator(), handler.CreateFirmwareUpgrade)
-			auth.DELETE("/firmware-upgrades/:id", middleware.RequireAdmin(), handler.DeleteFirmwareUpgrade)
+			auth.POST("/firmware-upgrades", middleware.RequirePerm("firmware:manage"), handler.CreateFirmwareUpgrade)
+			auth.DELETE("/firmware-upgrades/:id", middleware.RequirePerm("firmware:delete"), handler.DeleteFirmwareUpgrade)
 
 			// 库存管理（物料档案 + 出入库流水 + 统计）
 			auth.GET("/inv/materials", handler.ListMaterialsV2)
 			auth.GET("/inv/materials/stats", handler.MaterialStats)
-			auth.POST("/inv/materials", middleware.RequireOperator(), handler.SaveMaterial)
-			auth.PUT("/inv/materials/:id", middleware.RequireOperator(), handler.SaveMaterial)
-			auth.DELETE("/inv/materials/:id", middleware.RequireAdmin(), handler.DeleteMaterialV2)
+			auth.POST("/inv/materials", middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
+			auth.PUT("/inv/materials/:id", middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
+			auth.DELETE("/inv/materials/:id", middleware.RequirePerm("inventory:delete"), handler.DeleteMaterialV2)
 			auth.GET("/inv/stocks", handler.ListMaterialStocks)
-			auth.POST("/inv/stocks/adjust", middleware.RequireOperator(), handler.AdjustMaterialStock)
-			auth.POST("/inv/stocks/use", middleware.RequireOperator(), handler.UseMaterialStock)
+			auth.POST("/inv/stocks/adjust", middleware.RequirePerm("inventory:manage"), handler.AdjustMaterialStock)
+			auth.POST("/inv/stocks/use", middleware.RequirePerm("inventory:manage"), handler.UseMaterialStock)
 
 			// 供应商
 			auth.GET("/suppliers", handler.ListSuppliers)
-			auth.POST("/suppliers", middleware.RequireOperator(), handler.SaveSupplier)
-			auth.PUT("/suppliers/:id", middleware.RequireOperator(), handler.SaveSupplier)
-			auth.DELETE("/suppliers/:id", middleware.RequireAdmin(), handler.DeleteSupplier)
+			auth.POST("/suppliers", middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
+			auth.PUT("/suppliers/:id", middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
+			auth.DELETE("/suppliers/:id", middleware.RequirePerm("supplier:delete"), handler.DeleteSupplier)
 
 			// 采购单（进销存）
 			auth.GET("/purchases", handler.ListPurchaseOrders)
 			auth.GET("/purchases/:id", handler.GetPurchaseOrder)
-			auth.POST("/purchases", middleware.RequireOperator(), handler.CreatePurchaseOrder)
-			auth.POST("/purchases/:id/receive", middleware.RequireOperator(), handler.ReceivePurchase)
-			auth.POST("/purchases/:id/cancel", middleware.RequireOperator(), handler.CancelPurchase)
-			auth.DELETE("/purchases/:id", middleware.RequireAdmin(), handler.DeletePurchase)
+			auth.POST("/purchases", middleware.RequirePerm("purchase:manage"), handler.CreatePurchaseOrder)
+			auth.POST("/purchases/:id/receive", middleware.RequirePerm("purchase:manage"), handler.ReceivePurchase)
+			auth.POST("/purchases/:id/cancel", middleware.RequirePerm("purchase:manage"), handler.CancelPurchase)
+			auth.DELETE("/purchases/:id", middleware.RequirePerm("purchase:delete"), handler.DeletePurchase)
 
 			// 维修费用（耗材/人工/交通/其它）
 			auth.GET("/expenses", handler.ListRepairExpenses)
 			auth.GET("/expenses/stats", handler.ExpenseStats)
-			auth.POST("/expenses", middleware.RequireOperator(), handler.SaveRepairExpense)
-			auth.PUT("/expenses/:id", middleware.RequireOperator(), handler.SaveRepairExpense)
-			auth.PUT("/expenses/:id/confirm", middleware.RequireOperator(), handler.ConfirmRepairExpense)
-			auth.DELETE("/expenses/:id", middleware.RequireAdmin(), handler.DeleteRepairExpense)
+			auth.POST("/expenses", middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id", middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id/confirm", middleware.RequirePerm("expense:manage"), handler.ConfirmRepairExpense)
+			auth.DELETE("/expenses/:id", middleware.RequirePerm("expense:delete"), handler.DeleteRepairExpense)
 
 			// 问题反馈
 			auth.GET("/feedbacks", handler.ListFeedbacks)
@@ -281,13 +295,13 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// ---- AI 分析 ----
 			// 配置（管理员读写，普通用户读）+ 我的额度
 			auth.GET("/ai/config", handler.GetAIConfig)
-			auth.PUT("/ai/config", middleware.RequireAdmin(), handler.UpdateAIConfig)
+			auth.PUT("/ai/config", middleware.RequirePerm("ai:config"), handler.UpdateAIConfig)
 			auth.GET("/ai/usage", handler.MyAIUsage)
-			auth.GET("/ai/usage/logs", middleware.RequireAdmin(), handler.AIUsagePage)
-			auth.POST("/ai/usage/reset", middleware.RequireAdmin(), handler.ResetAIUsage)
+			auth.GET("/ai/usage/logs", middleware.RequirePerm("ai:config"), handler.AIUsagePage)
+			auth.POST("/ai/usage/reset", middleware.RequirePerm("ai:config"), handler.ResetAIUsage)
 			// 故障预测
-			auth.POST("/ai/predict/run", middleware.RequireOperator(), handler.RunPrediction)
-	auth.GET("/ai/predict/by-intersection", handler.RunPredictionByIntersection)
+			auth.POST("/ai/predict/run", middleware.RequirePerm("ai:ops"), handler.RunPrediction)
+			auth.GET("/ai/predict/by-intersection", handler.RunPredictionByIntersection)
 			auth.GET("/ai/predict", handler.AIPredictions)
 			auth.POST("/ai/predict/:id/enhance", handler.EnhancePredictionPlan)
 			// 故障诊断（反馈，含图片）
@@ -300,7 +314,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/ai/analyze/inventory", handler.AnalyzeInventoryAPI)
 			auth.GET("/ai/analyze/cost", handler.AnalyzeCostAPI)
 			// 运维报告（日报/指定模块）生成与历史查询
-			auth.POST("/ai/report/generate", middleware.RequireOperator(), handler.GenerateReportAPI)
+			auth.POST("/ai/report/generate", middleware.RequirePerm("ai:ops"), handler.GenerateReportAPI)
 			auth.GET("/ai/reports", handler.ListReportsAPI)
 			// 核心流程 AI 建议：故障确认/派单辅助 + 工单 Copilot + 历史查询
 			auth.GET("/ai/advice/fault/:id", handler.SuggestFaultAdviceAPI)

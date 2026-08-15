@@ -78,6 +78,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&RepairExpense{},
 		&AIReport{},
 		&AIAdvice{},
+		&Permission{},
+		&Role{},
+		&RolePermission{},
+		&UserPermission{},
 	); err != nil {
 		return err
 	}
@@ -87,6 +91,70 @@ func AutoMigrate(db *gorm.DB) error {
 	// 数据合并：旧的设备耗材台账(device_materials)并入统一物料档案(materials)
 	// 保留设备维度 device_hw_id，写入初始库存流水，迁移完成后删除旧表
 	MigrateLegacyDeviceMaterials(db)
+
+	// 初始化 RBAC 权限字典与内置角色（幂等）
+	SeedRBAC(db)
+	return nil
+}
+
+// SeedRBAC 初始化权限字典与内置角色（admin/operator/viewer）及其默认权限，幂等
+func SeedRBAC(db *gorm.DB) error {
+	// 1) 权限字典：按 code 幂等插入
+	permIDByCode := map[string]uint{}
+	for _, p := range AllPermissions {
+		var existing Permission
+		err := db.Where("code = ?", p.Code).First(&existing).Error
+		if err == gorm.ErrRecordNotFound {
+			if e := db.Create(&p).Error; e != nil {
+				return e
+			}
+			permIDByCode[p.Code] = p.ID
+		} else if err != nil {
+			return err
+		} else {
+			permIDByCode[p.Code] = existing.ID
+			// 同步名称/模块/排序，保持与新版本一致
+			db.Model(&existing).Updates(map[string]interface{}{
+				"name": p.Name, "module": p.Module, "sort": p.Sort,
+			})
+		}
+	}
+
+	// 2) 内置角色 + 默认权限
+	builtins := []struct {
+		code string
+		name string
+	}{
+		{BuiltinRoleAdmin, "管理员"},
+		{BuiltinRoleOperator, "运维人员"},
+		{BuiltinRoleViewer, "查看人员"},
+	}
+	for _, b := range builtins {
+		var role Role
+		err := db.Where("code = ?", b.code).First(&role).Error
+		if err == gorm.ErrRecordNotFound {
+			role = Role{Code: b.code, Name: b.name, Builtin: true}
+			if e := db.Create(&role).Error; e != nil {
+				return e
+			}
+		} else if err != nil {
+			return err
+		}
+
+		// 同步该角色默认权限（先删后插，保证与代码一致）
+		db.Where("role_id = ?", role.ID).Delete(&RolePermission{})
+		for _, code := range BuiltinRolePerms[b.code] {
+			pid, ok := permIDByCode[code]
+			if !ok {
+				continue
+			}
+			if e := db.Create(&RolePermission{
+				RoleID: role.ID, PermissionID: pid, RoleCode: role.Code,
+			}).Error; e != nil {
+				return e
+			}
+		}
+	}
 	return nil
 }
 
