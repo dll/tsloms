@@ -91,6 +91,7 @@ func UpdateDevice(c *gin.Context) {
 		InstalledAt  string   `json:"installed_at"`
 		Lat          *float64 `json:"lat"`
 		Lng          *float64 `json:"lng"`
+		IsWatched    *bool    `json:"is_watched"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -119,6 +120,10 @@ func UpdateDevice(c *gin.Context) {
 	}
 	if req.Lng != nil {
 		updates["lng"] = *req.Lng
+	}
+	// 关注状态（锁定/可能故障）
+	if req.IsWatched != nil {
+		updates["is_watched"] = *req.IsWatched
 	}
 
 	if len(updates) > 0 {

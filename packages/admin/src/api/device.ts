@@ -18,6 +18,7 @@ export interface DeviceUpdate {
   installed_at?: string
   lat?: number
   lng?: number
+  is_watched?: boolean
 }
 
 // 获取设备列表（分页）

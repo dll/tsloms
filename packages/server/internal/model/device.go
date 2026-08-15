@@ -16,6 +16,7 @@ type Device struct {
 	SwVersion     uint32     `json:"sw_version" gorm:"comment:固件版本号"`
 	ConfVersion   uint32     `json:"conf_version" gorm:"comment:配置版本号"`
 	OnlineStatus  bool       `json:"online_status" gorm:"default:false;comment:在线状态"`
+	IsWatched     bool       `json:"is_watched" gorm:"default:false;comment:是否关注(锁定/可能故障)"`
 	LastCheckinAt *time.Time `json:"last_checkin_at" gorm:"comment:最后签到时间"`
 	InstalledAt   *time.Time `json:"installed_at" gorm:"comment:安装日期"`
 	CreatedAt     time.Time  `json:"created_at"`

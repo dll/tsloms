@@ -36,6 +36,7 @@
             <el-button size="small" type="primary" @click="openSetLocation(row)">设坐标</el-button>
             <el-button size="small" type="warning" @click="openRename(row)">重命名</el-button>
             <el-button size="small" type="danger" :disabled="!isAdmin" @click="handleClear(row)">清空</el-button>
+            <el-button size="small" type="success" @click="goMapFocus(row)" style="margin-left:4px">去地图</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -82,6 +83,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getIntersections, renameIntersection, setIntersectionLocation, clearIntersection, type IntersectionItem } from '@/api/intersection'
 import { useAuthStore } from '@/store/auth'
+import { emitMapFocus } from '@/utils/eventBus'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -110,6 +112,18 @@ async function load() {
 
 function goDevices(intersection: string) { router.push({ path: '/device', query: { intersection } }) }
 function goMap() { router.push('/map') }
+
+// 「去地图」：通过事件总线通知地图大屏，跳转并居中该路口
+function goMapFocus(row: IntersectionItem) {
+  if (row.lat === null || row.lat === undefined || row.lng === null || row.lng === undefined) {
+    ElMessage.warning('该路口尚未设置坐标，请先「设坐标」')
+    return
+  }
+  // 跳转地图页
+  router.push('/map')
+  // 缓存聚焦供地图页挂载后读取（mitt 事件在地图组件未挂载时会被错过）
+  emitMapFocus({ kind: 'intersection', name: row.intersection, lat: row.lat, lng: row.lng, height: 1500 })
+}
 
 // ---- 操作 ----
 const busy = ref(false)
