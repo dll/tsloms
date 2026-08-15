@@ -868,6 +868,8 @@ AI 工作台聚合三大 AI 原生能力，入口：**AI 分析 → AI 工作台
 | 审核报告 V5.0（NO-GO 复审基线） | `docs/SAR-TSLOMS-v5.0.md` |
 | 审核报告 V5.1（实时异常流 + RBAC 整改） | `docs/SAR-TSLOMS-v5.1.md` |
 | 审核报告 V6.0（安全整改 + 质量门恢复） | `docs/SAR-TSLOMS-v6.0.md` |
+| 审核报告 V6.1（M1 基线，覆盖率专项） | `docs/SAR-TSLOMS-v6.1.md` |
+| 审核报告 V6.2（覆盖率达标 80.5%） | `docs/SAR-TSLOMS-v6.2.md` |
 | 本操作手册 V1.1 | `docs/TSLOMS操作手册-v1.1.md` |
 | 设备协议确认清单 | `docs/TSLOMS-设备协议确认清单.md` |
 | 部署故障排查 | `docs/部署故障排查-腾讯云请求失败.md` |
