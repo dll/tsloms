@@ -237,8 +237,9 @@ func (h *Handler) processFault(rec *EventRecord) {
 	// 查找同一设备同一错误码的活跃故障记录
 	var existing model.FaultRecord
 	result := model.DB.Where(
-		"device_hw_id = ? AND err_code = ? AND status = ?",
-		rec.LedHwID, rec.ErrCode, "active",
+		"device_hw_id = ? AND err_code = ? AND status IN ?",
+		rec.LedHwID, rec.ErrCode,
+		[]string{model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched},
 	).First(&existing)
 
 	if result.Error == nil {
@@ -256,7 +257,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 			return
 		}
 		// 超过去重窗口，将旧故障标记为已解决，创建新故障记录
-		model.DB.Model(&existing).Update("status", "resolved")
+		model.DB.Model(&existing).Update("status", model.FaultStatusResolved)
 	}
 
 	// 创建新故障记录
@@ -274,7 +275,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 		CurrentG:   rec.CurrentG,
 		FirstSeen:  now,
 		LastSeen:   now,
-		Status:     "active",
+		Status:     model.FaultStatusOccurred,
 	}
 
 	if err := model.DB.Create(&fault).Error; err != nil {
@@ -324,8 +325,13 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 		return
 	}
 
-	// 关联故障记录的工单 ID
-	model.DB.Model(fault).Update("work_order_id", wo.ID)
+	// 关联故障记录的工单 ID，并将故障状态推进到“已确认”
+	now := time.Now()
+	model.DB.Model(fault).Updates(map[string]interface{}{
+		"work_order_id": wo.ID,
+		"status":        model.FaultStatusConfirmed,
+		"confirmed_at":  &now,
+	})
 
 	h.logger.Info("自动生成维修工单",
 		zap.String("orderNo", orderNo),

@@ -17,12 +17,21 @@ export interface Feedback {
 }
 
 // 反馈列表
-export function getFeedbacks(params: { page?: number; page_size?: number; status?: string; device_hw_id?: string }): Promise<ApiResponse> {
+export function getFeedbacks(params: {
+  page?: number
+  page_size?: number
+  status?: string
+  device_hw_id?: string
+  start_time?: string
+  end_time?: string
+  sort_by?: string
+  order?: string
+}): Promise<ApiResponse> {
   return request.get('/feedbacks', { params }) as unknown as Promise<ApiResponse>
 }
 
-// 提交反馈（地图/后台）
-export function createFeedback(data: { device_hw_id?: number; intersection?: string; title: string; content?: string; reporter?: string; contact?: string }): Promise<ApiResponse> {
+// 提交反馈（地图/后台）——关联设备必填
+export function createFeedback(data: { device_hw_id: number; intersection?: string; title: string; content?: string; reporter?: string; contact?: string }): Promise<ApiResponse> {
   return request.post('/feedbacks', data) as unknown as Promise<ApiResponse>
 }
 

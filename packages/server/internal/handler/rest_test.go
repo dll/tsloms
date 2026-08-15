@@ -86,7 +86,7 @@ func TestDeviceStats(t *testing.T) {
 func TestListFaults_DateFilterBothParamNames(t *testing.T) {
 	r := setupHandlerEngine(t)
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: "active", FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 
 	// start_date（前端用名）
 	_, body := getJSON(t, r, "/api/v1/faults?start_date=2026-08-01&end_date=2026-08-30")
@@ -106,9 +106,9 @@ func TestListFaults_DateFilterBothParamNames(t *testing.T) {
 func TestFaultTypeStats_GroupsByType(t *testing.T) {
 	r := setupHandlerEngine(t)
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: "active", FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 2, ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "critical", Status: "active", FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 3, ErrCode: -8, FaultType: "timeout", FaultLevel: "normal", Status: "active", FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: 2, ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: 3, ErrCode: -8, FaultType: "timeout", FaultLevel: "normal", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 
 	code, body := getJSON(t, r, "/api/v1/dashboard/fault-type-stats")
 	if code != http.StatusOK {

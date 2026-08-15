@@ -279,9 +279,18 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 		model.DB.Model(&model.FaultRecord{}).
 			Where("id = ?", wo.FaultID).
 			Updates(map[string]interface{}{
-				"status":    "resolved",
-				"last_seen": now,
+				"status":      model.FaultStatusResolved,
+				"last_seen":   now,
+				"resolved_at": &now,
 			})
+	}
+
+	// 工单驳回后重新派发（rejected → pending）：清空关闭时间，故障回到“已确认”待重新派单
+	if req.Status == model.WorkOrderStatusPending && wo.Status == model.WorkOrderStatusRejected {
+		updates["closed_at"] = nil
+		model.DB.Model(&model.FaultRecord{}).
+			Where("id = ?", wo.FaultID).
+			Update("status", model.FaultStatusConfirmed)
 	}
 
 	// 工单驳回后重新派发（rejected → pending）：清空关闭时间
@@ -336,9 +345,17 @@ func AssignWorkOrder(c *gin.Context) {
 	updates := map[string]interface{}{
 		"assignee_id": req.AssigneeID,
 	}
-	// 待处理→派单后进入处理中
+	// 待处理→派单后进入处理中，并将故障推进到“已派单”，记录维修人
 	if wo.Status == model.WorkOrderStatusPending {
 		updates["status"] = model.WorkOrderStatusProcessing
+		now := time.Now()
+		model.DB.Model(&model.FaultRecord{}).
+			Where("id = ?", wo.FaultID).
+			Updates(map[string]interface{}{
+				"status":        model.FaultStatusDispatched,
+				"repairer_id":   req.AssigneeID,
+				"dispatched_at": &now,
+			})
 	}
 	if err := model.DB.Model(&wo).Updates(updates).Error; err != nil {
 		serverError(c, err)

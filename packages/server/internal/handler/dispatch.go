@@ -23,7 +23,9 @@ func DispatchReference(c *gin.Context) {
 
 	// 活跃故障
 	var faults []model.FaultRecord
-	model.DB.Where("device_hw_id = ? AND status = ?", hwIDUint, "active").Order("last_seen DESC").Find(&faults)
+	model.DB.Where("device_hw_id = ? AND status IN ?", hwIDUint, []string{
+		model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
+	}).Order("last_seen DESC").Find(&faults)
 
 	// 待处理工单
 	var orders []model.WorkOrder

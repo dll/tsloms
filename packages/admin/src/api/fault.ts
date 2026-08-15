@@ -22,3 +22,33 @@ export function getFaults(params: FaultQuery): Promise<ApiResponse> {
 export function getFault(id: number | string): Promise<ApiResponse> {
   return request.get(`/faults/${id}`) as unknown as Promise<ApiResponse>
 }
+
+// 更新故障（确认/负责人/维修人/状态）
+export interface FaultUpdate {
+  status?: string
+  owner_id?: number | null
+  repairer_id?: number | null
+}
+export function updateFault(id: number | string, data: FaultUpdate): Promise<ApiResponse> {
+  return request.put(`/faults/${id}`, data) as unknown as Promise<ApiResponse>
+}
+
+// 从故障派发工单（指派维修人）
+export function dispatchFault(id: number | string, assigneeId: number): Promise<ApiResponse> {
+  return request.post(`/faults/${id}/dispatch`, { assignee_id: assigneeId }) as unknown as Promise<ApiResponse>
+}
+
+// 故障可用状态列表
+export const FAULT_STATUSES = [
+  { value: 'occurred', label: '发生', tag: 'danger' },
+  { value: 'confirmed', label: '已确认', tag: 'warning' },
+  { value: 'dispatched', label: '已派单', tag: '' },
+  { value: 'resolved', label: '已解决', tag: 'success' },
+]
+
+export function faultStatusLabel(s: string): string {
+  return FAULT_STATUSES.find((x) => x.value === s)?.label || s
+}
+export function faultStatusTag(s: string): string {
+  return FAULT_STATUSES.find((x) => x.value === s)?.tag || 'info'
+}

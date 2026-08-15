@@ -40,7 +40,7 @@ func TestRuleDiagnose_NoFaults(t *testing.T) {
 
 func TestRuleDiagnose_WithFaults(t *testing.T) {
 	faults := []model.FaultRecord{
-		{ErrCode: 5, FaultType: "lamp_off", Status: "active", FaultLevel: "high",
+		{ErrCode: 5, FaultType: "lamp_off", Status: model.FaultStatusOccurred, FaultLevel: "high",
 			CreatedAt: time.Now()},
 	}
 	fb := &model.Feedback{Title: "灯不亮", Content: "红灯全灭"}

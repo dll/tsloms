@@ -174,6 +174,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)
 			auth.GET("/faults/:id", handler.GetFault)
+			// 故障管理（确认/负责人/维修人/状态更新：管理员/运维）
+			auth.PUT("/faults/:id", middleware.RequireOperator(), handler.UpdateFault)
+			auth.POST("/faults/:id/dispatch", middleware.RequireOperator(), handler.DispatchFault)
 
 			// 工单管理（查看：所有角色，操作：管理员/运维）
 			auth.GET("/work-orders", handler.ListWorkOrders)

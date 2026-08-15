@@ -156,10 +156,12 @@ func DashboardOverview(c *gin.Context) {
 	model.DB.Model(&model.Device{}).Where("online_status = ?", true).Count(&onlineDevices)
 	model.DB.Model(&model.Device{}).Where("online_status = ?", false).Count(&offlineDevices)
 
-	// 故障统计
+	// 故障统计（活跃=发生/确认/派单，未解决；已解决单独统计）
 	var activeFaults, resolvedFaults int64
-	model.DB.Model(&model.FaultRecord{}).Where("status = ?", "active").Count(&activeFaults)
-	model.DB.Model(&model.FaultRecord{}).Where("status = ?", "resolved").Count(&resolvedFaults)
+	model.DB.Model(&model.FaultRecord{}).Where("status IN ?", []string{
+		model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
+	}).Count(&activeFaults)
+	model.DB.Model(&model.FaultRecord{}).Where("status = ?", model.FaultStatusResolved).Count(&resolvedFaults)
 
 	// 工单统计
 	var pendingOrders, processingOrders, completedOrders int64

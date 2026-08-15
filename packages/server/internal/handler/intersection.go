@@ -29,7 +29,9 @@ func ListIntersections(c *gin.Context) {
 	// 查询活跃故障按设备分组（一次取回）
 	faultDevices := map[uint32]bool{}
 	var faults []model.FaultRecord
-	model.DB.Select("device_hw_id").Where("status = ?", "active").Find(&faults)
+	model.DB.Select("device_hw_id").Where("status IN ?", []string{
+		model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
+	}).Find(&faults)
 	for _, f := range faults {
 		faultDevices[f.DeviceHwID] = true
 	}

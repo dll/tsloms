@@ -35,6 +35,10 @@
           <el-icon><VideoCamera /></el-icon>
           <template #title>视频监控</template>
         </el-menu-item>
+        <el-menu-item index="/monitor">
+          <el-icon><Monitor /></el-icon>
+          <template #title>监控大屏</template>
+        </el-menu-item>
         <el-menu-item index="/feedback">
           <el-icon><ChatDotRound /></el-icon>
           <template #title>问题反馈</template>

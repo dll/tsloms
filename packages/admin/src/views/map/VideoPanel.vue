@@ -16,6 +16,7 @@
         </el-radio-group>
       </div>
       <div class="toolbar-actions">
+        <el-button :icon="Monitor" @click="goMonitor">监控大屏</el-button>
         <el-upload
           v-if="canEdit"
           :show-file-list="false"
@@ -177,12 +178,16 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { Monitor } from '@element-plus/icons-vue'
 import { getAllDevices } from '@/api/map'
 import { getDeviceMedia, uploadDeviceMedia, createStreamMedia, deleteDeviceMedia, type DeviceMedia } from '@/api/media'
 import { useAuthStore } from '@/store/auth'
 
 const authStore = useAuthStore()
 const canEdit = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
+const router = useRouter()
+function goMonitor() { router.push('/monitor') }
 
 const BASE_URL = '/tsloms'
 function mediaUrl(url?: string): string {

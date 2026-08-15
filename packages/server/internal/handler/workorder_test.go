@@ -30,7 +30,7 @@ func seedFaultAndOrder(t *testing.T) uint {
 	t.Helper()
 	fault := model.FaultRecord{
 		DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off",
-		FaultLevel: "critical", Status: "active",
+		FaultLevel: "critical", Status: model.FaultStatusOccurred,
 	}
 	if err := model.DB.Create(&fault).Error; err != nil {
 		t.Fatalf("创建故障失败: %v", err)

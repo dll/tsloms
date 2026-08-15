@@ -80,7 +80,9 @@ func TestProcessFault_NewRecordAfterWindow(t *testing.T) {
 	}
 
 	var activeCount int64
-	model.DB.Model(&model.FaultRecord{}).Where("status = ?", "active").Count(&activeCount)
+	model.DB.Model(&model.FaultRecord{}).Where("status IN ?", []string{
+		model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
+	}).Count(&activeCount)
 	if activeCount != 1 {
 		t.Errorf("active 故障数 = %d, 期望 1", activeCount)
 	}
