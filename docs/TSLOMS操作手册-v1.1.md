@@ -829,9 +829,10 @@ AI 工作台聚合三大 AI 原生能力，入口：**AI 分析 → AI 工作台
 | 文档 | 路径 |
 |------|------|
 | 需求文档 V4.2 | `docs/PRD-TSLOMS-v4.2.md` |
+| 需求文档 V4.3（AI化：六级演进路线） | `docs/PRD-TSLOMS-v4.3.md` |
 | 结项审核报告 V4.2 | `docs/SAR-TSLOMS-v4.2.md` |
 | 结项审核报告 V4.2.1（RBAC） | `docs/SAR-TSLOMS-v4.2.1.md` |
-| 结项审核报告 V4.3（AI化） | `docs/SAR-TSLOMS-v4.3.md` |
+| 结项审核报告 V4.3（AI化：L3巡检 + L4全流程AI辅助） | `docs/SAR-TSLOMS-v4.3.md` |
 | 本操作手册 V1.1 | `docs/TSLOMS操作手册-v1.1.md` |
 | 设备协议确认清单 | `docs/TSLOMS-设备协议确认清单.md` |
 | 部署故障排查 | `docs/部署故障排查-腾讯云请求失败.md` |
