@@ -21,6 +21,12 @@ type DeviceMedia struct {
 	Note        string    `json:"note" gorm:"type:text;comment:备注"`
 	UploadedBy  string    `json:"uploaded_by" gorm:"size:64;comment:上传人"`
 	CreatedAt   time.Time `json:"created_at"`
+
+	// 信号灯信息（手机上传举证必填，用于定位路口/识别故障/派单）
+	Intersection string `json:"intersection" gorm:"size:128;comment:路口名称"`
+	LightColor   string `json:"light_color" gorm:"size:16;comment:故障灯色(red/yellow/green/unknown)"`
+	FaultDesc    string `json:"fault_desc" gorm:"size:255;comment:故障现象描述"`
+	IsActiveFault bool  `json:"is_active_fault" gorm:"default:false;comment:是否正在故障"`
 }
 
 // TableName 指定表名

@@ -70,10 +70,24 @@ func UploadDeviceMedia(c *gin.Context) {
 	title := c.PostForm("title")
 	note := c.PostForm("note")
 
+	// 信号灯信息（举证/上传必填路口，便于定位路口与派单）
+	intersection := strings.TrimSpace(c.PostForm("intersection"))
+	lightColor := c.PostForm("light_color")
+	faultDesc := c.PostForm("fault_desc")
+	isActiveFault := c.PostForm("is_active_fault") == "true"
+
 	file, err := c.FormFile("file")
 	if err != nil {
 		badRequest(c, "请选择上传文件")
 		return
+	}
+
+	// 举证/上传视频必须填写信号灯信息（仅凭视频难以定位路口/识别故障/派单）
+	if mediaType == model.MediaEvidence || mediaType == "" {
+		if intersection == "" {
+			badRequest(c, "请填写路口名称（便于定位与派单）")
+			return
+		}
 	}
 
 	// 解析 hwID：仅接受纯数字，避免路径穿越（sanitize，防 ../ 注入文件名）
@@ -131,15 +145,19 @@ func UploadDeviceMedia(c *gin.Context) {
 	rel := filepath.ToSlash(filepath.Join(mediaURLPrefix(), time.Now().Format("200601"), fname))
 
 	media := model.DeviceMedia{
-		DeviceHwID: hwIDUint,
-		MediaType:  mediaType,
-		Category:   categoryOf(ext),
-		Title:      title,
-		Source:     model.MediaSourceUpload,
-		URL:        rel,
-		Thumbnail:  thumbOf(ext, rel),
-		Note:       note,
-		UploadedBy: c.GetString("username"),
+		DeviceHwID:    hwIDUint,
+		MediaType:     mediaType,
+		Category:      categoryOf(ext),
+		Title:         title,
+		Source:        model.MediaSourceUpload,
+		URL:           rel,
+		Thumbnail:     thumbOf(ext, rel),
+		Note:          note,
+		UploadedBy:    c.GetString("username"),
+		Intersection:  intersection,
+		LightColor:    lightColor,
+		FaultDesc:     faultDesc,
+		IsActiveFault: isActiveFault,
 	}
 	if err := model.DB.Create(&media).Error; err != nil {
 		_ = os.Remove(fpath)
@@ -165,6 +183,7 @@ func CreateRTSPMedia(c *gin.Context) {
 		Thumbnail     string `json:"thumbnail"`
 		Duration      int    `json:"duration"`
 		Note          string `json:"note"`
+		Intersection  string `json:"intersection"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（device_hw_id、media_type、url 必填）")
@@ -187,6 +206,7 @@ func CreateRTSPMedia(c *gin.Context) {
 		Thumbnail:     req.Thumbnail,
 		Duration:      req.Duration,
 		Note:          req.Note,
+		Intersection:  req.Intersection,
 	}
 	if err := model.DB.Create(&media).Error; err != nil {
 		serverError(c, err)

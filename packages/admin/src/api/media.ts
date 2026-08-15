@@ -19,6 +19,11 @@ export interface DeviceMedia {
   note?: string
   uploaded_by?: string
   created_at: string
+  // 信号灯信息（举证必填）
+  intersection?: string
+  light_color?: string
+  fault_desc?: string
+  is_active_fault?: boolean
 }
 
 export interface MediaQuery {
@@ -49,6 +54,7 @@ export interface StreamBody {
   thumbnail?: string
   duration?: number
   note?: string
+  intersection?: string
 }
 export function createStreamMedia(data: StreamBody): Promise<ApiResponse> {
   return request.post('/media/streams', data) as unknown as Promise<ApiResponse>
