@@ -105,6 +105,33 @@
           <span class="system-title">TSLOMS 交通信号灯运维系统</span>
         </div>
         <div class="header-right">
+          <!-- 通知铃铛：AI 主动巡检推送 -->
+          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge">
+            <el-popover placement="bottom-end" :width="380" trigger="click" @show="openNotify">
+              <template #reference>
+                <div class="notify-bell">
+                  <el-icon :size="20"><Bell /></el-icon>
+                </div>
+              </template>
+              <div class="notify-panel">
+                <div class="notify-head">
+                  <span class="notify-title">通知中心</span>
+                  <el-button v-if="unreadCount > 0" type="primary" link size="small" @click="markAllRead">全部已读</el-button>
+                </div>
+                <el-empty v-if="!notifications.length" description="暂无通知" :image-size="60" />
+                <div v-else class="notify-list">
+                  <div v-for="n in notifications" :key="n.id" class="notify-item" @click="onNotifyClick(n)">
+                    <el-tag :type="notifyTagType(n.type)" size="small" effect="plain" class="notify-tag">{{ notifyTypeLabel(n.type) }}</el-tag>
+                    <div class="notify-body">
+                      <div class="notify-item-title">{{ n.title }}<span v-if="!n.is_read" class="notify-dot" /></div>
+                      <div class="notify-content">{{ n.content }}</div>
+                      <div class="notify-time">{{ formatTime(n.created_at) }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </el-popover>
+          </el-badge>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-icon><User /></el-icon>
@@ -134,10 +161,58 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
+import { getNotifications, getUnreadCount, readNotification, readAllNotifications, type NotificationItem } from '@/api/notification'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+// 站内通知（AI 主动巡检推送）
+const notifications = ref<NotificationItem[]>([])
+const unreadCount = ref(0)
+
+async function openNotify() {
+  try {
+    const [list, un] = await Promise.all([getNotifications(30), getUnreadCount()])
+    notifications.value = list.data?.list || []
+    unreadCount.value = un.data?.unread || 0
+  } catch { /* 忽略 */ }
+}
+
+async function refreshUnread() {
+  try {
+    const un = await getUnreadCount()
+    unreadCount.value = un.data?.unread || 0
+  } catch { /* 忽略 */ }
+}
+
+function onNotifyClick(n: NotificationItem) {
+  if (!n.is_read) {
+    readNotification(n.id).then(refreshUnread)
+    n.is_read = true
+  }
+  if (n.link) router.push(n.link)
+}
+
+async function markAllRead() {
+  await readAllNotifications()
+  notifications.value.forEach((n) => (n.is_read = true))
+  unreadCount.value = 0
+}
+
+function notifyTypeLabel(t: string) {
+  const map: Record<string, string> = { report: '日报', alert: '预警', system: '系统' }
+  return map[t] || t || '系统'
+}
+function notifyTagType(t: string) {
+  if (t === 'alert') return 'danger'
+  if (t === 'report') return 'success'
+  return 'info'
+}
+function formatTime(s: string) {
+  if (!s) return ''
+  return s.replace('T', ' ').slice(0, 16)
+}
 
 // 侧边栏折叠状态（默认收起为窄条，点按钮展开完整菜单）
 const isCollapse = ref(true)
@@ -175,6 +250,9 @@ onMounted(async () => {
   }
   // 拉取当前用户功能权限（供菜单/按钮联动）
   await authStore.loadPermissions()
+  // 拉取未读通知数（AI 巡检推送），每 2 分钟刷新
+  refreshUnread()
+  setInterval(refreshUnread, 120000)
 })
 </script>
 
@@ -319,6 +397,96 @@ onMounted(async () => {
 .toggle-icon {
   width: 16px;
   height: 22px;
+}
+
+/* ---- 通知铃铛 ---- */
+.notify-badge {
+  margin-right: 18px;
+  display: inline-flex;
+  align-items: center;
+}
+.notify-bell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  color: #606266;
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
+}
+.notify-bell:hover {
+  color: #409eff;
+  background-color: #f0f2f5;
+}
+.notify-panel {
+  padding: 0 4px;
+}
+.notify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid #ebeef5;
+}
+.notify-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.notify-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.notify-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px 6px;
+  border-bottom: 1px solid #f5f5f5;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.notify-item:hover {
+  background-color: #f7f9fc;
+}
+.notify-tag {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.notify-body {
+  flex: 1;
+  min-width: 0;
+}
+.notify-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.notify-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f56c6c;
+  flex-shrink: 0;
+}
+.notify-content {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.notify-time {
+  font-size: 12px;
+  color: #c0c4cc;
+  margin-top: 4px;
 }
 
 </style>

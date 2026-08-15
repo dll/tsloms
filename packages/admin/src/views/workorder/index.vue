@@ -163,17 +163,19 @@
     </el-card>
 
     <!-- 完成工单弹窗 - 填写维修结果 -->
-    <el-dialog v-model="completeDialogVisible" title="完成工单" width="500px">
+    <el-dialog v-model="completeDialogVisible" title="完成工单" width="560px">
       <el-form :model="completeForm" label-width="80px">
         <el-form-item label="工单编号">
           <span>{{ completeForm.order_no }}</span>
         </el-form-item>
+        <!-- AI 维修小结 Copilot：一键生成并填入维修结果 -->
+        <AiCopilot v-if="completeTarget" :load-fn="() => loadWOSummary(completeTarget!.id)" :fill-fn="applyWOSummary" />
         <el-form-item label="维修结果">
           <el-input
             v-model="completeForm.result"
             type="textarea"
-            :rows="4"
-            placeholder="请输入维修处理结果"
+            :rows="5"
+            placeholder="请输入维修处理结果，可点击上方 AI 助手一键生成"
           />
         </el-form-item>
       </el-form>
@@ -333,6 +335,8 @@ import { getWorkOrders, getWorkOrderDetail, updateWorkOrderStatus, assignWorkOrd
 import { getWorkOrderStats, getWorkOrderAvgClosure } from '@/api/dashboard'
 import { getDevices } from '@/api/device'
 import { getFaults } from '@/api/fault'
+import { getWorkOrderAdvice, type WorkOrderAdvice } from '@/api/copilot'
+import AiCopilot from '@/components/AiCopilot.vue'
 import { useAuthStore } from '@/store/auth'
 
 // 当前登录用户角色（用于按钮权限控制）
@@ -641,11 +645,26 @@ async function handleUpdateStatus(row: Record<string, any>, status: string) {
 }
 
 // 打开完成工单弹窗
+const completeTarget = ref<Record<string, any> | null>(null)
 function openCompleteDialog(row: Record<string, any>) {
+  completeTarget.value = row
   completeForm.id = row.id
   completeForm.order_no = row.order_no
   completeForm.result = ''
   completeDialogVisible.value = true
+}
+
+// AI 维修小结 Copilot：生成维修小结建议（summary 阶段）
+async function loadWOSummary(id: number) {
+  const res = await getWorkOrderAdvice(id, 'summary')
+  return res
+}
+function applyWOSummary(a: WorkOrderAdvice) {
+  const text = [a?.summary, a?.root_cause ? '根因：' + a.root_cause : '', a?.steps?.length ? '步骤：' + a.steps.join('；') : ''].filter(Boolean).join('\n')
+  if (text) {
+    completeForm.result = text
+    ElMessage.success('已填入 AI 维修小结，请核对后保存')
+  }
 }
 
 // 确认完成工单

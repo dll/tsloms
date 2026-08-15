@@ -180,9 +180,11 @@
     </el-drawer>
 
     <!-- 故障处理弹窗 -->
-    <el-dialog v-model="manageVisible" title="故障处理" width="520px" append-to-body>
+    <el-dialog v-model="manageVisible" title="故障处理" width="560px" append-to-body>
       <el-alert v-if="curFault" type="warning" :closable="false" show-icon style="margin-bottom: 12px"
                 :title="`当前状态：${faultStatusLabel(curFault.status)}`" />
+      <!-- AI 处置建议（确认/派单辅助） -->
+      <AiCopilot v-if="curFault" :load-fn="() => loadFaultAdvice(curFault!.id)" :fill-fn="applyFaultAdvice" />
       <el-form label-width="100px">
         <el-form-item label="故障状态">
           <el-select v-model="manageForm.status" style="width: 100%">
@@ -216,10 +218,25 @@ import { Search, Refresh } from '@element-plus/icons-vue'
 import { getFaults, getFault, updateFault, dispatchFault, FAULT_STATUSES, faultStatusLabel, faultStatusTag } from '@/api/fault'
 import { getDevices } from '@/api/device'
 import { getUsers } from '@/api/user'
+import { getFaultAdvice, type FaultAdvice } from '@/api/copilot'
+import AiCopilot from '@/components/AiCopilot.vue'
 import { useAuthStore } from '@/store/auth'
 
 const authStore = useAuthStore()
 const canEdit = computed(() => { const r = authStore.user?.role; return r === 'admin' || r === 'operator' })
+const faultAdvice = ref<FaultAdvice | null>(null)
+async function loadFaultAdvice(id: number) {
+  const res = await getFaultAdvice(id)
+  faultAdvice.value = res.data?.result || null
+  return res
+}
+// 故障确认建议：默认建议将故障置为“已确认”并推荐负责人（交由用户确认）
+function applyFaultAdvice(a: FaultAdvice) {
+  if (a?.priority && a.priority === 'P0' && manageForm.status === 'occurred') {
+    manageForm.status = 'confirmed'
+  }
+  ElMessage.success('已应用 AI 建议（建议负责人请按实际情况选择）')
+}
 
 // ---------------- 顶部统计 ----------------
 const statMap = ref<Record<string, number>>({})

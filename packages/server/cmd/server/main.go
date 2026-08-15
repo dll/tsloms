@@ -84,6 +84,11 @@ func main() {
 	offlineSvc := service.NewOfflineCheck(cfg)
 	offlineSvc.Start(offlineCtx)
 
+	// 启动 AI 主动巡检协程（定时生成运维日报 + 异常检测 + 站内推送）
+	patrolCtx, patrolCancel := context.WithCancel(context.Background())
+	patrolSvc := service.NewPatrolService()
+	patrolSvc.Start(patrolCtx)
+
 	// 启动工单超时升级协程（pending 超 24h 自动转 processing，processing 超 48h 预警）
 	woCtx, woCancel := context.WithCancel(context.Background())
 	woSvc := service.NewWorkOrderEscalator()
@@ -113,6 +118,8 @@ func main() {
 
 	// 停止离线检测协程
 	offlineCancel()
+	// 停止 AI 主动巡检协程
+	patrolCancel()
 	// 停止工单超时升级协程
 	woCancel()
 
@@ -288,6 +295,12 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 派单参考（设备聚合：故障/工单/耗材/媒体）
 			auth.GET("/dispatch/reference", handler.DispatchReference)
+
+			// 站内通知（AI 主动巡检推送：报告提醒/异常预警）
+			auth.GET("/notifications", handler.ListNotificationsAPI)
+			auth.GET("/notifications/unread-count", handler.UnreadCountAPI)
+			auth.PUT("/notifications/:id/read", handler.ReadNotificationAPI)
+			auth.PUT("/notifications/read-all", handler.ReadAllNotificationsAPI)
 
 			// 可派单人员（运维/管理员），供工单派单
 			auth.GET("/users/assignable", handler.ListAssignableUsers)
