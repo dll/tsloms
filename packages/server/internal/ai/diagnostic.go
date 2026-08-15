@@ -80,9 +80,9 @@ func ruleDiagnose(fb *model.Feedback, faults []model.FaultRecord) DiagnosticResu
 }
 
 // imagePathsToDataURLs 将本地媒体文件路径转为 base64 data URL（支持 jpg/png）
-// 仅读取 ≤ 4MB 的图片，超大文件跳过（避免内存/LLM token 峰值）
+// 先压缩（长边≤1024px + JPEG≤512KB）再 base64；超大文件（>20MB）跳过防内存峰值
 func imagePathsToDataURLs(paths []string) []string {
-	const maxBytes = 4 * 1024 * 1024
+	const maxBytes = 20 * 1024 * 1024
 	var out []string
 	for _, p := range paths {
 		if p == "" {
@@ -92,16 +92,26 @@ func imagePathsToDataURLs(paths []string) []string {
 		if err != nil || fi.Size() <= 0 || fi.Size() > maxBytes {
 			continue
 		}
-		b, err := os.ReadFile(p)
+		raw, err := os.ReadFile(p)
 		if err != nil {
 			continue
 		}
+		// 送 LLM 前先做图片压缩（长边≤1024px + JPEG ≤512KB），省 token/带宽/内存
+		b, ok := optimizeImageBytes(raw)
+		if !ok {
+			// 不是可解码的有效图片（损坏/伪造/无内置解码器）→ 跳过，避免送脏数据
+			continue
+		}
+		// 压缩后统一为 JPEG（原样小图保留其原始 mime 由扩展名推断）
 		mime := "image/jpeg"
-		lp := strings.ToLower(p)
-		if strings.HasSuffix(lp, ".png") {
-			mime = "image/png"
-		} else if strings.HasSuffix(lp, ".gif") {
-			mime = "image/gif"
+		if len(b) == len(raw) {
+			lp := strings.ToLower(p)
+			switch {
+			case strings.HasSuffix(lp, ".png"):
+				mime = "image/png"
+			case strings.HasSuffix(lp, ".gif"):
+				mime = "image/gif"
+			}
 		}
 		out = append(out, "data:"+mime+";base64,"+base64.StdEncoding.EncodeToString(b))
 	}

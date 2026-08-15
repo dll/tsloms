@@ -1,6 +1,10 @@
 package ai
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,13 +53,19 @@ func TestRuleDiagnose_WithFaults(t *testing.T) {
 
 func TestImagePathsToDataURLs(t *testing.T) {
 	dir := t.TempDir()
-	// 合法小 PNG
+	// 合法的完整小 PNG（2x2 实色图）
 	pngPath := filepath.Join(dir, "a.png")
-	os.WriteFile(pngPath, []byte{0x89, 0x50, 0x4E, 0x47}, 0o644)
-	// 太大文件（>4MB）应被跳过
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	os.WriteFile(pngPath, buf.Bytes(), 0o644)
+	// 损坏的大文件（>4MB 但非图片）应被跳过（解码失败）
 	bigPath := filepath.Join(dir, "big.png")
 	os.WriteFile(bigPath, make([]byte, 5*1024*1024), 0o644)
-	// 不存在的文件应跳过
+	// 不存在的文件应跳过，空路径应跳过
 
 	urls := imagePathsToDataURLs([]string{pngPath, bigPath, filepath.Join(dir, "nope.png"), ""})
 	if len(urls) != 1 {

@@ -375,12 +375,14 @@ func resolveFeedbackImages(imageURL, mediaDir string) []string {
 	if imageURL == "" || mediaDir == "" {
 		return nil
 	}
-	// URL 形如 /tsloms/media/<filename>
+	// URL 形如 /tsloms/media/202608/1_xxx.jpg（nginx 前缀 + 静态路由 /media/）：
+	// 取 /media/ 之后的相对路径（保留月份子目录，上传文件存于 {mediaDir}/{yyyyMM}/）
 	name := imageURL
-	if i := strings.LastIndex(name, "/"); i >= 0 {
-		name = name[i+1:]
+	if i := strings.Index(name, "/media/"); i >= 0 {
+		name = name[i+len("/media/"):]
 	}
-	if name == "" || strings.Contains(name, "..") {
+	if name == "" || name == imageURL || strings.Contains(name, "..") || filepath.IsAbs(name) {
+		// 未识别到 /media/ 前缀，或路径非法（含 .. 或绝对路径）→ 拒绝
 		return nil
 	}
 	// Clean 后校验前缀：必须落在 mediaDir 根目录内（防穿越/软链逃逸）
