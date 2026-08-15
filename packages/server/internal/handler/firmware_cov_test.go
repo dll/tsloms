@@ -5,9 +5,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tsloms/server/internal/config"
 	"github.com/tsloms/server/internal/model"
 )
 
@@ -177,6 +179,10 @@ func TestFirmware_Delete(t *testing.T) {
 }
 
 func TestFirmwareUpload_Multipart(t *testing.T) {
+	// 使用临时目录作为媒体目录，避免测试污染仓库
+	oldMedia := config.Get().MediaDir
+	t.Cleanup(func() { config.Get().MediaDir = oldMedia })
+	config.Get().MediaDir = filepath.Join(t.TempDir(), "media")
 	r := setupFirmwareEngine(t)
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
