@@ -103,6 +103,7 @@ var AllPermissions = []Permission{
 	// 故障管理
 	{Code: "fault:update", Name: "故障-更新/确认", Module: PermModuleFault, Sort: 6},
 	{Code: "fault:dispatch", Name: "故障-派单", Module: PermModuleFault, Sort: 7},
+	{Code: "fault:delete", Name: "故障-删除", Module: PermModuleFault, Sort: 8},
 	// 工单管理
 	{Code: "workorder:create", Name: "工单-新建", Module: PermModuleWorkorder, Sort: 8},
 	{Code: "workorder:update", Name: "工单-状态流转", Module: PermModuleWorkorder, Sort: 9},

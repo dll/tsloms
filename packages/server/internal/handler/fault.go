@@ -149,6 +149,44 @@ func faultView(c *gin.Context, f model.FaultRecord) gin.H {
 	return v
 }
 
+// DeleteFault 删除故障记录（硬删除，需 fault:delete 权限）
+// 若有关联未完成工单，则拒绝删除以避免悬空引用；无关联或工单已完结时允许删除
+func DeleteFault(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "故障ID无效")
+		return
+	}
+
+	var fault model.FaultRecord
+	if err := model.DB.First(&fault, id).Error; err != nil {
+		notFound(c, "故障记录不存在")
+		return
+	}
+
+	// 若存在未完成工单（待处理/处理中），阻止删除
+	var open int64
+	model.DB.Model(&model.WorkOrder{}).
+		Where("fault_id = ? AND status IN ?", id,
+			[]string{model.WorkOrderStatusPending, model.WorkOrderStatusProcessing}).
+		Count(&open)
+	if open > 0 {
+		badRequest(c, "该故障存在未完成工单，请先完结或删除关联工单后再删除故障")
+		return
+	}
+
+	if err := model.DB.Unscoped().Delete(&fault).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	// 同步解除关联工单的 fault_id 引用（若有历史已完结工单）
+	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", id).
+		Updates(map[string]interface{}{"fault_id": nil})
+
+	recordOperation(c, model.OpDelete, fmt.Sprintf("fault/%d", id), "删除故障记录")
+	ok(c, gin.H{"message": "故障已删除", "id": id})
+}
+
 // UpdateFault 更新故障：确认故障（设置负责人/状态/维修人）
 // 支持状态流转 occurred/confirmed/dispatched/resolved，及负责人、维修人变更
 func UpdateFault(c *gin.Context) {
