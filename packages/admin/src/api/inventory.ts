@@ -65,3 +65,8 @@ export function getMaterialStocks(params: Record<string, any> = {}): Promise<Api
 export function adjustStock(data: { material_id: number; type: string; quantity: number; note?: string }): Promise<ApiResponse> {
   return request.post('/inv/stocks/adjust', data) as unknown as Promise<ApiResponse>
 }
+
+// 工单领料出库
+export function useStock(data: { material_id: number; quantity: number; work_order_id: number; note?: string }): Promise<ApiResponse> {
+  return request.post('/inv/stocks/use', data) as unknown as Promise<ApiResponse>
+}

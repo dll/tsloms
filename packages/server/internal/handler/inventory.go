@@ -51,7 +51,7 @@ func materialView(m model.Material) gin.H {
 		"spec": m.Spec, "unit": m.Unit, "unit_price": m.UnitPrice, "stock": m.Stock,
 		"threshold": m.Threshold, "supplier_id": m.SupplierID, "note": m.Note,
 		"device_hw_id": m.DeviceHwID,
-		"status": m.Status, "low_stock": m.Threshold > 0 && m.Stock <= m.Threshold,
+		"status":       m.Status, "low_stock": m.Threshold > 0 && m.Stock <= m.Threshold,
 		"created_at": m.CreatedAt, "updated_at": m.UpdatedAt,
 	}
 }
@@ -76,19 +76,19 @@ func MaterialStats(c *gin.Context) {
 // SaveMaterial 新增/更新物料
 func SaveMaterial(c *gin.Context) {
 	var req struct {
-		ID         *uint    `json:"id"`
-		Code       string   `json:"code"`
-		Name       string   `json:"name" binding:"required"`
-		Category   string   `json:"category"`
-		Spec       string   `json:"spec"`
-		Unit       string   `json:"unit"`
-		UnitPrice  float64  `json:"unit_price"`
-		Stock      int      `json:"stock"`
-		Threshold  int      `json:"threshold"`
-		DeviceHwID *uint32  `json:"device_hw_id"`
-		SupplierID *uint    `json:"supplier_id"`
-		Note       string   `json:"note"`
-		Status     string   `json:"status"`
+		ID         *uint   `json:"id"`
+		Code       string  `json:"code"`
+		Name       string  `json:"name" binding:"required"`
+		Category   string  `json:"category"`
+		Spec       string  `json:"spec"`
+		Unit       string  `json:"unit"`
+		UnitPrice  float64 `json:"unit_price"`
+		Stock      int     `json:"stock"`
+		Threshold  int     `json:"threshold"`
+		DeviceHwID *uint32 `json:"device_hw_id"`
+		SupplierID *uint   `json:"supplier_id"`
+		Note       string  `json:"note"`
+		Status     string  `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（name 必填）")
@@ -275,4 +275,78 @@ func AdjustMaterialStock(c *gin.Context) {
 	}
 	recordOperation(c, model.OpCreate, fmt.Sprintf("material-stock/%d", m.ID), fmt.Sprintf("调整库存 %s %d", m.Name, delta))
 	ok(c, gin.H{"message": "库存已调整", "stock": newStock})
+}
+
+// UseMaterialStock 工单领料出库
+// 维修/工单处理时从库存领用物料：扣减库存并写入 type=use 出库流水，关联工单与设备
+// body: material_id(必填), quantity(必填,正数=领用数量), work_order_id(必填), note
+func UseMaterialStock(c *gin.Context) {
+	var req struct {
+		MaterialID  uint   `json:"material_id" binding:"required"`
+		Quantity    int    `json:"quantity" binding:"required"`
+		WorkOrderID uint   `json:"work_order_id" binding:"required"`
+		Note        string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "参数错误（material_id、quantity、work_order_id 必填）")
+		return
+	}
+	if req.Quantity <= 0 {
+		badRequest(c, "领用数量必须大于0")
+		return
+	}
+	operator := c.GetString("op_username")
+	if operator == "" {
+		operator = "system"
+	}
+
+	// 校验工单存在（并带出设备ID用于出库流水）
+	var wo model.WorkOrder
+	if err := model.DB.First(&wo, req.WorkOrderID).Error; err != nil {
+		notFound(c, "工单不存在")
+		return
+	}
+
+	// 校验物料存在
+	var m model.Material
+	if err := model.DB.First(&m, req.MaterialID).Error; err != nil {
+		notFound(c, "物料不存在")
+		return
+	}
+
+	// 领用出库：库存扣减 quantity，流水 quantity 为负数
+	if m.Stock < req.Quantity {
+		badRequest(c, "库存不足，无法领用")
+		return
+	}
+	newStock := m.Stock - req.Quantity
+	price := m.UnitPrice
+	amount := float64(-req.Quantity) * price
+
+	// 更新库存 + 写 type=use 出库流水（同一事务保证一致）
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&m).Update("stock", newStock).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.MaterialStock{
+			MaterialID:   m.ID,
+			MaterialName: m.Name,
+			Type:         model.StockTypeUse,
+			Quantity:     -req.Quantity,
+			Price:        price,
+			Amount:       amount,
+			RefType:      "repair",
+			RefID:        req.WorkOrderID,
+			WorkOrderID:  &req.WorkOrderID,
+			Operator:     operator,
+			Note:         req.Note,
+		}).Error
+	})
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpCreate, fmt.Sprintf("material-stock/use/%d", m.ID),
+		fmt.Sprintf("工单#%s 领用 %s x%d", wo.OrderNo, m.Name, req.Quantity))
+	ok(c, gin.H{"message": "领料出库成功", "stock": newStock, "material_id": m.ID})
 }

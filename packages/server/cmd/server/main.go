@@ -243,6 +243,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.DELETE("/inv/materials/:id", middleware.RequireAdmin(), handler.DeleteMaterialV2)
 			auth.GET("/inv/stocks", handler.ListMaterialStocks)
 			auth.POST("/inv/stocks/adjust", middleware.RequireOperator(), handler.AdjustMaterialStock)
+			auth.POST("/inv/stocks/use", middleware.RequireOperator(), handler.UseMaterialStock)
 
 			// 供应商
 			auth.GET("/suppliers", handler.ListSuppliers)

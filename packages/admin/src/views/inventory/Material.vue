@@ -54,10 +54,11 @@
               </template>
             </el-table-column>
             <el-table-column prop="threshold" label="预警值" width="80" />
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="isOperator" size="small" plain @click="openEdit(row)">编辑</el-button>
                 <el-button v-if="isOperator" size="small" type="warning" plain @click="openAdjust(row)">库存</el-button>
+                <el-button v-if="isOperator" size="small" type="primary" plain @click="openUse(row)">领料</el-button>
                 <el-button v-if="isAdmin" size="small" type="danger" plain @click="del(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -150,6 +151,24 @@
         <el-button type="primary" :loading="adjusting" @click="doAdjust">确认</el-button>
       </template>
     </el-dialog>
+
+    <!-- 工单领料出库 -->
+    <el-dialog v-model="useVisible" title="工单领料出库" width="460px" :close-on-click-modal="false">
+      <el-form label-width="90px">
+        <el-form-item label="物料"><el-text>{{ useForm.materialName }}（当前 {{ useForm.currentStock }}）</el-text></el-form-item>
+        <el-form-item label="关联工单" required>
+          <el-select v-model="useForm.work_order_id" filterable placeholder="选择工单" style="width: 100%">
+            <el-option v-for="wo in workOrderOpts" :key="wo.id" :label="`${wo.order_no}${wo.assignee_name ? ' · ' + wo.assignee_name : ''}`" :value="wo.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="领用数量" required><el-input-number v-model="useForm.quantity" :min="1" style="width: 100%" /></el-form-item>
+        <el-form-item label="备注"><el-input v-model="useForm.note" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="useVisible = false">取消</el-button>
+        <el-button type="primary" :loading="using" @click="doUse">确认领料</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -157,8 +176,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
-import { getMaterials, getMaterialStats, saveMaterial, deleteMaterial, getMaterialStocks, adjustStock } from '@/api/inventory'
+import { getMaterials, getMaterialStats, saveMaterial, deleteMaterial, getMaterialStocks, adjustStock, useStock } from '@/api/inventory'
 import { getAllSuppliers } from '@/api/supplier'
+import { getWorkOrders } from '@/api/workorder'
 import { useAuthStore } from '@/store/auth'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -270,6 +290,33 @@ async function doAdjust() {
     if (res.code === 0) { ElMessage.success('库存已调整'); adjustVisible.value = false; load(); loadStock(1); loadStats() }
     else ElMessage.error(res.msg || '调整失败')
   } catch (e: any) { ElMessage.error(e?.response?.data?.msg || '调整失败') } finally { adjusting.value = false }
+}
+
+// 工单领料出库
+const useVisible = ref(false)
+const using = ref(false)
+const useForm = reactive<any>({ material_id: 0, materialName: '', currentStock: 0, work_order_id: undefined, quantity: 1, note: '' })
+const workOrderOpts = ref<any[]>([])
+async function loadWorkOrders() {
+  try {
+    const res = await getWorkOrders({ page: 1, page_size: 100 })
+    workOrderOpts.value = res.data?.list || []
+  } catch { /* ignore */ }
+}
+function openUse(row: any) {
+  Object.assign(useForm, { material_id: row.id, materialName: row.name, currentStock: row.stock, work_order_id: undefined, quantity: 1, note: '' })
+  loadWorkOrders()
+  useVisible.value = true
+}
+async function doUse() {
+  if (!useForm.work_order_id) { ElMessage.warning('请选择关联工单'); return }
+  if (!useForm.quantity || useForm.quantity < 1) { ElMessage.warning('请填写领用数量'); return }
+  using.value = true
+  try {
+    const res = await useStock({ material_id: useForm.material_id, quantity: useForm.quantity, work_order_id: useForm.work_order_id, note: useForm.note })
+    if (res.code === 0) { ElMessage.success('领料出库成功'); useVisible.value = false; load(); loadStock(1); loadStats() }
+    else ElMessage.error(res.msg || '领料失败')
+  } catch (e: any) { ElMessage.error(e?.response?.data?.msg || '领料失败') } finally { using.value = false }
 }
 
 function stockTypeLabel(t: string) { return ({ in: '采购入库', use: '领用出库', return: '退库', gain: '盘盈', loss: '盘亏/报废', adjust: '手动调整' } as Record<string, string>)[t] || t }

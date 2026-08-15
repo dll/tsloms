@@ -24,6 +24,7 @@ func newInvEngine(t *testing.T) *gin.Engine {
 		api.GET("/materials/stats", MaterialStats)
 		api.GET("/stocks", ListMaterialStocks)
 		api.POST("/stocks/adjust", AdjustMaterialStock)
+		api.POST("/stocks/use", UseMaterialStock)
 	}
 	pr := r.Group("/purchases")
 	{
@@ -240,5 +241,75 @@ func TestExpenseTypesAndConfirm(t *testing.T) {
 	model.DB.First(&e, e.ID)
 	if !e.Confirmed {
 		t.Fatal("确认未生效")
+	}
+}
+
+// TestWorkOrderMaterialUse 工单领料出库：扣减库存 + 写 type=use 流水并关联工单
+func TestWorkOrderMaterialUse(t *testing.T) {
+	r := newInvEngine(t)
+
+	// 物料（初始库存 10）
+	doJSON(r, "POST", "/inv/materials", map[string]interface{}{
+		"code": "LED-BULB", "name": "灯珠", "unit": "个", "stock": 10,
+	})
+	var m model.Material
+	model.DB.First(&m, "code = ?", "LED-BULB")
+
+	// 构造一张工单
+	wo := model.WorkOrder{
+		OrderNo:    model.NextOrderNo(model.DB),
+		DeviceHwID: 7,
+		Status:     model.WorkOrderStatusProcessing,
+	}
+	model.DB.Create(&wo)
+
+	// 领料出库 3 个
+	w := doJSON(r, "POST", "/inv/stocks/use", map[string]interface{}{
+		"material_id":   m.ID,
+		"quantity":      3,
+		"work_order_id": wo.ID,
+		"note":          "换灯珠",
+	})
+	body := parseBody(t, w)
+	if code, _ := body["code"].(float64); code != 0 {
+		t.Fatalf("工单领料失败: %v", body["message"])
+	}
+	model.DB.First(&m, m.ID)
+	if m.Stock != 7 {
+		t.Fatalf("领料后库存应为 7, got %d", m.Stock)
+	}
+
+	// 流水：type=use、数量为负、关联工单与设备
+	var s model.MaterialStock
+	model.DB.Where("material_id = ?", m.ID).Order("id DESC").First(&s)
+	if s.Type != model.StockTypeUse {
+		t.Fatalf("流水类型应为 use, got %s", s.Type)
+	}
+	if s.Quantity != -3 {
+		t.Fatalf("领料流水数量应为 -3, got %d", s.Quantity)
+	}
+	if s.WorkOrderID == nil || *s.WorkOrderID != wo.ID {
+		t.Fatalf("流水未关联工单, work_order_id=%v", s.WorkOrderID)
+	}
+	if s.RefType != "repair" {
+		t.Fatalf("流水引用类型应为 repair, got %s", s.RefType)
+	}
+
+	// 超额领料应被拒（库存不足）
+	w = doJSON(r, "POST", "/inv/stocks/use", map[string]interface{}{
+		"material_id": m.ID, "quantity": 100, "work_order_id": wo.ID,
+	})
+	body = parseBody(t, w)
+	if code, _ := body["code"].(float64); code != -1 {
+		t.Fatalf("超额领料应被拒, got %v", body["code"])
+	}
+
+	// 不存在工单应被拒
+	w = doJSON(r, "POST", "/inv/stocks/use", map[string]interface{}{
+		"material_id": m.ID, "quantity": 1, "work_order_id": 99999,
+	})
+	body = parseBody(t, w)
+	if code, _ := body["code"].(float64); code != -1 {
+		t.Fatalf("不存在工单应被拒, got %v", body["code"])
 	}
 }
