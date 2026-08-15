@@ -193,6 +193,56 @@ func TestAuth_EnabledUserStillAccessible(t *testing.T) {
 }
 
 // TestRequirePerm 功能权限中间件（ai:ops 等）越权拒绝
+func TestRequirePerms_OR(t *testing.T) {
+	model.InitTestDB()
+	gin.SetMode(gin.TestMode)
+	// 用户具备 ai:ops（覆盖 viewer）
+	u := model.User{Username: "perms_or", PasswordHash: "x", Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	model.DB.Create(&u)
+	model.DB.Create(&model.UserPermission{UserID: u.ID, Permission: "ai:ops", Granted: true})
+
+	handler := func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) }
+	setUID := func(uid uint) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Set("user_id", uid); c.Next() }
+	}
+
+	r := gin.New()
+	// OR: ai:ops 或 device:read 任一即可 → 200
+	r.GET("/or", setUID(u.ID), RequirePerms("device:read", "ai:ops"), handler)
+	// 无 user_id → 401
+	r.GET("/or-nouid", RequirePerms("ai:ops"), handler)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/or", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("OR 任一权限应 200, got %d", w.Code)
+	}
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest("GET", "/or-nouid", nil))
+	if w2.Code != http.StatusUnauthorized {
+		t.Errorf("OR 无 user_id 应 401, got %d", w2.Code)
+	}
+}
+
+func TestRequirePerms_None(t *testing.T) {
+	model.InitTestDB()
+	gin.SetMode(gin.TestMode)
+	// viewer 无任何额外权限
+	u := model.User{Username: "perms_none", PasswordHash: "x", Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	model.DB.Create(&u)
+	setUID := func(uid uint) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Set("user_id", uid); c.Next() }
+	}
+	handler := func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) }
+	r := gin.New()
+	r.GET("/none", setUID(u.ID), RequirePerms("ai:ops", "device:create"), handler)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/none", nil))
+	if w.Code != http.StatusForbidden {
+		t.Errorf("无任一权限应 403, got %d", w.Code)
+	}
+}
+
 func TestRequirePerm(t *testing.T) {
 	model.InitTestDB()
 	gin.SetMode(gin.TestMode)
