@@ -54,7 +54,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 
 // AutoMigrate 自动迁移全部域模型
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&Device{},
 		&PacketLog{},
 		&FaultRecord{},
@@ -68,7 +68,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&AIConfig{},
 		&AIUsage{},
 		&AIPrediction{},
-	)
+	); err != nil {
+		return err
+	}
+	// 数据迁移：旧版故障状态 active → occurred（四态模型引入后）
+	db.Model(&FaultRecord{}).Where("status = ?", "active").Update("status", FaultStatusOccurred)
+	return nil
 }
 
 // InitRedis 初始化 Redis 连接，使用 REDIS_DB 索引隔离（TSLOMS 使用 DB 1）
