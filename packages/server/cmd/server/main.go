@@ -332,6 +332,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 核心流程 AI 建议：故障确认/派单辅助 + 工单 Copilot + 历史查询
 			auth.GET("/ai/advice/fault/:id", handler.SuggestFaultAdviceAPI)
 			auth.GET("/ai/advice/workorder/:id", handler.SuggestWorkOrderAdviceAPI)
+			auth.POST("/ai/advice/device", handler.SuggestDeviceCopilotAPI)
+			auth.POST("/ai/advice/workorder/create", handler.SuggestWorkOrderCreateAPI)
+			auth.POST("/ai/advice/purchase", handler.SuggestPurchaseCopilotAPI)
 			auth.GET("/ai/advices", handler.ListAdvicesAPI)
 		}
 	}

@@ -132,6 +132,8 @@
         <el-form-item label="经度">
           <el-input v-model="editFormDev.lng" placeholder="如：121.4737" />
         </el-form-item>
+        <!-- AI 辅助：依据当前录入字段给出填写/配置建议 -->
+        <AiCopilot :load-fn="() => loadDeviceAdvice()" :fill-fn="() => {}" />
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
@@ -146,6 +148,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus } from '@element-plus/icons-vue'
 import { getDevices, updateDevice, createDevice, deleteDevice } from '@/api/device'
+import { getDeviceAdvice } from '@/api/copilot'
+import AiCopilot from '@/components/AiCopilot.vue'
 import { useAuthStore } from '@/store/auth'
 
 // 登录角色（用于按钮权限控制）
@@ -282,6 +286,17 @@ async function saveDevice() {
     editVisible.value = false
     fetchData()
   } catch { /* 后端已提示 */ } finally { saving.value = false }
+}
+// AI 辅助：依据当前录入设备字段生成填写/配置建议
+async function loadDeviceAdvice() {
+  return getDeviceAdvice({
+    hw_id: editFormDev.hw_id,
+    intersection: editFormDev.intersection,
+    network_code: editFormDev.network_code,
+    station_code: editFormDev.station_code,
+    lat: parseFloat(editFormDev.lat) || 0,
+    lng: parseFloat(editFormDev.lng) || 0,
+  })
 }
 async function handleDelete(row: Record<string, any>) {
   try {

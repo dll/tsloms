@@ -146,3 +146,56 @@ func ListAdvicesAPI(c *gin.Context) {
 	list := ai.ListAdvices(bizType, bizID, limit)
 	ok(c, gin.H{"list": list, "total": len(list)})
 }
+
+// SuggestDeviceCopilotAPI 设备 Copilot：依据前端提交字段给出填写/配置建议
+func SuggestDeviceCopilotAPI(c *gin.Context) {
+	var input map[string]any
+	if err := c.ShouldBindJSON(&input); err != nil {
+		input = map[string]any{}
+	}
+	uid := userIDFromCtx(c)
+	res, err := ai.SuggestDeviceCopilot(uid, input)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpRead, "ai/advice/device", "AI设备填写建议")
+	ok(c, gin.H{"result": res})
+}
+
+// SuggestWorkOrderCreateAPI 建单 Copilot：基于关联故障推荐建单要素
+// body: {fault_id}
+func SuggestWorkOrderCreateAPI(c *gin.Context) {
+	var req struct {
+		FaultID uint `json:"fault_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "fault_id 必填")
+		return
+	}
+	uid := userIDFromCtx(c)
+	res, err := ai.SuggestWorkOrderCreate(uid, req.FaultID)
+	if err != nil {
+		notFound(c, "故障不存在")
+		return
+	}
+	recordOperation(c, model.OpRead, "ai/advice/workorder/create", "AI建单建议")
+	ok(c, gin.H{"result": res})
+}
+
+// SuggestPurchaseCopilotAPI 采购 Copilot：合理性校验 + 供应商建议
+// body: {items:[{material_name,quantity,price}], supplier_id}
+func SuggestPurchaseCopilotAPI(c *gin.Context) {
+	var req struct {
+		Items      []ai.PurchaseLine `json:"items"`
+		SupplierID uint              `json:"supplier_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "参数错误")
+		return
+	}
+	uid := userIDFromCtx(c)
+	res := ai.SuggestPurchaseCopilot(uid, req.Items, req.SupplierID)
+	recordOperation(c, model.OpRead, "ai/advice/purchase", "AI采购建议")
+	ok(c, gin.H{"result": res})
+}

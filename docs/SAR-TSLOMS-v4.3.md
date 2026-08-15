@@ -1,10 +1,10 @@
-# TSLOMS 结项审核报告（SAR）v4.3 — 平台 AI 化（主动巡检 + 流程 Copilot）
+# TSLOMS 结项审核报告（SAR）v4.3 — 平台 AI 化（主动巡检 + 流程 AI 辅助全流程）
 
-> 版本：v4.3 ｜ 日期：2026-08-15 ｜ 基线：commit `0c02e1c`
+> 版本：v4.3 ｜ 日期：2026-08-15 ｜ 基线：commit `0c02e1c`（L1-L3 巡检/L4 部分）→ `9xxxxxx`（L4 全流程完成）
 > 前置：v4.0（AI 预测/诊断/生命周期）、v4.1（AI 原生增强）、v4.2（库存进销存/费用闭环 + RBAC 权限隔离）。
-> 本版范围：A. AI 主动巡检（定时日报 + 异常预警 + 站内推送）；B. 流程 Copilot 嵌入。
+> 本版范围：A. AI 主动巡检（定时日报 + 异常预警 + 站内推送）；B. 流程 AI 辅助嵌入（故障/工单/设备/建单/采购全流程）。
 
-> **六级 AI 化定位**：本版落地 **L3（AI 主动服务）** 全部 + **L4（流程 Copilot 嵌入）** 部分；
+> **六级 AI 化定位**：本版落地 **L3（AI 主动服务）** 全部 + **L4（流程 AI 辅助）** 全覆盖；
 > 完整演进路线见 `docs/PRD-TSLOMS-v4.3.md ★ 平台 AI 化六级演进路线`，供后期按层推进。
 
 ---
@@ -19,7 +19,10 @@
 | `internal/service/patrol.go` | **AI 主动巡检协程**：启动即巡检 + 每日定时（env `PATROL_DAILY_HOUR/MIN` 默认 08:00）；生成日报 + 异常检测 + 定向推送 |
 | `internal/service/patrol_test.go` | 巡检通知单测（创建/未读/已读/列表 + 面向全体广播） |
 | `internal/handler/notification.go` | 通知接口：`GET /notifications`、`GET /notifications/unread-count`、`PUT /notifications/:id/read`、`PUT /notifications/read-all` |
-| `cmd/server/main.go` | 注册 `notifications` 路由；启动 `NewPatrolService` 协程并纳入优雅停机 |
+| `cmd/server/main.go` | 注册 `notifications` 路由；启动 `NewPatrolService` 协程并纳入优雅停机；注册 L4 三新增 AI 辅助路由（device/建单/采购） |
+| `internal/ai/copilot_extra.go` | **L4 流程 AI 辅助**：设备填写建议、建单推荐（优先级/备件/步骤/维修人）、采购合理性校验+供应商建议；均 LLM+规则兜底 |
+| `internal/ai/copilot_extra_test.go` | L4 规则兜底单测（采购校验/采购合计/设备空 hw_id） |
+| `internal/handler/ai_advance.go` | 新增 `SuggestDeviceCopilotAPI`/`SuggestWorkOrderCreateAPI`/`SuggestPurchaseCopilotAPI` |
 
 ### 前端（Vue3, packages/admin）
 
@@ -27,10 +30,12 @@
 |---|---|
 | `src/api/notification.ts` | 通知接口封装 + `NotificationItem` 类型 |
 | `src/api/copilot.ts` | AI 建议接口封装（故障/工单 `FaultAdvice`/`WorkOrderAdvice`） |
-| `src/components/AiCopilot.vue` | 通用 AI 助手组件：生成建议 + 一键填入表单（含骨架/错误/空态） |
+| `src/components/AiCopilot.vue` | 通用 AI 辅助组件：生成建议 + 一键填入表单（含骨架/错误/空态）；支持故障/工单/设备/建单/采购多形态建议 |
 | `src/views/layout/index.vue` | 顶部**通知铃铛**：未读红点（2 分钟轮询）+ 通知中心面板（标签/摘要/跳转/全部已读） |
 | `src/views/fault/index.vue` | 故障处理弹窗嵌入 **AI 处置建议**（确认/派单辅助） |
-| `src/views/workorder/index.vue` | 工单完成弹窗嵌入 **AI 维修小结**（一键填入维修结果） |
+| `src/views/workorder/index.vue` | 工单完成弹窗嵌入 **AI 维修小结**（一键填入维修结果）；**新建工单弹窗**嵌入 **AI 建单建议**（优先级/备件/步骤/维修人预选） |
+| `src/views/device/index.vue` | 设备新建/编辑弹窗嵌入 **AI 填写建议**（依据录入字段实时生成） |
+| `src/views/inventory/Purchase.vue` | 采购新建弹窗嵌入 **AI 采购校验**（数量/金额校验 + 供应商建议） |
 
 ---
 
@@ -47,9 +52,13 @@
 - `user_id=0` 表示面向全体；定向推送对 role ∈ {admin, operator} 且启用的用户逐条创建；无目标用户退化为全体。
 - 未读计数/列表查询统一：`(user_id = ? OR user_id = 0)` 且 `is_read = false`。
 
-### 3. 流程 Copilot
+### 3. 流程 AI 辅助（L4）
 - `AiCopilot` 为受控组件：`loadFn` 拉取建议、`fillFn` 填入表单；LLM 失败时后端已规则兜底，前端始终可展示。
-- 复用既有 `/ai/advice/fault/:id`、`/ai/advice/workorder/:id?stage=summary`，不新增 AI 链路。
+- 复用既有 `/ai/advice/fault/:id`、`/ai/advice/workorder/:id?stage=summary`；新增三个 **POST** 端点：
+  - `/ai/advice/device`：依据前端提交的设备字段生成填写/配置建议 + 校验提醒；
+  - `/ai/advice/workorder/create`：基于关联故障推荐优先级/备件/处理步骤/维修人（支持一键预选维修人）；
+  - `/ai/advice/purchase`：采购明细合理性校验 + 供应商建议。
+- 均采用「规则兜底先算 → LLM 增强合并」：规则保证结构字段（优先级/合计/步骤）始终可用，LLM 输出以「处理步骤：/预领备件：」等结构化前缀解析并合并，无法解析时保留规则值，避免 LLM 格式漂移导致空字段。
 
 ---
 
@@ -71,7 +80,11 @@
 | `/notifications/unread-count` | ✅ |
 | 单条已读 / 全部已读 | ✅ |
 | `/ai/advices`（Copilot 历史） | ✅ 200 |
+| `/ai/advice/device`（设备填写建议） | ✅ 200，source=LLM；空 hw_id 有提示 |
+| `/ai/advice/workorder/create`（建单建议） | ✅ 200，priority=P0，steps 非空 |
+| `/ai/advice/purchase`（采购校验） | ✅ 200 含合计；非法明细触发校验 |
 | 服务 active / gateway / admin | ✅ active / 200 / 200 |
+| RBAC 权限未受影响 | ✅ 28 权限点 |
 
 > 部署后服务启动即完成一次巡检，自动生成 1 条日报（report）与 1 条预警（alert）通知，验证调度与推送链路真实生效。
 
@@ -79,10 +92,13 @@
 
 ## 四、部署记录
 
-- 方式：后端二进制 + 前端 dist，单脚本原子替换（`tsloms_ai_deploy.sh`），校验 SHA → 备份 → 替换 → 重启 → 验证。
-- 备份：`server.pre-ai-20260815201157`、`dist.pre-ai-20260815201157`。
-- 新二进制 SHA（远端）= `0a332d04…`，与本地 `server.linux` 一致。
-- 因 RBAC 阶段发现「二进制真实路径为 `/opt/tsloms/packages/server/server`（app 目录内文件）」，本版脚本已按正确路径部署。
+- 两阶段原子部署（后端二进制 + 前端 dist，单脚本 `tsloms_l4_deploy.sh`）：
+  1. L4 首批（20260815211932）：前端 dist + 后端二进制，SHA 校验 → 备份 → 替换 → 重启；
+  2. L4 规则融合优化（20260815212256）：仅替换后端二进制（LLM 结构字段解析合并），dist 不变。
+- 备份：`server.pre-l4-*`、`dist.pre-l4-*`（含 prior `server.pre-ai-*`/`dist.pre-ai-*`）。
+- 最终新二进制 SHA（远端）= `1dec246b…`，与本地 `server.linux` 一致。
+- 因 RBAC 阶段发现「二进制真实路径为 `/opt/tsloms/packages/server/server`（app 目录内文件）」，脚本已按正确路径部署。
+- `tsloms-server` active、NRestarts=0（无重启），网关/后台 200。
 
 ---
 

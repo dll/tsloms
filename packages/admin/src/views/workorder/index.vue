@@ -168,7 +168,7 @@
         <el-form-item label="工单编号">
           <span>{{ completeForm.order_no }}</span>
         </el-form-item>
-        <!-- AI 维修小结 Copilot：一键生成并填入维修结果 -->
+        <!-- AI 维修小结辅助：一键生成并填入维修结果 -->
         <AiCopilot v-if="completeTarget" :load-fn="() => loadWOSummary(completeTarget!.id)" :fill-fn="applyWOSummary" />
         <el-form-item label="维修结果">
           <el-input
@@ -229,6 +229,8 @@
         <el-form-item label="设备ID" required>
           <el-input :model-value="String(createForm.device_hw_id)" disabled placeholder="选择故障后自动填充" />
         </el-form-item>
+        <!-- AI 建单辅助：基于故障推荐优先级/备件/步骤/维修人 -->
+        <AiCopilot v-if="createForm.fault_id" :load-fn="() => loadWOCreateAdvice(createForm.fault_id!)" :fill-fn="applyWOCreate" />
         <el-form-item label="维修人员">
           <el-select v-model="createForm.assignee_id" placeholder="选填，指派维修人员" clearable style="width: 100%">
             <el-option
@@ -335,7 +337,7 @@ import { getWorkOrders, getWorkOrderDetail, updateWorkOrderStatus, assignWorkOrd
 import { getWorkOrderStats, getWorkOrderAvgClosure } from '@/api/dashboard'
 import { getDevices } from '@/api/device'
 import { getFaults } from '@/api/fault'
-import { getWorkOrderAdvice, type WorkOrderAdvice } from '@/api/copilot'
+import { getWorkOrderAdvice, getWorkOrderCreateAdvice, type WorkOrderAdvice, type WorkOrderCreateAdvice } from '@/api/copilot'
 import AiCopilot from '@/components/AiCopilot.vue'
 import { useAuthStore } from '@/store/auth'
 
@@ -654,7 +656,7 @@ function openCompleteDialog(row: Record<string, any>) {
   completeDialogVisible.value = true
 }
 
-// AI 维修小结 Copilot：生成维修小结建议（summary 阶段）
+// AI 维修小结辅助：生成维修小结建议（summary 阶段）
 async function loadWOSummary(id: number) {
   const res = await getWorkOrderAdvice(id, 'summary')
   return res
@@ -664,6 +666,23 @@ function applyWOSummary(a: WorkOrderAdvice) {
   if (text) {
     completeForm.result = text
     ElMessage.success('已填入 AI 维修小结，请核对后保存')
+  }
+}
+
+// AI 建单辅助：基于故障推荐建单要素（优先级/备件/步骤/维修人）
+async function loadWOCreateAdvice(faultId: number) {
+  const res = await getWorkOrderCreateAdvice(faultId)
+  return res
+}
+function applyWOCreate(a: WorkOrderCreateAdvice) {
+  // 推荐维修人：若提示包含可匹配的用户，帮助预选
+  const hint = a?.repairer_hint || ''
+  if (hint && assignableUsers.value.length) {
+    const match = assignableUsers.value.find((u) => hint.includes(u.username))
+    if (match && !createForm.assignee_id) {
+      createForm.assignee_id = match.id
+      ElMessage.success('已按 AI 建议预选维修人员，请核对')
+    }
   }
 }
 

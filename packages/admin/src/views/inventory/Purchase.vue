@@ -62,6 +62,8 @@
             <el-button size="small" link type="primary" :icon="Plus" @click="addItem">添加明细</el-button>
           </div>
         </el-form-item>
+        <!-- AI 辅助：采购合理性校验 + 供应商建议 -->
+        <AiCopilot :load-fn="loadPurchaseAdvice" :fill-fn="() => {}" />
         <el-form-item label="备注"><el-input v-model="createForm.note" /></el-form-item>
       </el-form>
       <template #footer>
@@ -109,6 +111,8 @@ import { Search, Plus, Delete } from '@element-plus/icons-vue'
 import { getPurchases, getPurchaseDetail, createPurchase, receivePurchase, cancelPurchase, deletePurchase } from '@/api/purchase'
 import { getAllSuppliers } from '@/api/supplier'
 import { getMaterials } from '@/api/inventory'
+import { getPurchaseAdvice } from '@/api/copilot'
+import AiCopilot from '@/components/AiCopilot.vue'
 import { useAuthStore } from '@/store/auth'
 
 const authStore = useAuthStore()
@@ -149,6 +153,16 @@ function openCreate() {
   createVisible.value = true
 }
 function addItem() { createForm.items.push(emptyTpl()) }
+// AI 辅助：采购合理性校验 + 供应商建议
+async function loadPurchaseAdvice() {
+  const nameOf = (id: any) => materialOpts.value.find((m: any) => m.id === id)?.name || `物料#${id}`
+  const items = createForm.items.filter((it: any) => it.material_id).map((it: any) => ({
+    material_name: nameOf(it.material_id),
+    quantity: it.quantity,
+    price: it.price,
+  }))
+  return getPurchaseAdvice(items, createForm.supplier_id || 0)
+}
 async function create() {
   if (!createForm.supplier_id) { ElMessage.warning('请选择供应商'); return }
   if (!createForm.items.length || !createForm.items[0].material_id) { ElMessage.warning('请添加采购明细'); return }

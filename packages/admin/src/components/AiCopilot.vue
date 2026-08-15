@@ -29,6 +29,30 @@
           <li v-for="(s, i) in advice.steps" :key="i">{{ s }}</li>
         </ol>
       </div>
+      <div v-if="advice.hints && advice.hints.length" class="copilot-sec">
+        <div class="copilot-sec-title">填写/配置建议</div>
+        <ol class="copilot-steps">
+          <li v-for="(s, i) in advice.hints" :key="i">{{ s }}</li>
+        </ol>
+      </div>
+      <div v-if="advice.suggestions && advice.suggestions.length" class="copilot-sec">
+        <div class="copilot-sec-title">改进建议</div>
+        <ol class="copilot-steps">
+          <li v-for="(s, i) in advice.suggestions" :key="i">{{ s }}</li>
+        </ol>
+      </div>
+      <div v-if="advice.checks && advice.checks.length" class="copilot-sec">
+        <div class="copilot-sec-title">校验提醒</div>
+        <el-tag v-for="(p, i) in advice.checks" :key="i" size="small" type="danger" effect="plain" style="margin-right: 6px; margin-bottom: 4px">{{ p }}</el-tag>
+      </div>
+      <div v-if="advice.issues && advice.issues.length" class="copilot-sec">
+        <div class="copilot-sec-title">潜在问题</div>
+        <el-tag v-for="(p, i) in advice.issues" :key="i" size="small" type="warning" effect="plain" style="margin-right: 6px; margin-bottom: 4px">{{ p }}</el-tag>
+      </div>
+      <div v-if="advice.repairer_hint || advice.supplier_hint" class="copilot-sec">
+        <div class="copilot-sec-title">推荐</div>
+        <div class="copilot-text">{{ advice.repairer_hint || advice.supplier_hint }}</div>
+      </div>
       <div v-if="advice.root_cause" class="copilot-sec">
         <div class="copilot-sec-title">根因预判</div>
         <div class="copilot-text">{{ advice.root_cause }}</div>
@@ -43,7 +67,7 @@
     </div>
 
     <div v-else class="copilot-empty">
-      <el-text type="info" size="small">AI 根据当前故障/工单数据给出处置建议，辅助快速处理，可一键填入表单。</el-text>
+      <el-text type="info" size="small">AI 根据当前业务数据给出辅助建议，可一键填入表单，辅助快速处理。</el-text>
     </div>
   </div>
 </template>
@@ -51,8 +75,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-// 通用 Copilot：接受任意建议结构（故障/工单），字段均可选按需展示
-interface CopilotAdvice {
+// 通用 AI 辅助：接受任意建议结构（故障/工单/设备/采购），字段均可选按需展示
+interface Advice {
   summary?: string
   priority?: string
   priority_text?: string
@@ -60,6 +84,12 @@ interface CopilotAdvice {
   root_cause?: string
   steps?: string[]
   parts?: string[]
+  hints?: string[]
+  suggestions?: string[]
+  checks?: string[]
+  issues?: string[]
+  repairer_hint?: string
+  supplier_hint?: string
   content?: string
   source?: string
   tokens_used?: number
@@ -72,7 +102,7 @@ const props = defineProps<{
 
 const loading = ref(false)
 const generating = ref(false)
-const advice = ref<CopilotAdvice | null>(null)
+const advice = ref<Advice | null>(null)
 const error = ref('')
 const generated = ref(false)
 
