@@ -235,6 +235,37 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/firmware-upgrades", middleware.RequireOperator(), handler.CreateFirmwareUpgrade)
 			auth.DELETE("/firmware-upgrades/:id", middleware.RequireAdmin(), handler.DeleteFirmwareUpgrade)
 
+			// 库存管理（物料档案 + 出入库流水 + 统计）
+			auth.GET("/inv/materials", handler.ListMaterialsV2)
+			auth.GET("/inv/materials/stats", handler.MaterialStats)
+			auth.POST("/inv/materials", middleware.RequireOperator(), handler.SaveMaterial)
+			auth.PUT("/inv/materials/:id", middleware.RequireOperator(), handler.SaveMaterial)
+			auth.DELETE("/inv/materials/:id", middleware.RequireAdmin(), handler.DeleteMaterialV2)
+			auth.GET("/inv/stocks", handler.ListMaterialStocks)
+			auth.POST("/inv/stocks/adjust", middleware.RequireOperator(), handler.AdjustMaterialStock)
+
+			// 供应商
+			auth.GET("/suppliers", handler.ListSuppliers)
+			auth.POST("/suppliers", middleware.RequireOperator(), handler.SaveSupplier)
+			auth.PUT("/suppliers/:id", middleware.RequireOperator(), handler.SaveSupplier)
+			auth.DELETE("/suppliers/:id", middleware.RequireAdmin(), handler.DeleteSupplier)
+
+			// 采购单（进销存）
+			auth.GET("/purchases", handler.ListPurchaseOrders)
+			auth.GET("/purchases/:id", handler.GetPurchaseOrder)
+			auth.POST("/purchases", middleware.RequireOperator(), handler.CreatePurchaseOrder)
+			auth.POST("/purchases/:id/receive", middleware.RequireOperator(), handler.ReceivePurchase)
+			auth.POST("/purchases/:id/cancel", middleware.RequireOperator(), handler.CancelPurchase)
+			auth.DELETE("/purchases/:id", middleware.RequireAdmin(), handler.DeletePurchase)
+
+			// 维修费用（耗材/人工/交通/其它）
+			auth.GET("/expenses", handler.ListRepairExpenses)
+			auth.GET("/expenses/stats", handler.ExpenseStats)
+			auth.POST("/expenses", middleware.RequireOperator(), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id", middleware.RequireOperator(), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id/confirm", middleware.RequireOperator(), handler.ConfirmRepairExpense)
+			auth.DELETE("/expenses/:id", middleware.RequireAdmin(), handler.DeleteRepairExpense)
+
 			// 维修耗材
 			auth.GET("/materials", handler.ListMaterials)
 			auth.POST("/materials", middleware.RequireOperator(), handler.UpsertMaterial)

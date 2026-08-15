@@ -65,6 +65,16 @@
           <el-icon><Upload /></el-icon>
           <template #title>固件管理</template>
         </el-menu-item>
+        <el-sub-menu index="/inventory">
+          <template #title>
+            <el-icon><Box /></el-icon>
+            <span>库存与成本</span>
+          </template>
+          <el-menu-item index="/inventory/material">物料库存</el-menu-item>
+          <el-menu-item index="/inventory/purchase">采购管理</el-menu-item>
+          <el-menu-item index="/inventory/expense">维修费用</el-menu-item>
+          <el-menu-item index="/inventory/supplier">供应商</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/log">
           <el-icon><Document /></el-icon>
           <template #title>系统日志</template>

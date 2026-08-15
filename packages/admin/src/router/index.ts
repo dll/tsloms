@@ -31,6 +31,11 @@ const router = createRouter({
         { path: 'workorder', name: 'Workorder', component: () => import('@/views/workorder/index.vue'), meta: { title: '工单管理' } },
         // 固件管理 - OTA 升级
         { path: 'firmware', name: 'Firmware', component: () => import('@/views/firmware/index.vue'), meta: { title: '固件管理' } },
+        // 库存与成本 - 物料库存/采购/维修费用/供应商
+        { path: 'inventory/material', name: 'InvMaterial', component: () => import('@/views/inventory/Material.vue'), meta: { title: '物料库存' } },
+        { path: 'inventory/purchase', name: 'InvPurchase', component: () => import('@/views/inventory/Purchase.vue'), meta: { title: '采购管理' } },
+        { path: 'inventory/expense', name: 'InvExpense', component: () => import('@/views/inventory/Expense.vue'), meta: { title: '维修费用' } },
+        { path: 'inventory/supplier', name: 'InvSupplier', component: () => import('@/views/inventory/Supplier.vue'), meta: { title: '供应商' } },
         // 系统日志 - 操作日志与设备日志
         { path: 'log', name: 'Log', component: () => import('@/views/log/index.vue'), meta: { title: '系统日志' } },
         // 系统设置 - 用户权限与参数配置
