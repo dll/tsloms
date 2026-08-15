@@ -126,10 +126,10 @@ func BuildOpsHealth() (*OpsHealth, error) {
 		snap.AvgClosureHours = closureSum / float64(len(closure))
 	}
 
-	// 近30天成本
+	// 近30天成本（repair_expenses 无 occurred_at 列，用 created_at）
 	var cost30 float64
 	model.DB.Model(&model.RepairExpense{}).
-		Where("occurred_at >= ?", time.Now().AddDate(0, 0, -30)).
+		Where("created_at >= ?", time.Now().AddDate(0, 0, -30)).
 		Select("COALESCE(SUM(amount),0)").Scan(&cost30)
 
 	// 库存低库存率
@@ -406,11 +406,11 @@ func BuildDecisions() ([]DecisionSuggestion, error) {
 		}
 	}
 
-	// ---- 成本优化：近30天成本按类型/设备归因 ----
+	// ---- 成本优化：近30天成本按类型/设备归因（repair_expenses 无 occurred_at 列，用 created_at） ----
 	var costByType []NameValue
 	model.DB.Model(&model.RepairExpense{}).
 		Select("type as name, COALESCE(SUM(amount),0) as value").
-		Where("occurred_at >= ?", since30).
+		Where("created_at >= ?", since30).
 		Group("type").Scan(&costByType)
 	var costTopDevice []struct {
 		DeviceHwID uint32
@@ -418,7 +418,7 @@ func BuildDecisions() ([]DecisionSuggestion, error) {
 	}
 	model.DB.Model(&model.RepairExpense{}).
 		Select("device_hw_id, COALESCE(SUM(amount),0) as total").
-		Where("occurred_at >= ?", since30).
+		Where("created_at >= ?", since30).
 		Group("device_hw_id").Order("total DESC").Limit(3).Scan(&costTopDevice)
 
 	var maxType NameValue

@@ -90,6 +90,7 @@ const quickSuggests = [
   '最近30天维修费用',
   '运维健康评分',
   '给出决策建议',
+  '最近有哪些异常告警',
   '怎么新建工单？',
 ]
 
@@ -100,6 +101,7 @@ function toolLabel(t: string) {
     workorder_stats: '工单统计',
     expense_summary: '费用归因',
     ops_health: '运维健康/决策',
+    anomaly_stream: '实时异常流',
     create_fault: '报修建故障单',
     create_workorder: '命令式建工单',
     kb: '知识库',

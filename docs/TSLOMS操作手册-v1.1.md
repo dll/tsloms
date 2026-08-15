@@ -711,6 +711,14 @@ AI 工作台聚合三大 AI 原生能力，入口：**AI 分析 → AI 工作台
 - 对**备件采购**类建议，点击「**一键采纳**」，系统自动生成采购草稿单（半自动执行），可在采购管理中查看/完善后下单。
 - 也可在 **AI 助手**对话框直接输入「运维健康评分」或「给出决策建议」快速查看.
 
+### 8.5 AI 实时异常流（L6）
+
+- 进入 **AI 工作台 → 实时异常流**，选择时间窗（近24小时/近3天/近7天）查看**时间倒序**的异常事件流，并按严重程度（严重/重要/次要）分色展示。
+- 异常事件来源四类：**设备报警报文/无效帧**、**活跃未解决故障**、**超时未闭环工单**（待处理超24h、处理中超48h）、**离线设备**。
+- 顶部展示各类异常统计与 AI 结论摘要；无异常时提示“系统运行平稳”。
+- 也可在 **AI 助手**对话框直接输入「最近有哪些异常」或「最近有哪些告警」快速查询实时异常流。
+- 说明：本页为**请求时聚合**的实时异常视图（报文/故障/工单/设备），配合 MQTT 传入即研判自动建单的链路，构成 L6 实时异常检视闭环；需权限 `ai:ops`。
+
 ---
 
 ## 9. 常见问题（FAQ）
@@ -825,20 +833,21 @@ AI 工作台聚合三大 AI 原生能力，入口：**AI 分析 → AI 工作台
 | GET/POST/PUT | /api/v1/expenses | 费用列表/登记/更新 | 读公开/写 operator |
 | GET | /api/v1/dashboard/overview | 仪表盘概览 | 读 |
 | GET | /api/v1/logs/operations | 操作日志 | 读 |
-| GET | /api/v1/ai/analyze/inventory | 库存健康 AI 分析 | 读 |
-| GET | /api/v1/ai/analyze/cost | 成本归因 AI 分析 | 读 |
-| POST | /api/v1/ai/report/generate | 生成运维报告（日报/各模块） | operator |
-| GET | /api/v1/ai/reports | 历史报告 | 读 |
-| GET | /api/v1/ai/advice/fault/:id | 故障处置 AI 建议（派单辅助） | 读 |
-| GET | /api/v1/ai/advice/workorder/:id?stage=summary | 工单 AI 辅助（维修小结） | 读 |
-| POST | /api/v1/ai/advice/device | 设备新建/编辑 AI 填写建议 | 读 |
-| POST | /api/v1/ai/advice/workorder/create | 建单 AI 推荐（优先级/备件/步骤/维修人） | 读 |
-| POST | /api/v1/ai/advice/purchase | 采购 AI 校验 + 供应商建议 | 读 |
-| POST | /api/v1/ai/nl/interact | AI 自然语言交互（查询/报修/建单/知识库） | 读/写（命令类） |
-| POST | /api/v1/ai/decision/center | 运维健康评分 + 决策建议（L6 决策中心） | 读 |
-| POST | /api/v1/ai/decision/adopt | 一键采纳建议→生成采购单（purchase:manage） | 写 |
+| GET | /api/v1/ai/analyze/inventory | 库存健康 AI 分析 | ai:ops |
+| GET | /api/v1/ai/analyze/cost | 成本归因 AI 分析 | ai:ops |
+| POST | /api/v1/ai/report/generate | 生成运维报告（日报/各模块） | ai:ops |
+| GET | /api/v1/ai/reports | 历史报告 | ai:ops |
+| GET | /api/v1/ai/advice/fault/:id | 故障处置 AI 建议（派单辅助） | ai:ops |
+| GET | /api/v1/ai/advice/workorder/:id?stage=summary | 工单 AI 辅助（维修小结） | ai:ops |
+| POST | /api/v1/ai/advice/device | 设备新建/编辑 AI 填写建议 | ai:ops |
+| POST | /api/v1/ai/advice/workorder/create | 建单 AI 推荐（优先级/备件/步骤/维修人） | ai:ops |
+| POST | /api/v1/ai/advice/purchase | 采购 AI 校验 + 供应商建议 | ai:ops |
+| POST | /api/v1/ai/nl/interact | AI 自然语言交互（查询/报修/建单/知识库；命令类写操作在指令内二次校验 fault:update / workorder:create） | ai:ops（命令类另行校验业务权限） |
+| POST | /api/v1/ai/decision/center | 运维健康评分 + 决策建议（L6 决策中心） | ai:ops |
+| POST | /api/v1/ai/decision/adopt | 一键采纳建议→生成采购单（purchase:manage） | ai:ops + purchase:manage |
+| GET | /api/v1/ai/anomaly/stream?hours=&limit= | AI 实时异常流检测（L6） | ai:ops |
 | DELETE | /api/v1/faults/:id | 删除故障记录（fault:delete） | 写 |
-| GET | /api/v1/ai/advices | 流程建议历史 | 读 |
+| GET | /api/v1/ai/advices | 流程建议历史 | ai:ops |
 | GET | /api/v1/notifications | 我的通知列表（含未读） | 读 |
 | GET | /api/v1/notifications/unread-count | 未读通知数（铃铛角标） | 读 |
 | PUT | /api/v1/notifications/:id/read | 单条已读 | 读 |

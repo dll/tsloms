@@ -99,6 +99,7 @@ func classifyIntent(client *LLMClient, userID uint, text string) (NLIntent, erro
 - workorder_stats(工单统计,params: days=天数)
 - expense_summary(费用归因,params: days=天数)
 - ops_health(运维健康评分/决策建议,params: 无)
+- anomaly_stream(实时异常流检测:报文告警/故障/超时工单/离线设备,params: hours=小时)
 - create_fault(自然语言报修→建故障单,params: desc=故障描述,device=设备ID或路口,hw_id=硬件ID,level=critical/normal)
 - create_workorder(命令式建工单,params: device=设备ID或路口,hw_id=硬件ID,note=备注)
 - 查询/统计类归 query，创建工单/故障归 command，业务知识/操作咨询归 fallback(tool=知识库)。
@@ -133,6 +134,9 @@ func ruleClassify(text string) NLIntent {
 		return it
 	}
 	switch {
+	case strings.Contains(text, "异常") || strings.Contains(text, "告警") || strings.Contains(text, "实时") && strings.Contains(text, "事件") || strings.Contains(text, "有哪些问题") || strings.Contains(text, "异常流"):
+		it.Intent = "query"
+		it.Tool = "anomaly_stream"
 	case strings.Contains(text, "健康评分") || strings.Contains(text, "健康分") || strings.Contains(text, "运维健康") || strings.Contains(text, "决策建议") || strings.Contains(text, "健康度") || strings.Contains(text, "健康状态"):
 		it.Intent = "query"
 		it.Tool = "ops_health"
@@ -168,6 +172,19 @@ func ruleClassify(text string) NLIntent {
 
 // runTool 按意图执行真实工具并组回答
 func runTool(userID uint, it NLIntent, raw string) NLAnswer {
+	// 命令类写操作必须校验业务权限（RBAC 防线：防止自然语言绕过接口权限）
+	switch it.Tool {
+	case "create_fault":
+		if deny, ans := nlRequirePerm(userID, "fault:update"); deny {
+			return ans
+		}
+	case "create_workorder":
+		if deny, ans := nlRequirePerm(userID, "workorder:create"); deny {
+			return ans
+		}
+	default:
+		// 只读工具（fault_rank/device_status/workorder_stats/expense_summary/ops_health/anomaly_stream）放行
+	}
 	// 命令类写操作需校验权限（由调用方 RequirePerm 控制读；写操作在此轻量确认设备存在）
 	switch it.Tool {
 	case "fault_rank":
@@ -180,6 +197,8 @@ func runTool(userID uint, it NLIntent, raw string) NLAnswer {
 		return runExpenseSummary(userID, it)
 	case "ops_health":
 		return runOpsHealth(userID, it)
+	case "anomaly_stream":
+		return runAnomalyStream(userID, it)
 	case "create_fault":
 		return runCreateFault(userID, it, raw)
 	case "create_workorder":
@@ -187,6 +206,24 @@ func runTool(userID uint, it NLIntent, raw string) NLAnswer {
 	default: // kb / fallback
 		return runKnowledge(raw)
 	}
+}
+
+// nlRequirePerm NL 命令类工具的业务权限校验。
+// 无权限时返回 (true, 权限不足回答)；有权限时返回 (false, 空)。
+// 不调用 LLM，纯规则，保证写操作不越权。
+func nlRequirePerm(userID uint, perm string) (bool, NLAnswer) {
+	// 无数据库（如只读/单测环境）时拒绝写命令，避免 nil 指针与方法内 DB 依赖
+	if model.DB == nil {
+		return true, NLAnswer{Reply: "系统当前不可用，无法执行写操作", Intent: "command", Tool: "", Source: "规则"}
+	}
+	perms, err := model.EffectivePermissions(userID)
+	if err != nil {
+		return true, NLAnswer{Reply: "权限校验失败，请稍后再试", Intent: "command", Tool: "", Source: "规则"}
+	}
+	if !perms[perm] {
+		return true, NLAnswer{Reply: "抱歉，您没有执行该操作的权限（需要权限：" + perm + "），请联系管理员。", Intent: "command", Tool: "", Source: "规则"}
+	}
+	return false, NLAnswer{}
 }
 
 // ---- 查询类工具（只读真实数据） ----
@@ -366,6 +403,32 @@ func runOpsHealth(userID uint, it NLIntent) NLAnswer {
 	return NLAnswer{
 		Reply: reply, Intent: "query", Tool: "ops_health",
 		Data:   map[string]any{"health_total": health.Total, "level": health.Grade, "decision_count": len(decisions)},
+		Source: "规则",
+	}
+}
+
+// runAnomalyStream 实时异常流检测（L6，只读）
+// 返回最近窗内异常事件摘要：报文告警/无效、活跃故障、超时工单、离线设备
+func runAnomalyStream(userID uint, it NLIntent) NLAnswer {
+	hours := parseDays(it.Params["hours"], 24)
+	res, err := BuildAnomalyStream(hours, 20)
+	if err != nil {
+		return NLAnswer{Reply: "异常流检测失败：" + err.Error(), Intent: "query", Tool: "anomaly_stream", Source: "规则"}
+	}
+	reply := "最近" + fmt.Sprintf("%d", hours) + "小时发现" + fmt.Sprintf("%d", res.Total) + "个异常事件（" + res.Summary + "）："
+	if len(res.Events) > 0 {
+		for i, e := range res.Events {
+			if i == 5 {
+				reply += "…"
+				break
+			}
+			reply += fmt.Sprintf("[%s]%s、", e.Level, e.Title)
+		}
+		reply = strings.TrimRight(reply, "、") + "。"
+	}
+	return NLAnswer{
+		Reply: reply, Intent: "query", Tool: "anomaly_stream",
+		Data:   map[string]any{"total": res.Total, "by_level": res.ByLevel, "events": res.Events},
 		Source: "规则",
 	}
 }

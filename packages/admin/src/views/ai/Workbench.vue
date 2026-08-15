@@ -214,6 +214,46 @@
           <el-empty v-else description="当前无待干预的决策项，运维状态良好" class="mt" />
         </template>
       </el-tab-pane>
+
+      <!-- 实时异常流 (L6) -->
+      <el-tab-pane label="实时异常流" name="anomaly">
+        <div class="toolbar">
+          <el-radio-group v-model="anomHours" size="small" @change="loadAnomaly">
+            <el-radio-button :value="24">近24小时</el-radio-button>
+            <el-radio-button :value="72">近3天</el-radio-button>
+            <el-radio-button :value="168">近7天</el-radio-button>
+          </el-radio-group>
+          <el-button type="danger" plain :loading="anomLoading" @click="loadAnomaly" class="ml">
+            <el-icon><Refresh /></el-icon>&nbsp;刷新异常流
+          </el-button>
+        </div>
+        <div v-loading="anomLoading">
+          <el-alert v-if="anomData" :title="anomData.summary" :type="anomData.total === 0 ? 'success' : 'warning'" :closable="false" class="mb" />
+
+          <el-row v-if="anomData && anomData.total > 0" :gutter="16" class="stat-row mb">
+            <el-col :span="6"><el-card><div class="stat-num danger">{{ anomData.by_level.critical || 0 }}</div><div class="stat-label">严重异常</div></el-card></el-col>
+            <el-col :span="6"><el-card><div class="stat-num warn">{{ anomData.by_level.major || 0 }}</div><div class="stat-label">重要异常</div></el-card></el-col>
+            <el-col :span="6"><el-card><div class="stat-num">{{ (anomData.by_level.minor || 0) + (anomData.by_level.info || 0) }}</div><div class="stat-label">次要/提示</div></el-card></el-col>
+            <el-col :span="6"><el-card><div class="stat-num">{{ anomData.total }}</div><div class="stat-label">异常事件总数</div></el-card></el-col>
+          </el-row>
+
+          <el-card v-if="anomData && anomData.events.length" shadow="never">
+            <template #header>异常事件流（时间倒序）</template>
+            <el-timeline>
+              <el-timeline-item v-for="(e, i) in anomData.events" :key="i" :timestamp="fmtTime(e.time)" placement="top"
+                                :type="levelTag(e.level)" :hollow="e.level === 'minor' || e.level === 'info'">
+                <div class="anom-title">
+                  <el-tag :type="levelTag(e.level)" size="small">{{ e.level }}</el-tag>
+                  <b>{{ e.title }}</b>
+                  <el-tag v-if="e.device_hw_id" size="small" type="info">设备 {{ e.device_hw_id }}</el-tag>
+                </div>
+                <div class="anom-detail">{{ e.detail }}</div>
+              </el-timeline-item>
+            </el-timeline>
+          </el-card>
+          <el-empty v-else-if="anomData" description="最近时段无异常事件，系统运行平稳" />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -225,7 +265,7 @@ import * as echarts from 'echarts'
 import {
   analyzeInventory, analyzeCost, generateReport, listReports,
 } from '@/api/ai'
-import { getDecisionCenter, adoptDecision } from '@/api/copilot'
+import { getDecisionCenter, adoptDecision, getAnomalyStream } from '@/api/copilot'
 
 const activeTab = ref('inventory')
 
@@ -300,6 +340,47 @@ async function adopt(row: any) {
   } finally {
     adopting.value = ''
   }
+}
+
+// ---- 实时异常流 (L6) ----
+const anomLoading = ref(false)
+const anomData = ref<any>(null)
+const anomHours = ref(24)
+
+async function loadAnomaly() {
+  anomLoading.value = true
+  try {
+    const res: any = await getAnomalyStream(anomHours.value, 50)
+    if (res.code === 0 && res.data?.result) {
+      anomData.value = res.data.result
+    } else {
+      ElMessage.error(res.msg || '获取异常流失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '获取异常流失败')
+  } finally {
+    anomLoading.value = false
+  }
+}
+
+function levelTag(lvl: string): string {
+  const map: Record<string, { label: string; type: string }> = {
+    critical: { label: '严重', type: 'danger' },
+    major: { label: '重要', type: 'warning' },
+    minor: { label: '次要', type: 'info' },
+    info: { label: '提示', type: 'success' },
+  }
+  const m = map[lvl] || { label: lvl, type: 'info' }
+  return m.type
+}
+
+function fmtTime(t: string): string {
+  if (!t) return ''
+  // ISO → 'MM-DD HH:mm'
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return t
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 let charts: echarts.ECharts[] = []
@@ -414,6 +495,7 @@ function prettyJSON(s: string): string {
 
 onMounted(async () => {
   await loadReports()
+  await loadAnomaly()
 })
 
 onBeforeUnmount(() => disposeCharts())
@@ -423,11 +505,15 @@ onBeforeUnmount(() => disposeCharts())
 .ai-workbench { padding: 4px; }
 .toolbar { display: flex; align-items: center; margin-bottom: 12px; }
 .ml { margin-left: 10px; }
+.mb { margin-bottom: 12px; }
 .mt { margin-top: 12px; }
 .stat-row { margin-bottom: 14px; }
 .stat-num { font-size: 24px; font-weight: 600; color: #303133; }
 .stat-num.warn { color: #e6a23c; }
+.stat-num.danger { color: #f56c6c; }
 .stat-label { color: #909399; font-size: 13px; margin-top: 4px; }
+.anom-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.anom-detail { color: #606266; font-size: 13px; white-space: pre-line; }
 .insight { margin-bottom: 14px; white-space: pre-line; }
 .chart { height: 260px; }
 .report-summary { white-space: pre-line; margin-bottom: 8px; }

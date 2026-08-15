@@ -63,6 +63,13 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// 停用用户：拒绝既有令牌继续访问（无论令牌是否过期）
+		if user.Status == model.UserStatusDisabled {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user disabled", "message": "账号已停用，请联系管理员"})
+			c.Abort()
+			return
+		}
+
 		// 将用户信息注入上下文
 		c.Set("user_id", user.ID)
 		c.Set("user_role", user.Role)

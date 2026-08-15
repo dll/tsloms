@@ -158,10 +158,44 @@ function adoptDecision(payload: {
   return request.post('/ai/decision/adopt', payload) as unknown as Promise<ApiResponse>
 }
 
+// ---- L6 实时异常流检测 ----
+
+// 异常事件
+interface AnomalyEvent {
+  id: number
+  time: string
+  kind: string
+  level: 'critical' | 'major' | 'minor' | 'info'
+  device_hw_id: number
+  title: string
+  detail: string
+  biz_type: string
+  biz_id: number
+}
+
+// 异常流结果
+interface AnomalyStreamResult {
+  events: AnomalyEvent[]
+  total: number
+  by_level: Record<string, number>
+  summary: string
+  source: string
+  tokens_used: number
+  generated_at: string
+}
+
+// 实时异常流检测（含报文告警/故障/超时工单/离线设备）
+function getAnomalyStream(hours = 24, limit = 50): Promise<ApiResponse> {
+  return request.get('/ai/anomaly/stream', { params: { hours, limit } }) as unknown as Promise<ApiResponse>
+}
+
 export {
   getDecisionCenter,
   adoptDecision,
+  getAnomalyStream,
   type DecisionCenterResult,
   type OpsHealth,
   type DecisionSuggestion,
+  type AnomalyEvent,
+  type AnomalyStreamResult,
 }

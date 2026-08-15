@@ -315,31 +315,32 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/ai/usage/reset", middleware.RequirePerm("ai:config"), handler.ResetAIUsage)
 			// 故障预测
 			auth.POST("/ai/predict/run", middleware.RequirePerm("ai:ops"), handler.RunPrediction)
-			auth.GET("/ai/predict/by-intersection", handler.RunPredictionByIntersection)
-			auth.GET("/ai/predict", handler.AIPredictions)
-			auth.POST("/ai/predict/:id/enhance", handler.EnhancePredictionPlan)
+			auth.GET("/ai/predict/by-intersection", middleware.RequirePerm("ai:ops"), handler.RunPredictionByIntersection)
+			auth.GET("/ai/predict", middleware.RequirePerm("ai:ops"), handler.AIPredictions)
+			auth.POST("/ai/predict/:id/enhance", middleware.RequirePerm("ai:ops"), handler.EnhancePredictionPlan)
 			// 故障诊断（反馈，含图片）
-			auth.POST("/ai/diagnose/:id", handler.DiagnoseFeedbackAPI)
+			auth.POST("/ai/diagnose/:id", middleware.RequirePerm("ai:ops"), handler.DiagnoseFeedbackAPI)
 			// 生命周期溯源
-			auth.GET("/ai/lifecycle/:hwid", handler.BuildLifecycleAPI)
+			auth.GET("/ai/lifecycle/:hwid", middleware.RequirePerm("ai:ops"), handler.BuildLifecycleAPI)
 
 			// ---- AI 原生增强（库存/成本分析 + 运维报告 + 核心流程建议） ----
 			// 库存健康 / 成本归因分析
-			auth.GET("/ai/analyze/inventory", handler.AnalyzeInventoryAPI)
-			auth.GET("/ai/analyze/cost", handler.AnalyzeCostAPI)
+			auth.GET("/ai/analyze/inventory", middleware.RequirePerm("ai:ops"), handler.AnalyzeInventoryAPI)
+			auth.GET("/ai/analyze/cost", middleware.RequirePerm("ai:ops"), handler.AnalyzeCostAPI)
 			// 运维报告（日报/指定模块）生成与历史查询
 			auth.POST("/ai/report/generate", middleware.RequirePerm("ai:ops"), handler.GenerateReportAPI)
-			auth.GET("/ai/reports", handler.ListReportsAPI)
+			auth.GET("/ai/reports", middleware.RequirePerm("ai:ops"), handler.ListReportsAPI)
 			// 核心流程 AI 建议：故障确认/派单辅助 + 工单 Copilot + 历史查询
-			auth.GET("/ai/advice/fault/:id", handler.SuggestFaultAdviceAPI)
-			auth.GET("/ai/advice/workorder/:id", handler.SuggestWorkOrderAdviceAPI)
-			auth.POST("/ai/advice/device", handler.SuggestDeviceCopilotAPI)
-			auth.POST("/ai/advice/workorder/create", handler.SuggestWorkOrderCreateAPI)
-			auth.POST("/ai/advice/purchase", handler.SuggestPurchaseCopilotAPI)
-			auth.GET("/ai/advices", handler.ListAdvicesAPI)
-			auth.POST("/ai/nl/interact", handler.NLInteractAPI)
-			auth.POST("/ai/decision/center", handler.DecisionCenterAPI)
-			auth.POST("/ai/decision/adopt", middleware.RequirePerm("purchase:manage"), handler.AdoptDecisionAPI)
+			auth.GET("/ai/advice/fault/:id", middleware.RequirePerm("ai:ops"), handler.SuggestFaultAdviceAPI)
+			auth.GET("/ai/advice/workorder/:id", middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderAdviceAPI)
+			auth.POST("/ai/advice/device", middleware.RequirePerm("ai:ops"), handler.SuggestDeviceCopilotAPI)
+			auth.POST("/ai/advice/workorder/create", middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderCreateAPI)
+			auth.POST("/ai/advice/purchase", middleware.RequirePerm("ai:ops"), handler.SuggestPurchaseCopilotAPI)
+			auth.GET("/ai/advices", middleware.RequirePerm("ai:ops"), handler.ListAdvicesAPI)
+			auth.POST("/ai/nl/interact", middleware.RequirePerm("ai:ops"), handler.NLInteractAPI)
+			auth.POST("/ai/decision/center", middleware.RequirePerm("ai:ops"), handler.DecisionCenterAPI)
+			auth.POST("/ai/decision/adopt", middleware.RequirePerm("ai:ops"), middleware.RequirePerm("purchase:manage"), handler.AdoptDecisionAPI)
+			auth.GET("/ai/anomaly/stream", middleware.RequirePerm("ai:ops"), handler.AnomalyStreamAPI)
 		}
 	}
 

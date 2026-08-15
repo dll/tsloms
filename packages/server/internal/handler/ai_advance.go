@@ -206,7 +206,8 @@ func SuggestPurchaseCopilotAPI(c *gin.Context) {
 // ============================================================
 
 // NLInteractAPI 顶部 AI 助手入口。body: {"text": "用户自然语言"}
-// 查询类只读，命令类（建故障/建工单）为写操作，读权限由路由 RequirePerm 控制。
+// 查询类只读；命令类（建故障/建工单）为写操作，在 runTool 内按工具校验业务权限（RBAC），
+// 并在此记录写操作审计日志。
 func NLInteractAPI(c *gin.Context) {
 	uid := userIDFromCtx(c)
 	var req struct {
@@ -264,4 +265,33 @@ func AdoptDecisionAPI(c *gin.Context) {
 	}
 	recordOperation(c, model.OpCreate, "ai/decision/adopt", "AI一键采纳：生成采购单 "+orderNo)
 	ok(c, gin.H{"order_no": orderNo, "message": "已生成采购草稿单 " + orderNo})
+}
+
+// ============================================================
+// L6 实时异常流检测：聚合报文/故障/超时工单/离线设备 → 时间倒序异常事件流
+// 只读聚合，不产生写操作。
+// ============================================================
+
+// AnomalyStreamAPI 实时异常流检测
+// query: ?hours=24&limit=50
+func AnomalyStreamAPI(c *gin.Context) {
+	hours := 24
+	if v := c.Query("hours"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 168 {
+			hours = n
+		}
+	}
+	limit := 50
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	res, err := ai.BuildAnomalyStream(hours, limit)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpRead, "ai/anomaly/stream", "AI实时异常流检测")
+	ok(c, gin.H{"result": res})
 }
