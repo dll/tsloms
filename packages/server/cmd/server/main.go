@@ -266,11 +266,6 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.PUT("/expenses/:id/confirm", middleware.RequireOperator(), handler.ConfirmRepairExpense)
 			auth.DELETE("/expenses/:id", middleware.RequireAdmin(), handler.DeleteRepairExpense)
 
-			// 维修耗材
-			auth.GET("/materials", handler.ListMaterials)
-			auth.POST("/materials", middleware.RequireOperator(), handler.UpsertMaterial)
-			auth.DELETE("/materials/:id", middleware.RequireOperator(), handler.DeleteMaterial)
-
 			// 问题反馈
 			auth.GET("/feedbacks", handler.ListFeedbacks)
 			auth.POST("/feedbacks", handler.CreateFeedback)

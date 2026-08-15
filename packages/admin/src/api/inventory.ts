@@ -12,6 +12,7 @@ export interface Material {
   unit_price: number
   stock: number
   threshold: number
+  device_hw_id?: number
   supplier_id?: number
   note: string
   status: string

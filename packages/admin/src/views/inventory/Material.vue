@@ -41,6 +41,9 @@
             </el-table-column>
             <el-table-column prop="category" label="分类" width="90" />
             <el-table-column prop="spec" label="规格" min-width="110" show-overflow-tooltip />
+            <el-table-column label="绑定设备" width="90">
+              <template #default="{ row }">{{ row.device_hw_id ? ('#' + row.device_hw_id) : '—' }}</template>
+            </el-table-column>
             <el-table-column prop="unit" label="单位" width="70" />
             <el-table-column label="单价" width="90">
               <template #default="{ row }">{{ fmtMoney(row.unit_price) }}</template>
@@ -112,6 +115,9 @@
           <el-col :span="12"><el-form-item label="初始库存"><el-input-number v-model="editForm.stock" :min="0" :disabled="!!editForm.id" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="预警阈值"><el-input-number v-model="editForm.threshold" :min="0" style="width: 100%" /></el-form-item></el-col>
         </el-row>
+        <el-form-item label="绑定设备">
+          <el-input-number v-model="editForm.device_hw_id" :min="0" placeholder="可选，设备耗材填写" style="width: 100%" />
+        </el-form-item>
         <el-form-item label="默认供应商">
           <el-select v-model="editForm.supplier_id" placeholder="选择供应商" clearable filterable style="width: 100%">
             <el-option v-for="s in supplierOpts" :key="s.id" :label="s.name" :value="s.id" />
@@ -220,7 +226,7 @@ async function loadSuppliers() {
 const editVisible = ref(false)
 const saving = ref(false)
 const editRef = ref<FormInstance>()
-const emptyForm = { id: 0, code: '', name: '', category: '', spec: '', unit: '', unit_price: 0, stock: 0, threshold: 0, supplier_id: undefined, note: '', status: 'active' }
+const emptyForm = { id: 0, code: '', name: '', category: '', spec: '', unit: '', unit_price: 0, stock: 0, threshold: 0, device_hw_id: undefined, supplier_id: undefined, note: '', status: 'active' }
 const editForm = reactive<any>({ ...emptyForm })
 const editRules: FormRules = {
   code: [{ required: true, message: '请填写编码', trigger: 'blur' }],
@@ -234,7 +240,10 @@ async function save() {
   await editRef.value?.validate().catch(() => { throw new Error('invalid') })
   saving.value = true
   try {
-    const res = await saveMaterial({ ...editForm })
+    const payload: Record<string, any> = { ...editForm }
+    // 设备绑定：空值发 null 以便清除绑定
+    payload.device_hw_id = editForm.device_hw_id ? editForm.device_hw_id : null
+    const res = await saveMaterial(payload)
     if (res.code === 0) { ElMessage.success('保存成功'); editVisible.value = false; load(); loadStats() }
     else ElMessage.error(res.msg || '保存失败')
   } catch (e: any) { ElMessage.error(e?.response?.data?.msg || '保存失败') } finally { saving.value = false }

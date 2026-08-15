@@ -32,8 +32,8 @@ func DispatchReference(c *gin.Context) {
 	model.DB.Where("device_hw_id = ? AND status IN ?", hwIDUint, []string{model.WorkOrderStatusPending, model.WorkOrderStatusProcessing}).
 		Order("created_at DESC").Find(&orders)
 
-	// 耗材
-	var materials []model.DeviceMaterial
+	// 耗材（设备绑定物料，来自统一库存模块）
+	var materials []model.Material
 	model.DB.Where("device_hw_id = ?", hwIDUint).Find(&materials)
 
 	// 媒体（举证/监控/时间视频）

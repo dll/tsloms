@@ -28,6 +28,9 @@ func ListMaterialsV2(c *gin.Context) {
 	if low := c.Query("low_stock"); low == "1" || low == "true" {
 		query = query.Where("stock <= threshold AND threshold > 0")
 	}
+	if dev := c.Query("device_hw_id"); dev != "" {
+		query = query.Where("device_hw_id = ?", dev)
+	}
 
 	var total int64
 	query.Count(&total)
@@ -47,6 +50,7 @@ func materialView(m model.Material) gin.H {
 		"id": m.ID, "code": m.Code, "name": m.Name, "category": m.Category,
 		"spec": m.Spec, "unit": m.Unit, "unit_price": m.UnitPrice, "stock": m.Stock,
 		"threshold": m.Threshold, "supplier_id": m.SupplierID, "note": m.Note,
+		"device_hw_id": m.DeviceHwID,
 		"status": m.Status, "low_stock": m.Threshold > 0 && m.Stock <= m.Threshold,
 		"created_at": m.CreatedAt, "updated_at": m.UpdatedAt,
 	}
@@ -81,6 +85,7 @@ func SaveMaterial(c *gin.Context) {
 		UnitPrice  float64  `json:"unit_price"`
 		Stock      int      `json:"stock"`
 		Threshold  int      `json:"threshold"`
+		DeviceHwID *uint32  `json:"device_hw_id"`
 		SupplierID *uint    `json:"supplier_id"`
 		Note       string   `json:"note"`
 		Status     string   `json:"status"`
@@ -121,7 +126,7 @@ func SaveMaterial(c *gin.Context) {
 		updates := map[string]interface{}{
 			"code": req.Code, "name": req.Name, "category": req.Category, "spec": req.Spec,
 			"unit": req.Unit, "unit_price": req.UnitPrice, "threshold": req.Threshold,
-			"supplier_id": req.SupplierID, "note": req.Note, "status": status,
+			"device_hw_id": req.DeviceHwID, "supplier_id": req.SupplierID, "note": req.Note, "status": status,
 		}
 		if err := model.DB.Model(&m).Updates(updates).Error; err != nil {
 			serverError(c, err)
@@ -135,7 +140,7 @@ func SaveMaterial(c *gin.Context) {
 	m := model.Material{
 		Code: req.Code, Name: req.Name, Category: req.Category, Spec: req.Spec,
 		Unit: req.Unit, UnitPrice: req.UnitPrice, Stock: req.Stock, Threshold: req.Threshold,
-		SupplierID: req.SupplierID, Note: req.Note, Status: status,
+		DeviceHwID: req.DeviceHwID, SupplierID: req.SupplierID, Note: req.Note, Status: status,
 	}
 	if err := model.DB.Create(&m).Error; err != nil {
 		serverError(c, err)
