@@ -85,6 +85,17 @@
           <template #title>系统设置</template>
         </el-menu-item>
       </el-menu>
+
+      <!-- 侧边栏收起/展开按钮：垂直右边中间，三条斜线叠加图标 -->
+      <div class="sidebar-toggle" @click="isCollapse = !isCollapse" :title="isCollapse ? '展开菜单' : '收起菜单'">
+        <svg class="toggle-icon" :class="{ collapsed: isCollapse }" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none">
+            <path d="M4 6 L20 18" />
+            <path d="M4 12 L20 12" opacity="0.35" />
+            <path d="M4 18 L20 6" />
+          </g>
+        </svg>
+      </div>
     </el-aside>
 
     <!-- 右侧主区域 -->
@@ -92,10 +103,6 @@
       <!-- 顶部导航栏 -->
       <el-header class="header">
         <div class="header-left">
-          <el-icon class="collapse-btn" :size="20" @click="isCollapse = !isCollapse">
-            <Fold v-if="!isCollapse" />
-            <Expand v-else />
-          </el-icon>
           <span class="system-title">TSLOMS 交通信号灯运维系统</span>
         </div>
         <div class="header-right">
@@ -133,8 +140,8 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
-// 侧边栏折叠状态
-const isCollapse = ref(false)
+// 侧边栏折叠状态（默认收起为窄条，点按钮展开完整菜单）
+const isCollapse = ref(true)
 
 // 当前激活的菜单项
 const activeMenu = computed(() => route.path)
@@ -182,6 +189,7 @@ onMounted(async () => {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  position: relative; /* 供中间的收起/展开按钮定位 */
 }
 
 .logo {
@@ -252,15 +260,6 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.collapse-btn {
-  cursor: pointer;
-  color: #333;
-}
-
-.collapse-btn:hover {
-  color: #409eff;
-}
-
 .system-title {
   font-size: 16px;
   font-weight: 600;
@@ -290,4 +289,40 @@ onMounted(async () => {
   padding: 20px;
   overflow-y: auto;
 }
+
+/* ---- 侧边栏中间收起/展开按钮 ---- */
+.sidebar-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  background-color: #2b3a55;
+  border-radius: 6px 0 0 6px;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.25);
+  transition: color 0.2s, background-color 0.2s;
+  z-index: 10;
+}
+
+.sidebar-toggle:hover {
+  color: #fff;
+  background-color: #409eff;
+}
+
+.toggle-icon {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.3s;
+}
+
+.toggle-icon.collapsed {
+  transform: rotate(180deg);
+}
+
 </style>
