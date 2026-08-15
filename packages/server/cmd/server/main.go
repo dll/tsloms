@@ -336,6 +336,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/ai/advice/workorder/create", handler.SuggestWorkOrderCreateAPI)
 			auth.POST("/ai/advice/purchase", handler.SuggestPurchaseCopilotAPI)
 			auth.GET("/ai/advices", handler.ListAdvicesAPI)
+			auth.POST("/ai/nl/interact", handler.NLInteractAPI)
 		}
 	}
 

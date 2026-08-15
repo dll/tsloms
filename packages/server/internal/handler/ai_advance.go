@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/ai"
@@ -198,4 +199,30 @@ func SuggestPurchaseCopilotAPI(c *gin.Context) {
 	res := ai.SuggestPurchaseCopilot(uid, req.Items, req.SupplierID)
 	recordOperation(c, model.OpRead, "ai/advice/purchase", "AI采购建议")
 	ok(c, gin.H{"result": res})
+}
+
+// ============================================================
+// L5 AI 自然语言交互：识别意图 → 执行工具（查询/命令）→ 结构化回答
+// ============================================================
+
+// NLInteractAPI 顶部 AI 助手入口。body: {"text": "用户自然语言"}
+// 查询类只读，命令类（建故障/建工单）为写操作，读权限由路由 RequirePerm 控制。
+func NLInteractAPI(c *gin.Context) {
+	uid := userIDFromCtx(c)
+	var req struct {
+		Text string `json:"text" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Text) == "" {
+		badRequest(c, "请输入要查询或操作的内容(text)")
+		return
+	}
+	ans := ai.InterpretNL(uid, req.Text)
+	opType := model.OpRead
+	opDesc := "AI自然语言查询"
+	if ans.DidWrite {
+		opType = model.OpCreate
+		opDesc = "AI自然语言命令(建单/建故障)"
+	}
+	recordOperation(c, opType, "ai/nl/interact", opDesc)
+	ok(c, gin.H{"result": ans})
 }

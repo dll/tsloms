@@ -81,3 +81,23 @@ export function getPurchaseAdvice(items: { material_name: string; quantity: numb
 export function getAdvices(bizType?: string, bizId?: number): Promise<ApiResponse> {
   return request.get('/ai/advices', { params: { biz_type: bizType, biz_id: bizId } }) as unknown as Promise<ApiResponse>
 }
+
+// ---- L5 AI 自然语言交互（对话级） ----
+// 顶部 AI 助手：用户自然语言 → 意图识别 → 工具执行 → 结构化回答
+
+export interface NLAnswer {
+  reply: string
+  intent: 'query' | 'command' | 'fallback'
+  tool: string
+  data?: Record<string, any>
+  source: 'LLM' | '规则'
+  tokens_used: number
+  did_write: boolean
+  created_id: number
+  confidence: number
+}
+
+// AI 助手对话
+export function nlInteract(text: string): Promise<ApiResponse> {
+  return request.post('/ai/nl/interact', { text }) as unknown as Promise<ApiResponse>
+}

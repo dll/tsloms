@@ -105,6 +105,12 @@
           <span class="system-title">TSLOMS 交通信号灯运维系统</span>
         </div>
         <div class="header-right">
+          <!-- 顶部 AI 助手：自然语言查询/操作（L5） -->
+          <el-tooltip content="AI 助手（自然语言查询/报修）" placement="bottom">
+            <div class="ai-assist-entry" @click="assistantVisible = true">
+              <el-icon :size="20"><MagicStick /></el-icon>
+            </div>
+          </el-tooltip>
           <!-- 通知铃铛：AI 主动巡检推送 -->
           <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge">
             <el-popover placement="bottom-end" :width="380" trigger="click" @show="openNotify">
@@ -153,6 +159,9 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <!-- 顶部 AI 助手（L5 自然语言交互） -->
+    <AiAssistant v-if="assistantVisible" v-model:visible="assistantVisible" />
   </el-container>
 </template>
 
@@ -162,10 +171,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { getNotifications, getUnreadCount, readNotification, readAllNotifications, type NotificationItem } from '@/api/notification'
+import AiAssistant from '@/components/AiAssistant.vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+// AI 助手对话框（L5 自然语言交互）
+const assistantVisible = ref(false)
 
 // 站内通知（AI 主动巡检推送）
 const notifications = ref<NotificationItem[]>([])
@@ -397,6 +410,24 @@ onMounted(async () => {
 .toggle-icon {
   width: 16px;
   height: 22px;
+}
+
+/* ---- 顶部 AI 助手（L5）---- */
+.ai-assist-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  margin-right: 12px;
+  color: #606266;
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
+}
+.ai-assist-entry:hover {
+  color: #409eff;
+  background-color: #f0f2f5;
 }
 
 /* ---- 通知铃铛 ---- */
