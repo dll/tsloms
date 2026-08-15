@@ -294,6 +294,18 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/ai/diagnose/:id", handler.DiagnoseFeedbackAPI)
 			// 生命周期溯源
 			auth.GET("/ai/lifecycle/:hwid", handler.BuildLifecycleAPI)
+
+			// ---- AI 原生增强（库存/成本分析 + 运维报告 + 核心流程建议） ----
+			// 库存健康 / 成本归因分析
+			auth.GET("/ai/analyze/inventory", handler.AnalyzeInventoryAPI)
+			auth.GET("/ai/analyze/cost", handler.AnalyzeCostAPI)
+			// 运维报告（日报/指定模块）生成与历史查询
+			auth.POST("/ai/report/generate", middleware.RequireOperator(), handler.GenerateReportAPI)
+			auth.GET("/ai/reports", handler.ListReportsAPI)
+			// 核心流程 AI 建议：故障确认/派单辅助 + 工单 Copilot + 历史查询
+			auth.GET("/ai/advice/fault/:id", handler.SuggestFaultAdviceAPI)
+			auth.GET("/ai/advice/workorder/:id", handler.SuggestWorkOrderAdviceAPI)
+			auth.GET("/ai/advices", handler.ListAdvicesAPI)
 		}
 	}
 

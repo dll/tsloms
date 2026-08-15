@@ -57,6 +57,7 @@
             <span>AI 分析</span>
           </template>
           <el-menu-item index="/ai/predict">故障预测</el-menu-item>
+          <el-menu-item index="/ai/workbench">AI 工作台</el-menu-item>
           <el-menu-item index="/ai/diagnose">AI 诊断</el-menu-item>
           <el-menu-item index="/ai/lifecycle">生命周期</el-menu-item>
           <el-menu-item index="/ai/config">额度设置</el-menu-item>

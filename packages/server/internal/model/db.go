@@ -76,6 +76,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&PurchaseOrder{},
 		&PurchaseOrderItem{},
 		&RepairExpense{},
+		&AIReport{},
+		&AIAdvice{},
 	); err != nil {
 		return err
 	}

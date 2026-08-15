@@ -42,6 +42,7 @@ const router = createRouter({
         { path: 'settings', name: 'Settings', component: () => import('@/views/settings/index.vue'), meta: { title: '系统设置' } },
         // AI 分析 - 故障预测/诊断/生命周期/额度
         { path: 'ai/predict', name: 'AIPredict', component: () => import('@/views/ai/PredictMap.vue'), meta: { title: 'AI 故障预测' } },
+{ path: 'ai/workbench', name: 'AIWorkbench', component: () => import('@/views/ai/Workbench.vue'), meta: { title: 'AI 工作台' } },
         { path: 'ai/diagnose', name: 'AIDiagnose', component: () => import('@/views/ai/Diagnose.vue'), meta: { title: 'AI 故障诊断' } },
         { path: 'ai/lifecycle', name: 'AILifecycle', component: () => import('@/views/ai/Lifecycle.vue'), meta: { title: 'AI 生命周期' } },
         { path: 'ai/config', name: 'AIConfig', component: () => import('@/views/ai/Config.vue'), meta: { title: 'AI 额度设置' } },

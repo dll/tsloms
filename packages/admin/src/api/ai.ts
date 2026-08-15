@@ -55,3 +55,40 @@ export function diagnoseFeedback(id: number | string): Promise<ApiResponse> {
 export function buildLifecycle(hwid: number | string): Promise<ApiResponse> {
   return request.get(`/ai/lifecycle/${hwid}`) as unknown as Promise<ApiResponse>
 }
+
+// ===== AI 原生增强：库存/成本分析 + 运维报告 + 核心流程建议 =====
+
+// 库存健康 AI 分析
+export function analyzeInventory(): Promise<ApiResponse> {
+  return request.get('/ai/analyze/inventory') as unknown as Promise<ApiResponse>
+}
+
+// 维修成本 AI 归因分析
+export function analyzeCost(days = 90): Promise<ApiResponse> {
+  return request.get('/ai/analyze/cost', { params: { days } }) as unknown as Promise<ApiResponse>
+}
+
+// 生成运维报告（daily/库存/成本/故障/工单/设备）
+export function generateReport(module: string, period = 'day'): Promise<ApiResponse> {
+  return request.post('/ai/report/generate', { module, period }) as unknown as Promise<ApiResponse>
+}
+
+// 历史报告
+export function listReports(module?: string): Promise<ApiResponse> {
+  return request.get('/ai/reports', { params: module ? { module } : {} }) as unknown as Promise<ApiResponse>
+}
+
+// 故障级 AI 建议（确认/派单辅助）
+export function suggestFaultAdvice(id: number | string): Promise<ApiResponse> {
+  return request.get(`/ai/advice/fault/${id}`) as unknown as Promise<ApiResponse>
+}
+
+// 工单 Copilot（copilot/summary）
+export function suggestWorkOrderAdvice(id: number | string, stage = 'copilot'): Promise<ApiResponse> {
+  return request.get(`/ai/advice/workorder/${id}`, { params: { stage } }) as unknown as Promise<ApiResponse>
+}
+
+// 流程建议历史
+export function listAdvices(bizType?: string, bizId?: number | string): Promise<ApiResponse> {
+  return request.get('/ai/advices', { params: { biz_type: bizType, biz_id: bizId } }) as unknown as Promise<ApiResponse>
+}
