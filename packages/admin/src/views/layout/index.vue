@@ -86,14 +86,13 @@
         </el-menu-item>
       </el-menu>
 
-      <!-- 侧边栏收起/展开按钮：垂直右边中间，三条斜线叠加图标 -->
+      <!-- 侧边栏收起/展开按钮：垂直右边中间，红黄绿信号灯图标 -->
       <div class="sidebar-toggle" @click="isCollapse = !isCollapse" :title="isCollapse ? '展开菜单' : '收起菜单'">
-        <svg class="toggle-icon" :class="{ collapsed: isCollapse }" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <g stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none">
-            <path d="M4 6 L20 18" />
-            <path d="M4 12 L20 12" opacity="0.35" />
-            <path d="M4 18 L20 6" />
-          </g>
+        <svg class="toggle-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <!-- 红黄绿三色信号灯（垂直叠加） -->
+          <circle cx="12" cy="5.5" r="3" fill="#ff4d4f" stroke="rgba(255,255,255,0.6)" stroke-width="1" />
+          <circle cx="12" cy="12" r="3" fill="#fadb14" stroke="rgba(255,255,255,0.6)" stroke-width="1" />
+          <circle cx="12" cy="18.5" r="3" fill="#52c41a" stroke="rgba(255,255,255,0.6)" stroke-width="1" />
         </svg>
       </div>
     </el-aside>
@@ -296,8 +295,8 @@ onMounted(async () => {
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
-  height: 56px;
+  width: 24px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -316,13 +315,8 @@ onMounted(async () => {
 }
 
 .toggle-icon {
-  width: 18px;
-  height: 18px;
-  transition: transform 0.3s;
-}
-
-.toggle-icon.collapsed {
-  transform: rotate(180deg);
+  width: 16px;
+  height: 22px;
 }
 
 </style>
