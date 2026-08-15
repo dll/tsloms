@@ -347,15 +347,15 @@ func UseMaterialStock(c *gin.Context) {
 		// 自动生成耗材费用单(关联工单+设备)，供维修成本归集
 		expenseNo := model.NextBizNoCol(tx, "repair_expenses", "expense_no", "FE")
 		return tx.Create(&model.RepairExpense{
-			ExpenseNo:  expenseNo,
+			ExpenseNo:   expenseNo,
 			WorkOrderID: &req.WorkOrderID,
-			DeviceHwID: wo.DeviceHwID,
-			Type:       model.ExpenseTypeMaterial,
-			Amount:     float64(req.Quantity) * price,
+			DeviceHwID:  wo.DeviceHwID,
+			Type:        model.ExpenseTypeMaterial,
+			Amount:      float64(req.Quantity) * price,
 			Description: "工单领料: " + m.Name + " x" + fmt.Sprint(req.Quantity),
-			Operator:   operator,
-			Confirmed:  false,
-			Note:       req.Note,
+			Operator:    operator,
+			Confirmed:   false,
+			Note:        req.Note,
 		}).Error
 	})
 	if err != nil {

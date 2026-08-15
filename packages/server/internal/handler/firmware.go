@@ -65,7 +65,7 @@ func ListFirmwares(c *gin.Context) {
 
 	var list []model.FirmwarePackage
 	query.Order("created_at DESC").
-		Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+		Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 
 	items := make([]gin.H, 0, len(list))
 	for _, f := range list {
@@ -320,7 +320,7 @@ func ListFirmwareUpgrades(c *gin.Context) {
 
 	var list []model.FirmwareUpgradeRecord
 	query.Order("created_at DESC").
-		Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+		Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 
 	items := make([]gin.H, 0, len(list))
 	for _, r := range list {

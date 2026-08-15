@@ -88,15 +88,15 @@ func ListRepairExpenses(c *gin.Context) {
 // body: type, amount, device_hw_id?, work_order_id?, description, work_date, note
 func SaveRepairExpense(c *gin.Context) {
 	var req struct {
-		ID          *uint     `json:"id"`
-		Type        string    `json:"type" binding:"required"`
-		Amount      float64   `json:"amount" binding:"required"`
-		DeviceHwID  uint32    `json:"device_hw_id"`
-		WorkOrderID *uint     `json:"work_order_id"`
-		Description string    `json:"description"`
-		WorkDate    *string   `json:"work_date"` // yyyy-MM-dd
-		Confirmed   bool      `json:"confirmed"`
-		Note        string    `json:"note"`
+		ID          *uint   `json:"id"`
+		Type        string  `json:"type" binding:"required"`
+		Amount      float64 `json:"amount" binding:"required"`
+		DeviceHwID  uint32  `json:"device_hw_id"`
+		WorkOrderID *uint   `json:"work_order_id"`
+		Description string  `json:"description"`
+		WorkDate    *string `json:"work_date"` // yyyy-MM-dd
+		Confirmed   bool    `json:"confirmed"`
+		Note        string  `json:"note"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（type、amount 必填）")

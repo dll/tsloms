@@ -12,14 +12,14 @@ func TestResolveFeedbackImages(t *testing.T) {
 	cases := []struct {
 		name  string
 		url   string
-		want  string   // 期望的最终相对路径片段（"" 表示应返回 nil）
+		want  string // 期望的最终相对路径片段（"" 表示应返回 nil）
 		isNil bool
 	}{
 		{name: "带nginx前缀+月份子目录", url: "/tsloms/media/202608/1_1786759162670.jpg", want: filepath.Join("202608", "1_1786759162670.jpg")},
 		{name: "带静态路由前缀子目录", url: "/media/202607/2_abc.png", want: filepath.Join("202607", "2_abc.png")},
 		{name: "根目录文件", url: "/tsloms/media/3_x.jpg", want: "3_x.jpg"},
 		{name: "空URL", url: "", isNil: true},
-		{name: "空mediaDir", url: "/tsloms/media/a.jpg", isNil: false, /* 空目录用 dir 替换下方验证 */},
+		{name: "空mediaDir", url: "/tsloms/media/a.jpg", isNil: false /* 空目录用 dir 替换下方验证 */},
 		{name: "路径穿越", url: "/tsloms/media/../../etc/passwd", isNil: true},
 		{name: "绝对路径", url: "/etc/passwd", isNil: true},
 		{name: "含..文件名", url: "/tsloms/media/a../b.jpg", isNil: true},
@@ -62,4 +62,3 @@ func TestResolveFeedbackImages(t *testing.T) {
 		})
 	}
 }
-

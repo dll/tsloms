@@ -162,11 +162,11 @@ func TestParseEventPak_TooShort(t *testing.T) {
 
 func TestFaultTypeFromErrCode(t *testing.T) {
 	cases := map[int8]string{
-		LEDErrROFF:      "lamp_off",
-		LEDErrRYGON:     "abnormal_on",
+		LEDErrROFF:       "lamp_off",
+		LEDErrRYGON:      "abnormal_on",
 		LEDErrGONTimeout: "timeout",
-		LEDErrGDim:      "dim",
-		LEDErrPowerLoss: "power_loss",
+		LEDErrGDim:       "dim",
+		LEDErrPowerLoss:  "power_loss",
 	}
 	for code, want := range cases {
 		if got := FaultTypeFromErrCode(code); got != want {

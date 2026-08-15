@@ -9,19 +9,19 @@ import (
 // LifecycleEvent 生命周期事件（时间线节点）
 type LifecycleEvent struct {
 	Time  string `json:"time"`
-	Type  string `json:"type"`  // install/fault/workorder/repair/scrap/offline
+	Type  string `json:"type"` // install/fault/workorder/repair/scrap/offline
 	Title string `json:"title"`
 	Desc  string `json:"desc"`
 }
 
 // LifecycleResult 设备全流程溯源结果
 type LifecycleResult struct {
-	DeviceHwID    uint32           `json:"device_hw_id"`
-	Intersection  string           `json:"intersection"`
-	Timeline      []LifecycleEvent `json:"timeline"`
-	Summary       string           `json:"summary"` // LLM生成的生命周期画像
-	Source        string           `json:"source"`
-	TokensUsed    int              `json:"tokens_used"`
+	DeviceHwID   uint32           `json:"device_hw_id"`
+	Intersection string           `json:"intersection"`
+	Timeline     []LifecycleEvent `json:"timeline"`
+	Summary      string           `json:"summary"` // LLM生成的生命周期画像
+	Source       string           `json:"source"`
+	TokensUsed   int              `json:"tokens_used"`
 }
 
 // BuildLifecycle 聚合单台设备全流程数据 → 时间线 + LLM 溯源画像

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -83,6 +84,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&RolePermission{},
 		&UserPermission{},
 		&Notification{},
+		&NotificationRead{},
 	); err != nil {
 		return err
 	}
@@ -283,23 +285,48 @@ func InitRedis(cfg *config.Config) error {
 }
 
 // SeedAdmin 初始化默认管理员账户（仅在 users 表为空时创建）
-func SeedAdmin() error {
+// initPwd: 首次启动管理员密码；为空时自动生成 16 位随机强密码并通过返回值告知调用方（避免固定弱默认密码）
+// 返回值: error；生成的随机密码通过返回值字符串返回（调用方负责记录到安全渠道）
+func SeedAdmin(initPwd string) (string, error) {
 	if DB == nil {
-		return fmt.Errorf("数据库未初始化")
+		return "", fmt.Errorf("数据库未初始化")
 	}
 
 	var count int64
 	DB.Model(&User{}).Count(&count)
 	if count > 0 {
-		return nil
+		return "", nil
+	}
+
+	pwd := initPwd
+	generated := false
+	if pwd == "" {
+		pwd = randomStrongPassword(16)
+		generated = true
 	}
 
 	admin := User{
 		Username:     "admin",
-		PasswordHash: HashPassword("admin123"),
+		PasswordHash: HashPassword(pwd),
 		Role:         RoleAdmin,
 	}
-	return DB.Create(&admin).Error
+	if err := DB.Create(&admin).Error; err != nil {
+		return "", err
+	}
+	if generated {
+		return pwd, nil
+	}
+	return "", nil
+}
+
+// randomStrongPassword 生成包含大小写字母与数字的随机强密码
+func randomStrongPassword(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	sb := make([]byte, n)
+	for i := range sb {
+		sb[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(sb)
 }
 
 // InitTestDB 创建内存 SQLite 数据库（仅供单元测试）

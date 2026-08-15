@@ -53,8 +53,8 @@ func TestCreateUser_AndList(t *testing.T) {
 	var resp struct {
 		Code float64 `json:"code"`
 		Data struct {
-			Total float64        `json:"total"`
-			List  []model.User   `json:"list"`
+			Total float64      `json:"total"`
+			List  []model.User `json:"list"`
 		} `json:"data"`
 	}
 	_ = json.Unmarshal(w2.Body.Bytes(), &resp)

@@ -140,3 +140,102 @@ func TestRequireOperator_RoleCheck(t *testing.T) {
 		t.Errorf("viewer 调用 operator 接口 = %d, 期望 403", w2.Code)
 	}
 }
+
+// TestAuth_DisabledUser 停用用户的既有有效令牌应立即失效（P1-03）
+func TestAuth_DisabledUser(t *testing.T) {
+	model.InitTestDB()
+	u := model.User{Username: "disabled_user", PasswordHash: model.HashPassword("x"), Role: model.RoleViewer, Status: model.UserStatusDisabled}
+	if err := model.DB.Create(&u).Error; err != nil {
+		t.Fatalf("创建停用用户失败: %v", err)
+	}
+	cfg := config.Load()
+	cfg.JWTSecret = "test-secret"
+	// 令牌本身有效（未过期、签名正确）
+	tok := signToken(t, u.ID, u.Role, cfg.JWTSecret, time.Now().Add(time.Hour))
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Auth(cfg))
+	r.GET("/ping", func(c *gin.Context) { c.JSON(200, gin.H{"uid": c.GetUint("user_id")}) })
+
+	req := httptest.NewRequest("GET", "/ping", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("停用用户有效令牌状态码 = %d, 期望 401; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestAuth_EnabledUserStillAccessible 启用用户正常访问（防止误伤）
+func TestAuth_EnabledUserStillAccessible(t *testing.T) {
+	model.InitTestDB()
+	u := model.User{Username: "enabled_user", PasswordHash: model.HashPassword("x"), Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	if err := model.DB.Create(&u).Error; err != nil {
+		t.Fatalf("创建启用用户失败: %v", err)
+	}
+	cfg := config.Load()
+	cfg.JWTSecret = "test-secret"
+	tok := signToken(t, u.ID, u.Role, cfg.JWTSecret, time.Now().Add(time.Hour))
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(Auth(cfg))
+	r.GET("/ping", func(c *gin.Context) { c.JSON(200, gin.H{"uid": c.GetUint("user_id")}) })
+
+	req := httptest.NewRequest("GET", "/ping", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("启用用户状态码 = %d, 期望 200; body=%s", w.Code, w.Body.String())
+	}
+}
+
+// TestRequirePerm 功能权限中间件（ai:ops 等）越权拒绝
+func TestRequirePerm(t *testing.T) {
+	model.InitTestDB()
+	gin.SetMode(gin.TestMode)
+
+	// 创建两个用户：一个有 ai:ops，一个没有
+	withPerm := model.User{Username: "perm_on", PasswordHash: model.HashPassword("x"), Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	if err := model.DB.Create(&withPerm).Error; err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+	// 用户级授权 ai:ops（覆盖 viewer 默认，使其具备该权限）
+	if err := model.DB.Create(&model.UserPermission{UserID: withPerm.ID, Permission: "ai:ops", Granted: true}).Error; err != nil {
+		t.Fatalf("授予权限失败: %v", err)
+	}
+	noPerm := model.User{Username: "perm_off", PasswordHash: model.HashPassword("x"), Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	if err := model.DB.Create(&noPerm).Error; err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+
+	handler := func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) }
+	setUID := func(uid uint) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Set("user_id", uid); c.Next() }
+	}
+
+	r := gin.New()
+	r.GET("/has-ai", setUID(withPerm.ID), RequirePerm("ai:ops"), handler)
+	r.GET("/no-ai", setUID(noPerm.ID), RequirePerm("ai:ops"), handler)
+	r.GET("/no-uid", RequirePerm("ai:ops"), handler)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/has-ai", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("具备 ai:ops 调用 = %d, 期望 200; body=%s", w.Code, w.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest("GET", "/no-ai", nil))
+	if w2.Code != http.StatusForbidden {
+		t.Errorf("无 ai:ops 调用 = %d, 期望 403; body=%s", w2.Code, w2.Body.String())
+	}
+
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, httptest.NewRequest("GET", "/no-uid", nil))
+	if w3.Code != http.StatusUnauthorized {
+		t.Errorf("无 user_id 调用 = %d, 期望 401", w3.Code)
+	}
+}

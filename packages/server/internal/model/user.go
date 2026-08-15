@@ -10,20 +10,20 @@ import (
 // role: admin-管理员 operator-运维人员 viewer-查看人员
 // status: enabled-启用 disabled-停用（停用后不可登录）
 type User struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
-	Username     string    `json:"username" gorm:"uniqueIndex;size:64;comment:用户名"`
-	PasswordHash string    `json:"-" gorm:"size:255;comment:密码哈希(bcrypt)"`
-	Role         string    `json:"role" gorm:"size:16;default:viewer;comment:角色(admin/operator/viewer)"`
-	RealName     string    `json:"real_name" gorm:"size:64;comment:姓名"`
-	Phone        string    `json:"phone" gorm:"size:20;comment:手机号"`
-	Email        string    `json:"email" gorm:"size:64;comment:邮箱"`
-	DepartmentID *uint     `json:"department_id" gorm:"comment:所属部门ID"`
-	Status       string    `json:"status" gorm:"size:16;default:enabled;comment:状态(enabled/disabled)"`
+	ID           uint       `json:"id" gorm:"primaryKey"`
+	Username     string     `json:"username" gorm:"uniqueIndex;size:64;comment:用户名"`
+	PasswordHash string     `json:"-" gorm:"size:255;comment:密码哈希(bcrypt)"`
+	Role         string     `json:"role" gorm:"size:16;default:viewer;comment:角色(admin/operator/viewer)"`
+	RealName     string     `json:"real_name" gorm:"size:64;comment:姓名"`
+	Phone        string     `json:"phone" gorm:"size:20;comment:手机号"`
+	Email        string     `json:"email" gorm:"size:64;comment:邮箱"`
+	DepartmentID *uint      `json:"department_id" gorm:"comment:所属部门ID"`
+	Status       string     `json:"status" gorm:"size:16;default:enabled;comment:状态(enabled/disabled)"`
 	LastLoginAt  *time.Time `json:"last_login_at" gorm:"comment:最后登录时间"`
-	CenterLat    *float64  `json:"center_lat" gorm:"comment:地图中心纬度(该用户管辖区域)"`
-	CenterLng    *float64  `json:"center_lng" gorm:"comment:地图中心经度(该用户管辖区域)"`
-	Remark       string    `json:"remark" gorm:"size:255;comment:备注"`
-	CreatedAt    time.Time `json:"created_at"`
+	CenterLat    *float64   `json:"center_lat" gorm:"comment:地图中心纬度(该用户管辖区域)"`
+	CenterLng    *float64   `json:"center_lng" gorm:"comment:地图中心经度(该用户管辖区域)"`
+	Remark       string     `json:"remark" gorm:"size:255;comment:备注"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // TableName 指定表名

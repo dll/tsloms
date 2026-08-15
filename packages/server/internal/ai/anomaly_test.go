@@ -83,3 +83,62 @@ func TestNlRequirePermNoDB(t *testing.T) {
 		t.Error("应返回明确提示")
 	}
 }
+
+// TestNlRequirePermWithDB 有数据库时：无对应业务权限的用户，NL 写命令被拒绝（P0-01）
+func TestNlRequirePermWithDB(t *testing.T) {
+	_ = model.InitTestDB() // 赋值全局 model.DB + AutoMigrate
+	model.DB.Where("1=1").Delete(&model.User{})
+	model.DB.Where("1=1").Delete(&model.UserPermission{})
+
+	// viewer 用户，无任何覆写 → 继承 viewer 默认（无 fault:update / workorder:create）
+	vw := model.User{Username: "vw_no_perm", PasswordHash: model.HashPassword("x"), Role: model.RoleViewer, Status: model.UserStatusEnabled}
+	if err := model.DB.Create(&vw).Error; err != nil {
+		t.Fatalf("创建 viewer 失败: %v", err)
+	}
+
+	// viewer 尝试建工单/建故障 → 均应被拒
+	deny, ans := nlRequirePerm(vw.ID, "workorder:create")
+	if !deny {
+		t.Error("viewer 建工单应被拒绝")
+	}
+	if ans.Reply == "" {
+		t.Error("拒绝时应给明确提示")
+	}
+	deny2, _ := nlRequirePerm(vw.ID, "fault:update")
+	if !deny2 {
+		t.Error("viewer 建故障应被拒绝")
+	}
+
+	// 管理员（内置 admin 恒有全部权限）→ 放行
+	adm := model.User{Username: "adm_perm", PasswordHash: model.HashPassword("x"), Role: model.RoleAdmin, Status: model.UserStatusEnabled}
+	if err := model.DB.Create(&adm).Error; err != nil {
+		t.Fatalf("创建 admin 失败: %v", err)
+	}
+	deny3, _ := nlRequirePerm(adm.ID, "workorder:create")
+	if deny3 {
+		t.Error("admin 建工单不应被拒绝")
+	}
+}
+
+// TestBuildAnomalyStreamEmpty 空库时异常流返回空事件与“无异常”摘要（用户级无干扰）
+func TestBuildAnomalyStreamEmpty(t *testing.T) {
+	_ = model.InitTestDB()
+	model.DB.Where("1=1").Delete(&model.PacketLog{})
+	model.DB.Where("1=1").Delete(&model.FaultRecord{})
+	model.DB.Where("1=1").Delete(&model.WorkOrder{})
+	model.DB.Where("1=1").Delete(&model.Device{})
+
+	res, err := BuildAnomalyStream(24, 50)
+	if err != nil {
+		t.Fatalf("BuildAnomalyStream 出错: %v", err)
+	}
+	if res == nil {
+		t.Fatal("结果不应为 nil")
+	}
+	if len(res.Events) != 0 {
+		t.Errorf("空库应无事件, 得到 %d", len(res.Events))
+	}
+	if res.Summary == "" {
+		t.Error("应有结论摘要")
+	}
+}

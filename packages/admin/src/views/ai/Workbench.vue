@@ -266,6 +266,7 @@ import {
   analyzeInventory, analyzeCost, generateReport, listReports,
 } from '@/api/ai'
 import { getDecisionCenter, adoptDecision, getAnomalyStream } from '@/api/copilot'
+import { levelTag, fmtTime } from '@/utils/format'
 
 const activeTab = ref('inventory')
 
@@ -361,26 +362,6 @@ async function loadAnomaly() {
   } finally {
     anomLoading.value = false
   }
-}
-
-function levelTag(lvl: string): string {
-  const map: Record<string, { label: string; type: string }> = {
-    critical: { label: '严重', type: 'danger' },
-    major: { label: '重要', type: 'warning' },
-    minor: { label: '次要', type: 'info' },
-    info: { label: '提示', type: 'success' },
-  }
-  const m = map[lvl] || { label: lvl, type: 'info' }
-  return m.type
-}
-
-function fmtTime(t: string): string {
-  if (!t) return ''
-  // ISO → 'MM-DD HH:mm'
-  const d = new Date(t)
-  if (isNaN(d.getTime())) return t
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 let charts: echarts.ECharts[] = []

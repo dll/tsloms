@@ -11,11 +11,11 @@ import (
 
 // DiagnosticResult AI 故障诊断结果
 type DiagnosticResult struct {
-	Summary   string   `json:"summary"`   // 诊断结论
-	Cause     string   `json:"cause"`     // 成因
-	Solution  string   `json:"solution"`  // 解决方案
+	Summary    string  `json:"summary"`    // 诊断结论
+	Cause      string  `json:"cause"`      // 成因
+	Solution   string  `json:"solution"`   // 解决方案
 	Confidence float64 `json:"confidence"` // 置信度 0-1
-	Source    string   `json:"source"`    // LLM / 规则降级
+	Source     string  `json:"source"`     // LLM / 规则降级
 	TokensUsed int     `json:"tokens_used"`
 }
 

@@ -42,11 +42,11 @@ func TestListIntersections_Aggregates(t *testing.T) {
 		Code float64 `json:"code"`
 		Data struct {
 			List []struct {
-				Intersection string `json:"intersection"`
-				DeviceTotal  int    `json:"device_total"`
-				Online       int    `json:"online"`
-				Offline      int    `json:"offline"`
-				Fault        int    `json:"fault"`
+				Intersection string   `json:"intersection"`
+				DeviceTotal  int      `json:"device_total"`
+				Online       int      `json:"online"`
+				Offline      int      `json:"offline"`
+				Fault        int      `json:"fault"`
 				Lat          *float64 `json:"lat"`
 				Lng          *float64 `json:"lng"`
 			} `json:"list"`

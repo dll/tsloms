@@ -55,7 +55,7 @@ func ListDeviceMedia(c *gin.Context) {
 
 	var list []model.DeviceMedia
 	query.Order("created_at DESC").
-		Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+		Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 
 	ok(c, gin.H{"list": list, "total": total, "page": page, "page_size": pageSize})
 }

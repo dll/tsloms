@@ -250,10 +250,10 @@ func WorkOrderAvgClosure(c *gin.Context) {
 	}
 
 	ok(c, gin.H{
-		"avg_hours":        avgHours,
-		"completed_count":  count,
-		"total_hours":      totalHours,
-		"days":             days,
+		"avg_hours":       avgHours,
+		"completed_count": count,
+		"total_hours":     totalHours,
+		"days":            days,
 	})
 }
 
@@ -296,12 +296,12 @@ func AIDashboardOverview(c *gin.Context) {
 			Order("health_score ASC").Limit(5).Find(&preds)
 		for _, p := range preds {
 			highRisk = append(highRisk, gin.H{
-				"device_hw_id":  p.DeviceHwID,
-				"intersection":  p.Intersection,
-				"health_score":  p.HealthScore,
-				"risk_level":    p.RiskLevel,
-				"predict_type":  p.PredictType,
-				"remain_days":   p.RemainDays,
+				"device_hw_id": p.DeviceHwID,
+				"intersection": p.Intersection,
+				"health_score": p.HealthScore,
+				"risk_level":   p.RiskLevel,
+				"predict_type": p.PredictType,
+				"remain_days":  p.RemainDays,
 			})
 		}
 	}
@@ -338,10 +338,10 @@ func AIDashboardOverview(c *gin.Context) {
 
 	ok(c, gin.H{
 		"config": gin.H{
-			"enabled":          cfg.Enabled,
-			"provider":         cfg.Provider,
-			"day_token_limit":  cfg.DayTokenLimit,
-			"day_call_limit":   cfg.DayCallLimit,
+			"enabled":         cfg.Enabled,
+			"provider":        cfg.Provider,
+			"day_token_limit": cfg.DayTokenLimit,
+			"day_call_limit":  cfg.DayCallLimit,
 		},
 		"today": gin.H{
 			"tokens": tokens,

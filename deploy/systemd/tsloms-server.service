@@ -17,25 +17,32 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/opt/tsloms/packages/server
 
-# 环境变量配置
-Environment=SERVER_PORT=8093
+# 密钥与敏感配置统一放入 /etc/tsloms/tsloms.env（权限 0600，见部署说明），
+# 禁止在 unit 内使用 ${VAR}（systemd 不展开，会被当作字面值注入导致密钥泄露/连接失败）
+EnvironmentFile=/etc/tsloms/tsloms.env
+
+# 非敏感静态配置
 Environment=APP_ENV=production
 Environment=DB_DRIVER=mysql
-Environment=DB_HOST=localhost
-Environment=DB_PORT=3306
-Environment=DB_USER=tsloms
-Environment=DB_PASSWORD=${DB_PASSWORD}
 Environment=DB_NAME=tsloms
-Environment=REDIS_ADDR=localhost:6379
-Environment=REDIS_PASS=
 Environment=REDIS_DB=1
-Environment=JWT_SECRET=${JWT_SECRET}
-Environment=MQTT_BROKER=tcp://localhost:1883
-Environment=MQTT_USERNAME=${MQTT_USERNAME}
-Environment=MQTT_PASSWORD=${MQTT_PASSWORD}
 Environment=MQTT_CLIENT_ID=tsloms-server
 Environment=MQTT_TOPIC_PREFIX=trafficLight
 Environment=LOG_LEVEL=info
+
+# 以下敏感项由 EnvironmentFile 提供：SERVER_PORT、DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、
+# REDIS_ADDR、REDIS_PASS、JWT_SECRET、MQTT_BROKER、MQTT_USERNAME、MQTT_PASSWORD
+# 示例 /etc/tsloms/tsloms.env（0600 root:root）：
+#   SERVER_PORT=8093
+#   DB_HOST=127.0.0.1
+#   DB_PORT=3306
+#   DB_USER=tsloms
+#   DB_PASSWORD=<强密码>
+#   JWT_SECRET=<至少32位强随机>
+#   REDIS_ADDR=127.0.0.1:6379
+#   MQTT_BROKER=tcp://127.0.0.1:1883
+#   MQTT_USERNAME=tsloms
+#   MQTT_PASSWORD=<强密码>
 
 [Install]
 WantedBy=multi-user.target

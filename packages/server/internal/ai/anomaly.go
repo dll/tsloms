@@ -17,23 +17,23 @@ import (
 
 // AnomalyEvent 一条异常事件
 type AnomalyEvent struct {
-	ID        uint    `json:"id"`
-	Time      string  `json:"time"`       // 事件发生时间 (ISO)
-	Kind      string  `json:"kind"`       // packet_alarm / packet_invalid / fault / workorder_overdue / device_offline
-	Level     string  `json:"level"`      // critical / major / minor / info
-	DeviceHw  uint32  `json:"device_hw_id"`
-	Title     string  `json:"title"`
-	Detail    string  `json:"detail"`
-	BizType   string  `json:"biz_type"`   // 关联业务类型: fault / workorder / device / packet
-	BizID     uint    `json:"biz_id"`
+	ID       uint   `json:"id"`
+	Time     string `json:"time"`  // 事件发生时间 (ISO)
+	Kind     string `json:"kind"`  // packet_alarm / packet_invalid / fault / workorder_overdue / device_offline
+	Level    string `json:"level"` // critical / major / minor / info
+	DeviceHw uint32 `json:"device_hw_id"`
+	Title    string `json:"title"`
+	Detail   string `json:"detail"`
+	BizType  string `json:"biz_type"` // 关联业务类型: fault / workorder / device / packet
+	BizID    uint   `json:"biz_id"`
 }
 
 // AnomalyStreamResult 实时异常流检测结果
 type AnomalyStreamResult struct {
-	Events      []AnomalyEvent `json:"events"`       // 时间倒序
+	Events      []AnomalyEvent `json:"events"` // 时间倒序
 	Total       int            `json:"total"`
-	ByLevel     map[string]int `json:"by_level"`     // 按等级统计
-	Summary     string         `json:"summary"`      // 总体结论摘要（LLM 增强或规则）
+	ByLevel     map[string]int `json:"by_level"` // 按等级统计
+	Summary     string         `json:"summary"`  // 总体结论摘要（LLM 增强或规则）
 	Source      string         `json:"source"`
 	TokensUsed  int            `json:"tokens_used"`
 	GeneratedAt string         `json:"generated_at"`
@@ -91,7 +91,7 @@ func BuildAnomalyStream(windowHours int, maxEvents int) (*AnomalyStreamResult, e
 		events = append(events, AnomalyEvent{
 			ID: f.ID, Time: f.LastSeen.Format(time.RFC3339), Kind: "fault", Level: lvl,
 			DeviceHw: f.DeviceHwID, Title: fmt.Sprintf("故障：%s", f.FaultType),
-			Detail: fmt.Sprintf("错误码 %d，最后上报 %s（去重窗口内持续存在）", f.ErrCode, f.LastSeen.Format("01-02 15:04")),
+			Detail:  fmt.Sprintf("错误码 %d，最后上报 %s（去重窗口内持续存在）", f.ErrCode, f.LastSeen.Format("01-02 15:04")),
 			BizType: "fault", BizID: f.ID,
 		})
 	}
@@ -110,8 +110,8 @@ func BuildAnomalyStream(windowHours int, maxEvents int) (*AnomalyStreamResult, e
 	if len(overdueDetail) > 0 {
 		events = append(events, AnomalyEvent{
 			Time: time.Now().Format(time.RFC3339), Kind: "workorder_overdue", Level: "critical",
-			Title:  fmt.Sprintf("%d 张工单超时未闭环", len(overdueDetail)),
-			Detail: "超时工单：" + strings.Join(overdueDetail[:min(3, len(overdueDetail))], "、") + "，建议优先跟进处置",
+			Title:   fmt.Sprintf("%d 张工单超时未闭环", len(overdueDetail)),
+			Detail:  "超时工单：" + strings.Join(overdueDetail[:min(3, len(overdueDetail))], "、") + "，建议优先跟进处置",
 			BizType: "workorder",
 		})
 	}
@@ -124,7 +124,7 @@ func BuildAnomalyStream(windowHours int, maxEvents int) (*AnomalyStreamResult, e
 	if offline > 0 {
 		events = append(events, AnomalyEvent{
 			Time: time.Now().Format(time.RFC3339), Kind: "device_offline", Level: "major",
-			Title: fmt.Sprintf("%d 台设备离线", offline),
+			Title:  fmt.Sprintf("%d 台设备离线", offline),
 			Detail: "存在离线设备，可能漏报故障，建议核查供电/网络/通信", BizType: "device",
 		})
 	}

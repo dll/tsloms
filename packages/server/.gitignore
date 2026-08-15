@@ -1,2 +1,6 @@
 tsloms-server-linux
 tsloms-server-win.exe
+server.exe
+server.linux
+coverage/
+coverage.out

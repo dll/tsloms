@@ -5,11 +5,11 @@ import "testing"
 // TestParseVersion 校验固件版本号解析
 func TestParseVersion(t *testing.T) {
 	cases := []struct {
-		in            string
-		wantMajor     uint32
-		wantMinor     uint32
-		wantBuild     uint32
-		wantErr       bool
+		in        string
+		wantMajor uint32
+		wantMinor uint32
+		wantBuild uint32
+		wantErr   bool
 	}{
 		{"v1.2.3", 1, 2, 3, false},
 		{"1.2.3", 1, 2, 3, false},

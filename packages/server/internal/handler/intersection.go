@@ -18,11 +18,11 @@ func ListIntersections(c *gin.Context) {
 
 	// 聚合统计
 	type Agg struct {
-		Total   int
-		Online  int
-		Fault   int
-		Lat     *float64
-		Lng     *float64
+		Total  int
+		Online int
+		Fault  int
+		Lat    *float64
+		Lng    *float64
 	}
 	agg := map[string]*Agg{}
 
@@ -113,9 +113,9 @@ func RenameIntersection(c *gin.Context) {
 // SetIntersectionLocation 设置路口经纬度（该路口下所有设备同步 lat/lng，供地图打点）
 func SetIntersectionLocation(c *gin.Context) {
 	var req struct {
-		Intersection string   `json:"intersection" binding:"required"`
-		Lat          float64  `json:"lat" binding:"required"`
-		Lng          float64  `json:"lng" binding:"required"`
+		Intersection string  `json:"intersection" binding:"required"`
+		Lat          float64 `json:"lat" binding:"required"`
+		Lng          float64 `json:"lng" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "路口名与经纬度必填")

@@ -31,16 +31,16 @@ func (FirmwarePackage) TableName() string {
 // FirmwareUpgradeRecord 设备固件升级记录表
 // 记录某设备对某固件包的升级任务与结果
 type FirmwareUpgradeRecord struct {
-	ID          uint       `json:"id" gorm:"primaryKey"`
-	FirmwareID  uint       `json:"firmware_id" gorm:"index;comment:固件包ID"`
-	DeviceHwID  uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
-	TargetVer   string     `json:"target_version" gorm:"size:32;comment:目标固件版本"`
-	Status      string     `json:"status" gorm:"size:24;default:pending;comment:状态(pending/upgrading/success/failed)"`
-	ErrorMsg    string     `json:"error_msg" gorm:"size:500;comment:失败原因"`
-	StartedAt   *time.Time `json:"started_at" gorm:"comment:升级开始时间"`
-	FinishedAt  *time.Time `json:"finished_at" gorm:"comment:升级结束时间"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	FirmwareID uint       `json:"firmware_id" gorm:"index;comment:固件包ID"`
+	DeviceHwID uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	TargetVer  string     `json:"target_version" gorm:"size:32;comment:目标固件版本"`
+	Status     string     `json:"status" gorm:"size:24;default:pending;comment:状态(pending/upgrading/success/failed)"`
+	ErrorMsg   string     `json:"error_msg" gorm:"size:500;comment:失败原因"`
+	StartedAt  *time.Time `json:"started_at" gorm:"comment:升级开始时间"`
+	FinishedAt *time.Time `json:"finished_at" gorm:"comment:升级结束时间"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // TableName 指定表名
@@ -50,8 +50,8 @@ func (FirmwareUpgradeRecord) TableName() string {
 
 // 升级状态常量
 const (
-	FirmwareUpgradePending    = "pending"    // 等待升级
-	FirmwareUpgradeUpgrading  = "upgrading"  // 升级中
-	FirmwareUpgradeSuccess    = "success"    // 升级成功
-	FirmwareUpgradeFailed     = "failed"     // 升级失败
+	FirmwareUpgradePending   = "pending"   // 等待升级
+	FirmwareUpgradeUpgrading = "upgrading" // 升级中
+	FirmwareUpgradeSuccess   = "success"   // 升级成功
+	FirmwareUpgradeFailed    = "failed"    // 升级失败
 )

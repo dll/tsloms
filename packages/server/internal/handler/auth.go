@@ -108,4 +108,3 @@ func GetUserInfo(c *gin.Context) {
 		},
 	})
 }
-

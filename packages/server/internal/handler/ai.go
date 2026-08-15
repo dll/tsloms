@@ -54,13 +54,27 @@ func UpdateAIConfig(c *gin.Context) {
 	if cfg.ID == 0 {
 		cfg.ID = 1
 	}
-	if req.Provider != "" { cfg.Provider = req.Provider }
-	if req.TextModel != "" { cfg.TextModel = req.TextModel }
-	if req.VisionModel != "" { cfg.VisionModel = req.VisionModel }
-	if req.APIKey != "" && req.APIKey != maskKey(cfg.APIKey) { cfg.APIKey = req.APIKey }
-	if req.Enabled != nil { cfg.Enabled = *req.Enabled }
-	if req.DayTokenLimit > 0 { cfg.DayTokenLimit = req.DayTokenLimit }
-	if req.DayCallLimit > 0 { cfg.DayCallLimit = req.DayCallLimit }
+	if req.Provider != "" {
+		cfg.Provider = req.Provider
+	}
+	if req.TextModel != "" {
+		cfg.TextModel = req.TextModel
+	}
+	if req.VisionModel != "" {
+		cfg.VisionModel = req.VisionModel
+	}
+	if req.APIKey != "" && req.APIKey != maskKey(cfg.APIKey) {
+		cfg.APIKey = req.APIKey
+	}
+	if req.Enabled != nil {
+		cfg.Enabled = *req.Enabled
+	}
+	if req.DayTokenLimit > 0 {
+		cfg.DayTokenLimit = req.DayTokenLimit
+	}
+	if req.DayCallLimit > 0 {
+		cfg.DayCallLimit = req.DayCallLimit
+	}
 
 	if err := model.DB.Save(cfg).Error; err != nil {
 		serverError(c, err)
@@ -102,19 +116,29 @@ func AIUsagePage(c *gin.Context) {
 		var users []model.User
 		model.DB.Where("username LIKE ?", "%"+u+"%").Find(&users)
 		ids := make([]uint, 0, len(users))
-		for _, us := range users { ids = append(ids, us.ID) }
-		if len(ids) > 0 { q = q.Where("user_id IN ?", ids) } else { q = q.Where("1=0") }
+		for _, us := range users {
+			ids = append(ids, us.ID)
+		}
+		if len(ids) > 0 {
+			q = q.Where("user_id IN ?", ids)
+		} else {
+			q = q.Where("1=0")
+		}
 	}
 	q.Count(&total)
-	q.Order("created_at DESC").Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+	q.Order("created_at DESC").Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 
 	names := map[uint]string{}
 	var uids []uint
-	for _, l := range list { uids = append(uids, l.UserID) }
+	for _, l := range list {
+		uids = append(uids, l.UserID)
+	}
 	var users []model.User
 	if len(uids) > 0 {
 		model.DB.Where("id IN ?", uids).Find(&users)
-		for _, us := range users { names[us.ID] = us.Username }
+		for _, us := range users {
+			names[us.ID] = us.Username
+		}
 	}
 
 	out := make([]gin.H, 0, len(list))
@@ -141,19 +165,19 @@ func RunPrediction(c *gin.Context) {
 		p := ai.RunRulePrediction(&d, batchID)
 		riskCount[p.RiskLevel]++
 		results = append(results, gin.H{
-			"device_hw_id":  p.DeviceHwID,
-			"intersection":  p.Intersection,
-			"lat":           d.Lat, "lng": d.Lng,
-			"health_score":  p.HealthScore,
-			"risk_level":    p.RiskLevel,
-			"risk_label":    ai.RiskLabel(p.RiskLevel),
-			"predict_type":  p.PredictType,
-			"remain_days":   p.RemainDays,
-			"confidence":    p.Confidence,
-			"factors":       p.Factors,
-			"plan":          p.Plan,
-			"source":        p.Source,
-			"online":        d.OnlineStatus,
+			"device_hw_id": p.DeviceHwID,
+			"intersection": p.Intersection,
+			"lat":          d.Lat, "lng": d.Lng,
+			"health_score": p.HealthScore,
+			"risk_level":   p.RiskLevel,
+			"risk_label":   ai.RiskLabel(p.RiskLevel),
+			"predict_type": p.PredictType,
+			"remain_days":  p.RemainDays,
+			"confidence":   p.Confidence,
+			"factors":      p.Factors,
+			"plan":         p.Plan,
+			"source":       p.Source,
+			"online":       d.OnlineStatus,
 		})
 	}
 	recordOperation(c, model.OpRead, "ai/predict", fmt.Sprintf("运行全量故障预测(%d台)", len(devices)))
@@ -195,14 +219,19 @@ func RunPredictionByIntersection(c *gin.Context) {
 		g.count++
 		g.healthSum += p.HealthScore
 		if d.Lat != nil && d.Lng != nil {
-			if g.Lat == nil { g.Lat = new(float64); g.Lng = new(float64) }
+			if g.Lat == nil {
+				g.Lat = new(float64)
+				g.Lng = new(float64)
+			}
 			*g.Lat += *d.Lat
 			*g.Lng += *d.Lng
 		}
 		if order[p.RiskLevel] > order[g.worstLevel] {
 			g.worstLevel = p.RiskLevel
 		}
-		if p.PredictType != "" { g.faultTypeCnt[p.PredictType]++ }
+		if p.PredictType != "" {
+			g.faultTypeCnt[p.PredictType]++
+		}
 		g.devices = append(g.devices, gin.H{
 			"device_hw_id": p.DeviceHwID, "health_score": p.HealthScore,
 			"risk_level": p.RiskLevel, "predict_type": p.PredictType,
@@ -221,11 +250,15 @@ func RunPredictionByIntersection(c *gin.Context) {
 			lat, lng = &la, &ln
 		}
 		avgHealth := 0
-		if g.count > 0 { avgHealth = g.healthSum / g.count }
+		if g.count > 0 {
+			avgHealth = g.healthSum / g.count
+		}
 		// 高发故障类型（出现最多者）
 		worstFault, worstCnt := "", 0
 		for ft, n := range g.faultTypeCnt {
-			if n > worstCnt { worstFault, worstCnt = ft, n }
+			if n > worstCnt {
+				worstFault, worstCnt = ft, n
+			}
 		}
 		riskCount[g.worstLevel]++
 		list = append(list, gin.H{
@@ -332,7 +365,9 @@ func AIPredictions(c *gin.Context) {
 	var list []model.AIPrediction
 	var total int64
 	q := model.DB.Model(&model.AIPrediction{})
-	if batch != "" { q = q.Where("batch_id = ?", batch) }
+	if batch != "" {
+		q = q.Where("batch_id = ?", batch)
+	}
 	q.Count(&total)
 	q.Order("health_score ASC").Limit(500).Find(&list)
 
@@ -354,7 +389,9 @@ func AIPredictions(c *gin.Context) {
 
 func userIDFromCtx(c *gin.Context) uint {
 	if v, exists := c.Get("user_id"); exists {
-		if id, ok := v.(uint); ok { return id }
+		if id, ok := v.(uint); ok {
+			return id
+		}
 	}
 	return 0
 }
@@ -362,7 +399,9 @@ func userIDFromCtx(c *gin.Context) uint {
 // mediaRootDir 媒体根目录（本地文件解析用）
 func mediaRootDir() string {
 	cfg := config.Get()
-	if cfg.MediaDir != "" { return cfg.MediaDir }
+	if cfg.MediaDir != "" {
+		return cfg.MediaDir
+	}
 	return ""
 }
 

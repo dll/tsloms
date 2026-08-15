@@ -31,7 +31,7 @@ func UnreadCountAPI(c *gin.Context) {
 	ok(c, gin.H{"unread": model.UnreadNotificationCount(uid)})
 }
 
-// ReadNotificationAPI 标记单条已读
+// ReadNotificationAPI 标记单条已读（用户级隔离：广播通知写入 notification_reads）
 func ReadNotificationAPI(c *gin.Context) {
 	id, err := parseUint(c.Param("id"))
 	if err != nil {
@@ -39,17 +39,19 @@ func ReadNotificationAPI(c *gin.Context) {
 		return
 	}
 	uid := userIDFromCtx(c)
-	model.DB.Model(&model.Notification{}).
-		Where("id = ? AND (user_id = ? OR user_id = 0)", id, uid).
-		Update("is_read", true)
+	if _, err := model.MarkNotificationRead(uid, id); err != nil {
+		serverError(c, err)
+		return
+	}
 	ok(c, gin.H{"id": id})
 }
 
-// ReadAllNotificationsAPI 全部标记已读
+// ReadAllNotificationsAPI 全部标记已读（用户级隔离）
 func ReadAllNotificationsAPI(c *gin.Context) {
 	uid := userIDFromCtx(c)
-	model.DB.Model(&model.Notification{}).
-		Where("is_read = ? AND (user_id = ? OR user_id = 0)", false, uid).
-		Update("is_read", true)
+	if err := model.MarkAllNotificationsRead(uid); err != nil {
+		serverError(c, err)
+		return
+	}
 	ok(c, gin.H{"ok": true})
 }

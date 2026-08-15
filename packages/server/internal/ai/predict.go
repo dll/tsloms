@@ -48,9 +48,15 @@ func BuildDeviceFacts(dev *model.Device) DeviceFacts {
 			rSum += uint64(r.CurrentR)
 			ySum += uint64(r.CurrentY)
 			gSum += uint64(r.CurrentG)
-			if r.CurrentR > mx { mx = r.CurrentR }
-			if r.CurrentY > mx { mx = r.CurrentY }
-			if r.CurrentG > mx { mx = r.CurrentG }
+			if r.CurrentR > mx {
+				mx = r.CurrentR
+			}
+			if r.CurrentY > mx {
+				mx = r.CurrentY
+			}
+			if r.CurrentG > mx {
+				mx = r.CurrentG
+			}
 		}
 		n := uint64(len(recent))
 		f.AvgCurrentR = float64(rSum) / float64(n)
@@ -68,7 +74,9 @@ func BuildDeviceFacts(dev *model.Device) DeviceFacts {
 		f.OfflineCount = 3
 	} else if packetCount < 5 {
 		f.OfflineCount = int((30 - packetCount) / 6)
-		if f.OfflineCount < 0 { f.OfflineCount = 0 }
+		if f.OfflineCount < 0 {
+			f.OfflineCount = 0
+		}
 	}
 
 	// 关联异常媒体/反馈
@@ -86,17 +94,17 @@ func RunRulePrediction(dev *model.Device, batchID string) Prediction {
 	// 同一设备+批次幂等：先删旧记录再插入
 	model.DB.Where("device_hw_id = ? AND batch_id = ?", dev.HwID, batchID).Delete(&model.AIPrediction{})
 	model.DB.Create(&model.AIPrediction{
-		DeviceHwID:  p.DeviceHwID,
+		DeviceHwID:   p.DeviceHwID,
 		Intersection: p.Intersection,
-		BatchID:     batchID,
-		HealthScore: p.HealthScore,
-		RiskLevel:   p.RiskLevel,
-		PredictType: p.PredictType,
-		RemainDays:  p.RemainDays,
-		Confidence:  p.Confidence,
-		Factors:     jsonFactors(p.Factors),
-		Plan:        p.Plan,
-		Source:      p.Source,
+		BatchID:      batchID,
+		HealthScore:  p.HealthScore,
+		RiskLevel:    p.RiskLevel,
+		PredictType:  p.PredictType,
+		RemainDays:   p.RemainDays,
+		Confidence:   p.Confidence,
+		Factors:      jsonFactors(p.Factors),
+		Plan:         p.Plan,
+		Source:       p.Source,
 	})
 	return p
 }

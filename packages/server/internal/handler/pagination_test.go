@@ -17,10 +17,10 @@ func newCtx(query string) *gin.Context {
 
 func TestPaginate(t *testing.T) {
 	cases := []struct {
-		name      string
-		query     string
-		wantPage  uint
-		wantSize  uint
+		name     string
+		query    string
+		wantPage uint
+		wantSize uint
 	}{
 		{name: "默认值", query: "", wantPage: 1, wantSize: 20},
 		{name: "正常分页", query: "page=3&page_size=25", wantPage: 3, wantSize: 25},

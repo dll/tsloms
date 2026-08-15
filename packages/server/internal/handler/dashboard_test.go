@@ -72,7 +72,7 @@ func TestAIDashboardOverview(t *testing.T) {
 				Calls  int   `json:"calls"`
 			} `json:"today"`
 			RiskDistribution map[string]interface{} `json:"risk_distribution"`
-			HighRiskDevices  []gin.H                 `json:"high_risk_devices"`
+			HighRiskDevices  []gin.H                `json:"high_risk_devices"`
 			ActionSummary    map[string]interface{} `json:"action_summary"`
 		} `json:"data"`
 	}

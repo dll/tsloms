@@ -32,13 +32,13 @@ func (Device) TableName() string {
 // bit[31:28]=major, bit[27:24]=minor, bit[23:18]=year(2000+n),
 // bit[17:14]=month, bit[13:8]=day, bit[7:0]=build#
 type SwVerInfo struct {
-	Major  uint32 `json:"major"`
-	Minor  uint32 `json:"minor"`
-	Year   uint32 `json:"year"`
-	Month  uint32 `json:"month"`
-	Day    uint32 `json:"day"`
-	Build  uint32 `json:"build"`
-	Raw    uint32 `json:"raw"`
+	Major uint32 `json:"major"`
+	Minor uint32 `json:"minor"`
+	Year  uint32 `json:"year"`
+	Month uint32 `json:"month"`
+	Day   uint32 `json:"day"`
+	Build uint32 `json:"build"`
+	Raw   uint32 `json:"raw"`
 }
 
 // DecodeSwVer 解码固件版本号
@@ -57,11 +57,11 @@ func DecodeSwVer(v uint32) SwVerInfo {
 // 配置版本号解码（协议 PDF P8）：0xYYMMDDnn
 // YY=年 MM=月 DD=日 nn=当日版本
 type ConfVerInfo struct {
-	Year    uint32 `json:"year"`
-	Month   uint32 `json:"month"`
-	Day     uint32 `json:"day"`
-	Build   uint32 `json:"build"`
-	Raw     uint32 `json:"raw"`
+	Year  uint32 `json:"year"`
+	Month uint32 `json:"month"`
+	Day   uint32 `json:"day"`
+	Build uint32 `json:"build"`
+	Raw   uint32 `json:"raw"`
 }
 
 // DecodeConfVer 解码配置版本号 0xYYMMDDnn

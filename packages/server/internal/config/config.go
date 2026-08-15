@@ -33,6 +33,7 @@ type Config struct {
 	AIAPIKey        string // AI LLM API Key（智谱/DeepSeek，可选，UI可改）
 	AITextModel     string // AI 文本模型（默认 glm-4-flash）
 	AIVisionModel   string // AI 多模态模型（默认 glm-4v）
+	AdminInitPwd    string // 首次初始化管理员密码（ADMIN_INIT_PASSWORD，空则生成随机）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -62,6 +63,7 @@ func Load() *Config {
 		AIAPIKey:        getEnv("AI_API_KEY", ""),
 		AITextModel:     getEnv("AI_TEXT_MODEL", "glm-4-flash"),
 		AIVisionModel:   getEnv("AI_VISION_MODEL", "glm-4v"),
+		AdminInitPwd:    getEnv("ADMIN_INIT_PASSWORD", ""),
 	}
 }
 

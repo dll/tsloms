@@ -11,21 +11,21 @@ import (
 
 // Material 物料档案（独立于设备，一处库存多处领用）
 type Material struct {
-	ID         uint       `json:"id" gorm:"primaryKey"`
-	Code       string     `json:"code" gorm:"size:32;uniqueIndex;comment:物料编码"`
-	Name       string     `json:"name" gorm:"size:64;index;comment:物料名称"`
-	Category   string     `json:"category" gorm:"size:32;index;comment:物料分类(灯泡/电源/控制器/线缆/其它)"`
-	Spec       string     `json:"spec" gorm:"size:128;comment:规格参数"`
-	Unit       string     `json:"unit" gorm:"size:16;comment:单位(个/支/套/米)"`
-	UnitPrice  float64    `json:"unit_price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
-	Stock      int        `json:"stock" gorm:"default:0;comment:当前库存数量"`
-	Threshold  int        `json:"threshold" gorm:"default:0;comment:库存预警阈值"`
-	DeviceHwID *uint32    `json:"device_hw_id" gorm:"index;comment:绑定设备ID(可空,设备耗材才填)"`
-	SupplierID *uint      `json:"supplier_id" gorm:"index;comment:默认供应商ID"`
-	Note       string     `json:"note" gorm:"type:text;comment:备注"`
-	Status     string     `json:"status" gorm:"size:16;default:active;comment:状态(active/disabled)"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	Code       string    `json:"code" gorm:"size:32;uniqueIndex;comment:物料编码"`
+	Name       string    `json:"name" gorm:"size:64;index;comment:物料名称"`
+	Category   string    `json:"category" gorm:"size:32;index;comment:物料分类(灯泡/电源/控制器/线缆/其它)"`
+	Spec       string    `json:"spec" gorm:"size:128;comment:规格参数"`
+	Unit       string    `json:"unit" gorm:"size:16;comment:单位(个/支/套/米)"`
+	UnitPrice  float64   `json:"unit_price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
+	Stock      int       `json:"stock" gorm:"default:0;comment:当前库存数量"`
+	Threshold  int       `json:"threshold" gorm:"default:0;comment:库存预警阈值"`
+	DeviceHwID *uint32   `json:"device_hw_id" gorm:"index;comment:绑定设备ID(可空,设备耗材才填)"`
+	SupplierID *uint     `json:"supplier_id" gorm:"index;comment:默认供应商ID"`
+	Note       string    `json:"note" gorm:"type:text;comment:备注"`
+	Status     string    `json:"status" gorm:"size:16;default:active;comment:状态(active/disabled)"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名
@@ -33,29 +33,29 @@ func (Material) TableName() string { return "materials" }
 
 // 库存变动类型
 const (
-	StockTypeIn      = "in"      // 采购入库
-	StockTypeUse     = "use"     // 领用出库(维修/工单)
-	StockTypeReturn  = "return"  // 退库
-	StockTypeGain    = "gain"    // 盘盈
-	StockTypeLoss    = "loss"    // 盘亏/报废
-	StockTypeAdjust  = "adjust"  // 手动调整
+	StockTypeIn     = "in"     // 采购入库
+	StockTypeUse    = "use"    // 领用出库(维修/工单)
+	StockTypeReturn = "return" // 退库
+	StockTypeGain   = "gain"   // 盘盈
+	StockTypeLoss   = "loss"   // 盘亏/报废
+	StockTypeAdjust = "adjust" // 手动调整
 )
 
 // MaterialStock 物料出入库流水
 type MaterialStock struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	MaterialID  uint      `json:"material_id" gorm:"index;comment:物料ID"`
-	MaterialName string   `json:"material_name" gorm:"size:64;comment:物料名称(冗余)"`
-	Type        string    `json:"type" gorm:"size:16;index;comment:类型(in/use/return/gain/loss/adjust)"`
-	Quantity    int       `json:"quantity" gorm:"comment:变动数量(正负,出库为负)"`
-	Price       float64   `json:"price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
-	Amount      float64   `json:"amount" gorm:"type:decimal(12,2);default:0;comment:金额(元)"`
-	RefType     string    `json:"ref_type" gorm:"size:24;comment:关联类型(purchase/repair/adjust)"`
-	RefID       uint      `json:"ref_id" gorm:"index;comment:关联单ID"`
-	WorkOrderID *uint     `json:"work_order_id" gorm:"index;comment:关联工单ID"`
-	Operator    string    `json:"operator" gorm:"size:64;comment:操作人"`
-	Note        string    `json:"note" gorm:"size:255;comment:备注"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	MaterialID   uint      `json:"material_id" gorm:"index;comment:物料ID"`
+	MaterialName string    `json:"material_name" gorm:"size:64;comment:物料名称(冗余)"`
+	Type         string    `json:"type" gorm:"size:16;index;comment:类型(in/use/return/gain/loss/adjust)"`
+	Quantity     int       `json:"quantity" gorm:"comment:变动数量(正负,出库为负)"`
+	Price        float64   `json:"price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
+	Amount       float64   `json:"amount" gorm:"type:decimal(12,2);default:0;comment:金额(元)"`
+	RefType      string    `json:"ref_type" gorm:"size:24;comment:关联类型(purchase/repair/adjust)"`
+	RefID        uint      `json:"ref_id" gorm:"index;comment:关联单ID"`
+	WorkOrderID  *uint     `json:"work_order_id" gorm:"index;comment:关联工单ID"`
+	Operator     string    `json:"operator" gorm:"size:64;comment:操作人"`
+	Note         string    `json:"note" gorm:"size:255;comment:备注"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // TableName 指定表名
@@ -84,16 +84,16 @@ func (Supplier) TableName() string { return "suppliers" }
 
 // PurchaseOrder 采购单
 type PurchaseOrder struct {
-	ID           uint       `json:"id" gorm:"primaryKey"`
-	OrderNo      string     `json:"order_no" gorm:"size:32;uniqueIndex;comment:采购单号(PO{yyyyMMdd}{seq})"`
-	SupplierID   uint       `json:"supplier_id" gorm:"index;comment:供应商ID"`
-	Status       string     `json:"status" gorm:"size:16;default:draft;comment:状态(draft/partial/completed/cancelled)"`
-	TotalAmount  float64    `json:"total_amount" gorm:"type:decimal(12,2);default:0;comment:采购总金额(元)"`
-	ReceivedAt   *time.Time `json:"received_at" gorm:"comment:入库时间"`
-	Operator     string     `json:"operator" gorm:"size:64;comment:经办人"`
-	Note         string     `json:"note" gorm:"type:text;comment:备注"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID          uint       `json:"id" gorm:"primaryKey"`
+	OrderNo     string     `json:"order_no" gorm:"size:32;uniqueIndex;comment:采购单号(PO{yyyyMMdd}{seq})"`
+	SupplierID  uint       `json:"supplier_id" gorm:"index;comment:供应商ID"`
+	Status      string     `json:"status" gorm:"size:16;default:draft;comment:状态(draft/partial/completed/cancelled)"`
+	TotalAmount float64    `json:"total_amount" gorm:"type:decimal(12,2);default:0;comment:采购总金额(元)"`
+	ReceivedAt  *time.Time `json:"received_at" gorm:"comment:入库时间"`
+	Operator    string     `json:"operator" gorm:"size:64;comment:经办人"`
+	Note        string     `json:"note" gorm:"type:text;comment:备注"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // TableName 指定表名
@@ -109,14 +109,14 @@ const (
 
 // PurchaseOrderItem 采购单明细
 type PurchaseOrderItem struct {
-	ID            uint    `json:"id" gorm:"primaryKey"`
-	OrderID       uint    `json:"order_id" gorm:"index;comment:采购单ID"`
-	MaterialID    uint    `json:"material_id" gorm:"index;comment:物料ID"`
-	MaterialName  string  `json:"material_name" gorm:"size:64;comment:物料名称(冗余)"`
-	Quantity      int     `json:"quantity" gorm:"comment:采购数量"`
-	Price         float64 `json:"price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
-	Amount        float64 `json:"amount" gorm:"type:decimal(12,2);default:0;comment:小计(元)"`
-	ReceivedQty   int     `json:"received_qty" gorm:"default:0;comment:已入库数量"`
+	ID           uint    `json:"id" gorm:"primaryKey"`
+	OrderID      uint    `json:"order_id" gorm:"index;comment:采购单ID"`
+	MaterialID   uint    `json:"material_id" gorm:"index;comment:物料ID"`
+	MaterialName string  `json:"material_name" gorm:"size:64;comment:物料名称(冗余)"`
+	Quantity     int     `json:"quantity" gorm:"comment:采购数量"`
+	Price        float64 `json:"price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
+	Amount       float64 `json:"amount" gorm:"type:decimal(12,2);default:0;comment:小计(元)"`
+	ReceivedQty  int     `json:"received_qty" gorm:"default:0;comment:已入库数量"`
 }
 
 // TableName 指定表名

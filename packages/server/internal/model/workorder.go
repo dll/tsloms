@@ -38,7 +38,7 @@ const (
 // - pending 超过该时长未派单 → 超时（自动升级为 processing）
 // - processing 超过该时长未完成 → 超时（需管理员介入）
 const (
-	WorkOrderPendingSLASeconds   = 24 * 3600 // 待处理 SLA 24 小时
+	WorkOrderPendingSLASeconds    = 24 * 3600 // 待处理 SLA 24 小时
 	WorkOrderProcessingSLASeconds = 48 * 3600 // 处理中 SLA 48 小时
 )
 

@@ -17,8 +17,8 @@ func TestValidStreamURL(t *testing.T) {
 		{"ftp://cdn.example.com/video.mp4", false},
 		{"file:///tmp/x.mp4", false},
 		{"no-protocol://x", false},
-		{"rtsp://", false},          // 空主机
-		{"https://", false},         // 空主机
+		{"rtsp://", false},                // 空主机
+		{"https://", false},               // 空主机
 		{"rtsp://192.168.1.100:55", true}, // 主机存在
 		{"", false},
 	}

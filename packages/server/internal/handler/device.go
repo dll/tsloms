@@ -64,8 +64,8 @@ func GetDevice(c *gin.Context) {
 	}
 
 	ok(c, gin.H{
-		"device": device,
-		"sw_ver_info":  model.DecodeSwVer(device.SwVersion),
+		"device":        device,
+		"sw_ver_info":   model.DecodeSwVer(device.SwVersion),
 		"conf_ver_info": model.DecodeConfVer(device.ConfVersion),
 	})
 }

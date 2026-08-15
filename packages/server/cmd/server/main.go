@@ -45,13 +45,18 @@ func main() {
 		log.Fatalf("数据库连接失败: %v", err)
 	}
 
-	// 初始化默认管理员账户
-	if err := model.SeedAdmin(); err != nil {
+	// 初始化默认管理员账户（首次初始化时可用 ADMIN_INIT_PASSWORD 指定；为空则生成随机强密码并打印一次）
+	if initPwd, err := model.SeedAdmin(cfg.AdminInitPwd); err != nil {
 		log.Printf("管理员种子失败: %v", err)
 	} else {
 		// 初始化 AI 配置（从环境变量填入 API Key）
 		model.SeedAIConfig(cfg.AIAPIKey, cfg.AITextModel, cfg.AIVisionModel)
-		log.Println("管理员账户已就绪（admin/admin123）")
+		if initPwd != "" {
+			// 仅首次初始化且未显式指定密码时打印，供管理员安全渠道保存；日志权限应受限
+			log.Printf("已生成初始管理员随机密码（仅本次输出，请安全保存）: %s", initPwd)
+		} else {
+			log.Println("管理员账户已就绪（已存在或使用 ADMIN_INIT_PASSWORD）")
+		}
 	}
 
 	if cfg.DBDriver == "sqlite" {
@@ -98,9 +103,14 @@ func main() {
 	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 
 	// 优雅停机：SIGTERM/SIGINT 时等待当前请求完成（最多 10s）再退出
+	// 超时保护（P1-05）：限制报文头/请求体读写与空闲连接时长，缓解慢请求与连接耗尽
 	srv := &http.Server{
-		Addr:    ":" + cfg.ServerPort,
-		Handler: r,
+		Addr:              ":" + cfg.ServerPort,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      90 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
@@ -183,7 +193,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/faults/:id", handler.GetFault)
 			// 故障管理（确认/负责人/维修人/状态更新：管理员/运维）
 			auth.PUT("/faults/:id", middleware.RequirePerm("fault:update"), handler.UpdateFault)
-	auth.DELETE("/faults/:id", middleware.RequirePerm("fault:delete"), handler.DeleteFault)
+			auth.DELETE("/faults/:id", middleware.RequirePerm("fault:delete"), handler.DeleteFault)
 			auth.POST("/faults/:id/dispatch", middleware.RequirePerm("fault:dispatch"), handler.DispatchFault)
 
 			// 工单管理（查看：所有角色，操作：管理员/运维）

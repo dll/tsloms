@@ -48,10 +48,10 @@ type imageURL struct {
 }
 
 type chatReq struct {
-	Model    string    `json:"model"`
-	Messages []chatMsg `json:"messages"`
-	MaxTokens int      `json:"max_tokens,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []chatMsg `json:"messages"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Temperature float64   `json:"temperature,omitempty"`
 }
 
 type chatResp struct {
@@ -73,8 +73,8 @@ type chatResp struct {
 
 // quotaResult 额度检查结果
 type quotaResult struct {
-	allowed  bool
-	reason   string
+	allowed bool
+	reason  string
 }
 
 // checkQuota 检查该用户今日额度是否超额

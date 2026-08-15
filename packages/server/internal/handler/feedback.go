@@ -48,20 +48,20 @@ func ListFeedbacks(c *gin.Context) {
 	var total int64
 	query.Count(&total)
 	var list []model.Feedback
-	query.Order(orderSQL).Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+	query.Order(orderSQL).Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 	ok(c, gin.H{"list": list, "total": total, "page": page, "page_size": pageSize})
 }
 
 // CreateFeedback 提交问题反馈（地图/移动/后台）
 func CreateFeedback(c *gin.Context) {
 	var req struct {
-		DeviceHwID  *uint32 `json:"device_hw_id" binding:"required"`
-		Intersection string `json:"intersection"`
-		Title       string  `json:"title" binding:"required"`
-		Content     string  `json:"content"`
-		Reporter    string  `json:"reporter"`
-		Contact     string  `json:"contact"`
-		ImageURL    string  `json:"image_url"`
+		DeviceHwID   *uint32 `json:"device_hw_id" binding:"required"`
+		Intersection string  `json:"intersection"`
+		Title        string  `json:"title" binding:"required"`
+		Content      string  `json:"content"`
+		Reporter     string  `json:"reporter"`
+		Contact      string  `json:"contact"`
+		ImageURL     string  `json:"image_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "请填写反馈标题并关联设备")
@@ -107,8 +107,8 @@ func UpdateFeedbackStatus(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Status       string  `json:"status"`
-		WorkOrderID  *uint   `json:"work_order_id"`
+		Status      string `json:"status"`
+		WorkOrderID *uint  `json:"work_order_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误")
