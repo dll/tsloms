@@ -1,1 +1,0 @@
-cover: open cov_fresh.out: The system cannot find the file specified.
