@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -189,9 +190,45 @@ func CreateRTSPMedia(c *gin.Context) {
 		badRequest(c, "参数错误（device_hw_id、media_type、url 必填）")
 		return
 	}
+
+	// ---- 登记校验 ----
+	// 1. media_type 白名单：登记仅限监控/时间视频；举证走上传接口
+	switch req.MediaType {
+	case model.MediaMonitoring, model.MediaTimelapse:
+	default:
+		badRequest(c, "media_type 不合法：仅支持 monitoring / timelapse（举证请使用上传）")
+		return
+	}
+
+	// 2. url 合法协议（rtsp/rtsps/http/https）
+	if !validStreamURL(req.URL) {
+		badRequest(c, "视频地址不合法：需以 rtsp://、rtsps://、http:// 或 https:// 开头")
+		return
+	}
+
+	// 3. compatible_url 若填写也需合法
+	if req.CompatibleURL != "" && !validStreamURL(req.CompatibleURL) {
+		badRequest(c, "兼容播放地址不合法：需为 http(s)://、rtsp(s):// 或 HLS/FLV 地址")
+		return
+	}
+
+	// 4. 设备存在性
+	var dev model.Device
+	if err := model.DB.Where("hw_id = ?", req.DeviceHwID).First(&dev).Error; err != nil {
+		badRequest(c, "关联设备不存在")
+		return
+	}
+
+	// 5. RTSP 源且未填兼容地址 -> 仍登记，但返回提示（浏览器无法直接直播）
+	isRTSP := strings.HasPrefix(strings.ToLower(req.URL), "rtsp://") || strings.HasPrefix(strings.ToLower(req.URL), "rtsps://")
+	warning := ""
+	if isRTSP && req.CompatibleURL == "" {
+		warning = "RTSP 源无法在浏览器直接播放，建议补充兼容播放地址(HLS/FLV)以便监控大屏同屏直播"
+	}
+
 	// source 根据 url 判断：rtsp:// 为 rtsp，否则 url
 	source := model.MediaSourceURL
-	if strings.HasPrefix(strings.ToLower(req.URL), "rtsp://") || strings.HasPrefix(strings.ToLower(req.URL), "rtsps://") {
+	if isRTSP {
 		source = model.MediaSourceRTSP
 	}
 
@@ -213,7 +250,11 @@ func CreateRTSPMedia(c *gin.Context) {
 		return
 	}
 	recordOperation(c, model.OpCreate, fmt.Sprintf("media/%d", media.ID), "登记监控/视频流")
-	ok(c, gin.H{"media": media, "message": "登记成功"})
+	resp := gin.H{"media": media, "message": "登记成功"}
+	if warning != "" {
+		resp["warning"] = warning
+	}
+	ok(c, resp)
 }
 
 // DeleteDeviceMedia 删除设备媒体
@@ -256,6 +297,19 @@ func thumbOf(ext, url string) string {
 		return url
 	}
 	return ""
+}
+
+// validStreamURL 校验登记的视频地址协议：rtsp/rtsps/http/https
+func validStreamURL(s string) bool {
+	u := strings.TrimSpace(s)
+	low := strings.ToLower(u)
+	if strings.HasPrefix(low, "rtsp://") || strings.HasPrefix(low, "rtsps://") ||
+		strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		if parsed, err := url.Parse(u); err == nil && parsed.Host != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // parseUintStrict 严格解析非负整数：空字符串返回 0（无设备），非纯数字报错。

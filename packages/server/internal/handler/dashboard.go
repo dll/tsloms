@@ -55,7 +55,18 @@ func WorkOrderStatusStats(c *gin.Context) {
 		Order("count DESC").
 		Find(&results)
 
-	ok(c, gin.H{"stats": results})
+	// 超时工单统计：pending 超 SLA(24h) 或 processing 超 SLA(48h)
+	now := time.Now()
+	pendingOverdue := now.Add(-time.Duration(model.WorkOrderPendingSLASeconds) * time.Second)
+	procOverdue := now.Add(-time.Duration(model.WorkOrderProcessingSLASeconds) * time.Second)
+	var overdueOrders int64
+	model.DB.Model(&model.WorkOrder{}).
+		Where("(status = ? AND created_at < ?) OR (status = ? AND created_at < ?)",
+			model.WorkOrderStatusPending, pendingOverdue,
+			model.WorkOrderStatusProcessing, procOverdue).
+		Count(&overdueOrders)
+
+	ok(c, gin.H{"stats": results, "overdue": overdueOrders})
 }
 
 // FaultTrendStats 故障趋势统计（柱状图）

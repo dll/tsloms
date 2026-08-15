@@ -386,13 +386,26 @@ async function loadStats() {
   try {
     const [statsRes, avgRes] = await Promise.all([getWorkOrderStats(), getWorkOrderAvgClosure({ days: 30 })])
     const d = statsRes.data || {}
-    statMap.value = {
-      pending: d.pending || 0,
-      processing: d.processing || 0,
-      completed: d.completed || 0,
-      overdue: d.overdue || 0,
+    const arr: { status: string; count: number }[] = d.stats || []
+    const byStatus: Record<string, number> = {
+      pending: 0,
+      processing: 0,
+      completed: 0,
+      rejected: 0,
     }
-    totalCount.value = (d.pending || 0) + (d.processing || 0) + (d.completed || 0)
+    let completed = 0
+    for (const it of arr) {
+      const n = Number(it.count) || 0
+      if (it.status in byStatus) byStatus[it.status] = n
+      if (it.status === 'completed') completed = n
+    }
+    statMap.value = {
+      pending: byStatus.pending,
+      processing: byStatus.processing,
+      completed: byStatus.completed,
+      overdue: Number(d.overdue) || 0,
+    }
+    totalCount.value = byStatus.pending + byStatus.processing + completed
     const a = avgRes.data
     if (a && a.avg_hours != null) {
       avgClosure.value = (Math.round(a.avg_hours * 10) / 10).toString()
