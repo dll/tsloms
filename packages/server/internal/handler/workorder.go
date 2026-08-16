@@ -248,12 +248,14 @@ func CreateWorkOrder(c *gin.Context) {
 	// 生成工单编号：WO{yyyyMMdd}{4位自增序号}
 	orderNo := model.NextOrderNo(model.DB)
 
+	scope := req.FaultID
 	wo := model.WorkOrder{
-		OrderNo:    orderNo,
-		FaultID:    req.FaultID,
-		DeviceHwID: req.DeviceHwID,
-		Status:     model.WorkOrderStatusPending,
-		AssigneeID: req.AssigneeID,
+		OrderNo:          orderNo,
+		FaultID:          req.FaultID,
+		DeviceHwID:       req.DeviceHwID,
+		Status:           model.WorkOrderStatusPending,
+		AssigneeID:       req.AssigneeID,
+		FaultActiveScope: &scope, // 活跃工单占据 fault 唯一位（M1）
 	}
 
 	if err := model.DB.Create(&wo).Error; err != nil {
@@ -313,10 +315,17 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 		updates["result"] = req.Result
 	}
 
+	// 活跃工单唯一约束(fault_active_scope)默认：active状态(pending/processing)=fault_id；inactive=释放(NULL)
+	if wo.FaultID > 0 {
+		scope := wo.FaultID
+		updates["fault_active_scope"] = &scope
+	}
+
 	// 工单完成时记录闭环时间，并将关联故障标记为已解决
 	if req.Status == model.WorkOrderStatusCompleted {
 		now := time.Now()
 		updates["closed_at"] = &now
+		updates["fault_active_scope"] = nil // 已完结：释放 fault 的活跃工单位（NULL 不参与唯一索引）
 		model.DB.Model(&model.FaultRecord{}).
 			Where("id = ?", wo.FaultID).
 			Updates(map[string]interface{}{
@@ -326,9 +335,18 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 			})
 	}
 
-	// 工单驳回后重新派发（rejected → pending）：清空关闭时间，故障回到“已确认”待重新派单
+	// 工单驳回：释放 fault 活跃位
+	if req.Status == model.WorkOrderStatusRejected {
+		updates["fault_active_scope"] = nil
+	}
+
+	// 工单驳回后重新派发（rejected → pending）：重新占据 fault 活跃位、清空关闭时间，故障回到“已确认”待重新派单
 	if req.Status == model.WorkOrderStatusPending && wo.Status == model.WorkOrderStatusRejected {
 		updates["closed_at"] = nil
+		if wo.FaultID > 0 {
+			scope := wo.FaultID
+			updates["fault_active_scope"] = &scope
+		}
 		model.DB.Model(&model.FaultRecord{}).
 			Where("id = ?", wo.FaultID).
 			Update("status", model.FaultStatusConfirmed)

@@ -2,40 +2,52 @@ package model
 
 import "gorm.io/gorm"
 
-// migrateWorkOrderActiveUnique 创建并维护 work_orders.fault_id 的部分唯一索引
-// 保证「同一故障至多存在一条活跃工单（pending/processing）」，防止并发复核/自动派单重复建单（M1）。
-// 允许历史工单（completed/rejected）与新的活跃工单共存（fault 复现会新建 FaultRecord，故历史单互不影响）。
-// 迁移前清理：对同一 fault_id 已存在的多条活跃工单，保留最新（id 最大），其余置为 rejected 并注明来源，
-// 以非破坏方式移出活跃范围后，再创建唯一索引。
-// 幂等：索引已存在则跳过；由 AutoMigrate 在表结构就绪后调用。
+// migrateWorkOrderActiveUnique 创建并维护 work_orders.fault_active_scope 唯一索引（M1 并发防重建单）。
+//
+// 背景：MySQL 不支持 SQLite/Postgres 的“部分/过滤索引”（CREATE ... WHERE），无法直接对
+// “活跃工单(pending/processing)”建部分唯一。改用可空派生列 fault_active_scope 模拟：
+//   - 活跃工单：fault_active_scope = fault_id（唯一索引保证同 fault 至多一条活跃单）
+//   - 非活跃（completed/rejected）：fault_active_scope = NULL（NULL 不参与唯一，允许多条历史单）
+//
+// 该函数在 AutoMigrate 之后调用：先为既有活跃工单回填 scope（并清理同 fault 重复活跃单），
+// 再创建唯一索引 uk_wo_active_scope。幂等：索引已存在则跳过。
+// 兼容 SQLite(测试) 与 MySQL(生产)：全部用 GORM 查询/更新与标准 CREATE UNIQUE INDEX，
+// 不使用 sqlite_master / CREATE...WHERE 等方言语法。
 func migrateWorkOrderActiveUnique(db *gorm.DB) error {
-	const idx = "idx_wo_fault_active"
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?", idx).Scan(&count)
-	if count > 0 {
+	const idx = "uk_wo_active_scope"
+	if db.Migrator().HasIndex(&WorkOrder{}, idx) {
 		return nil // 已存在，幂等跳过
 	}
 
-	// 清理：同一 fault_id 若已有多条活跃工单，仅保留最新一条，其余置 rejected
-	if err := db.Exec(`
-		UPDATE work_orders
-		SET status = 'rejected', result = COALESCE(result,'') || ' [系统迁移清理:重复自动派单]'
-		WHERE status IN ('pending','processing')
-		  AND id NOT IN (
-			SELECT MAX(id) FROM work_orders
-			WHERE status IN ('pending','processing')
-			GROUP BY fault_id
-		  )
-	`).Error; err != nil {
+	// 1) 清理：同一 fault_id 若已有多条活跃工单，仅保留最新(id 最大)一条，其余置 rejected 并注明来源。
+	//    用 GORM 查出每 fault 应保留的最大 id，再按 id NOT IN 更新（避开 MySQL 同表子查询 Error 1093）。
+	var keepIDs []uint
+	db.Model(&WorkOrder{}).
+		Select("MAX(id)").
+		Where("status IN ?", []string{WorkOrderStatusPending, WorkOrderStatusProcessing}).
+		Group("fault_id").
+		Pluck("MAX(id)", &keepIDs)
+	if len(keepIDs) > 0 {
+		if err := db.Model(&WorkOrder{}).
+			Where("status IN ? AND id NOT IN ?", []string{WorkOrderStatusPending, WorkOrderStatusProcessing}, keepIDs).
+			Updates(map[string]interface{}{
+				"status":             WorkOrderStatusRejected,
+				"fault_active_scope": nil,
+				"result":             gorm.Expr("COALESCE(result,'') || ' [系统迁移清理:重复自动派单]'"),
+			}).Error; err != nil {
+			return err
+		}
+	}
+
+	// 2) 为仍活跃的工单回填 scope=fault_id（新工单在 EnsureActiveWorkOrder/CreateWorkOrder 已写；此处补历史数据）
+	if err := db.Model(&WorkOrder{}).
+		Where("status IN ? AND fault_active_scope IS NULL", []string{WorkOrderStatusPending, WorkOrderStatusProcessing}).
+		Updates(map[string]interface{}{"fault_active_scope": gorm.Expr("fault_id")}).Error; err != nil {
 		return err
 	}
 
-	// 创建部分唯一索引：活跃工单在 fault_id 上唯一；排除 fault_id=0（未关联故障的占位/历史数据），
-	// 否则未关联的 fault 工单会因索引冲突无法入库（fault_id 为 uint 非 NULL，默认 0）。
-	return db.Exec(
-		"CREATE UNIQUE INDEX IF NOT EXISTS " + idx +
-			" ON work_orders(fault_id) WHERE status IN ('pending','processing') AND fault_id > 0",
-	).Error
+	// 3) 创建唯一索引（fault_active_scope 上唯一；NULL 允许多个，不参与唯一）
+	return db.Exec("CREATE UNIQUE INDEX " + idx + " ON work_orders(fault_active_scope)").Error
 }
 
 // AutoMigrate 自动迁移全部域模型
@@ -78,7 +90,7 @@ func AutoMigrate(db *gorm.DB) error {
 	// 数据迁移：旧版故障状态 active → occurred（四态模型引入后）
 	db.Model(&FaultRecord{}).Where("status = ?", "active").Update("status", FaultStatusOccurred)
 
-	// 数据迁移：创建 work_orders 活跃工单部分唯一索引（先清理重复再建索引，见 migrateWorkOrderActiveUnique）
+	// 数据迁移：创建 work_orders.fault_active_scope 唯一索引（先回填/清理再建索引，见 migrateWorkOrderActiveUnique）
 	if err := migrateWorkOrderActiveUnique(db); err != nil {
 		return err
 	}

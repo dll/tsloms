@@ -429,7 +429,10 @@ async function loadFaults() {
     const list = res.data?.list || []
     const map: Record<number, number> = {}
     for (const f of list) {
-      map[f.device_hw_id] = (map[f.device_hw_id] || 0) + 1
+      // device_hw_id 可能为空/非数字，过滤无效后作为数值索引（修复 TS2538）
+      const hw = Number(f.device_hw_id)
+      if (!Number.isFinite(hw)) continue
+      map[hw] = (map[hw] || 0) + 1
     }
     faultByDev.value = map
   } catch { faultByDev.value = {} }

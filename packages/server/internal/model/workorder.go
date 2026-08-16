@@ -9,16 +9,24 @@ import (
 
 // WorkOrder 工单表
 // 故障触发后自动生成维修工单，状态流转：pending → processing → completed/rejected
+// FaultActiveScope 用于 MySQL 兼容的「同一故障至多一条活跃工单」约束（M1）：
+//   活跃工单(pending/processing)：FaultActiveScope = fault_id；完结/驳回：FaultActiveScope = NULL。
+//   配合唯一索引 uk_wo_active_scope（NULL 不参与唯一，MySQL/SQLite 均允许多个 NULL），
+//   从 DB 层保证同一 fault_id 至多一条活跃工单，防止并发复核/自动派单重复建单。
+//   （MySQL 不支持 SQLite/Postgres 的“部分/过滤索引”，故用可空派生列模拟；见 migrate.go）
 type WorkOrder struct {
 	ID         uint       `json:"id" gorm:"primaryKey"`
 	OrderNo    string     `json:"order_no" gorm:"uniqueIndex;size:32;comment:工单编号(WO{yyyyMMdd}{seq})"`
 	FaultID    uint       `json:"fault_id" gorm:"index;comment:关联故障记录ID"`
 	DeviceHwID uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
 	Status     string     `json:"status" gorm:"size:16;default:pending;comment:状态(pending/processing/completed/rejected)"`
-	AssigneeID *uint      `json:"assignee_id" gorm:"comment:处理人ID"`
-	Result     string     `json:"result" gorm:"type:text;comment:维修结果说明"`
-	CreatedAt  time.Time  `json:"created_at"`
-	ClosedAt   *time.Time `json:"closed_at" gorm:"comment:闭环时间"`
+	// FaultActiveScope 活跃工单唯一约束载体：active=pending/processing 时为 fault_id；inactive 为 NULL
+	// 注：不用 uniqueIndex tag——唯一索引由 migrate.go 在建列并清理/回填后手动创建，避免 AutoMigrate 在重复数据上建唯一失败
+	FaultActiveScope *uint      `json:"fault_active_scope,omitempty" gorm:"index;comment:活跃工单唯一约束(fault_id);非活跃为NULL(唯一索引见migrate.go)"`
+	AssigneeID        *uint     `json:"assignee_id" gorm:"comment:处理人ID"`
+	Result            string    `json:"result" gorm:"type:text;comment:维修结果说明"`
+	CreatedAt         time.Time `json:"created_at"`
+	ClosedAt          *time.Time `json:"closed_at" gorm:"comment:闭环时间"`
 }
 
 // TableName 指定表名
@@ -77,10 +85,11 @@ func NextOrderNo(db *gorm.DB) string {
 }
 
 // EnsureActiveWorkOrder 为故障原子式创建/复用一条活跃工单（pending），并回填 fault.work_order_id。
-// 并发安全（M1）：依赖 work_orders 的部分唯一索引 idx_wo_fault_active（活跃工单 fault_id 唯一）作为
-// 数据库层闸门，配合 fault_records.work_order_id 的条件更新（WHERE work_order_id IS NULL）做应用层抢锁，
+// 并发安全（M1）：依赖 work_orders 的唯一索引 uk_wo_active_scope(fault_active_scope) 作为数据库层闸门——
+// 活跃工单 FaultActiveScope=fault_id 唯一，NULL(非活跃/完结/驳回) 不参与唯一；
+// 配合 fault_records.work_order_id 的条件更新（WHERE work_order_id IS NULL）做应用层抢锁，
 // 保证同一故障无论从多少入口（processFault 自动派单 / ReviewFault 复核派单）并发触发，最终只建成一条活跃工单。
-// 返回最终生效的工单；无需派单/建单失败时返回 nil。
+// 返回最终生效的工单；建单失败且无既有活跃单可复用时返回 nil。
 func EnsureActiveWorkOrder(db *gorm.DB, faultID uint, deviceHwID uint32) *WorkOrder {
 	if db == nil {
 		return nil
@@ -88,16 +97,17 @@ func EnsureActiveWorkOrder(db *gorm.DB, faultID uint, deviceHwID uint32) *WorkOr
 
 	// 1) 尝试原子创建。冲突（唯一索引拦截或回填被抢先）时回退复用已有活跃单。
 	wo := &WorkOrder{
-		OrderNo:    NextOrderNo(db),
-		FaultID:    faultID,
-		DeviceHwID: deviceHwID,
-		Status:     WorkOrderStatusPending,
+		OrderNo:          NextOrderNo(db),
+		FaultID:          faultID,
+		DeviceHwID:       deviceHwID,
+		Status:           WorkOrderStatusPending,
+		FaultActiveScope: &faultID, // 活跃工单占据 fault 唯一位
 	}
 	if err := db.Create(wo).Error; err != nil {
 		// 创建失败（唯一索引冲突或其他）：退化为查询已存在的活跃单并复用
 		var existing WorkOrder
-		if err2 := db.Where("fault_id = ? AND status IN ?", faultID,
-			[]string{WorkOrderStatusPending, WorkOrderStatusProcessing}).First(&existing).Error; err2 == nil {
+		if err2 := db.Where("fault_id = ? AND fault_active_scope = ?", faultID, faultID).
+			First(&existing).Error; err2 == nil {
 			// 复用已存在活跃单
 			wo = &existing
 		} else {
