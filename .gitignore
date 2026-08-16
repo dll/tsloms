@@ -62,3 +62,21 @@ a/_crawled/
 a/*.js
 a/*.py
 a/*.html
+
+# ---- 服务器历史部署备份（非源码，忽略以保持 git status 干净）----
+packages/admin/dist.bak/
+packages/admin/dist.bak.*/
+packages/admin/dist.prev/
+packages/admin/dist.prev*/
+packages/admin/dist.pre-*/
+packages/admin/dist.prevNew/
+
+packages/_backup/
+
+packages/server/*.bak
+packages/server/**/*.bak
+packages/server/server.*
+packages/server/server.pre-*/
+packages/server/uploads/
+
+packages/server.pre-*/
