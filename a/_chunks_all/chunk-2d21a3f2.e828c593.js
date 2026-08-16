@@ -1,1 +1,0 @@
-(window["webpackJsonp"]=window["webpackJsonp"]||[]).push([["chunk-2d21a3f2"],{bb62:function(n,e,t){"use strict";t.r(e),e["default"]={data:function(){return{inTheSave:!1}},mounted:function(){this.$parent.save=this.saveHandle},methods:{saveHandle:function(){console.log("提交")}}}}}]);

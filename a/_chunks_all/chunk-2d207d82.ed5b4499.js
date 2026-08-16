@@ -1,1 +1,0 @@
-(window["webpackJsonp"]=window["webpackJsonp"]||[]).push([["chunk-2d207d82"],{a1ea:function(n,i,t){"use strict";t.r(i);t("14d9"),t("d3b7");i["default"]={mounted:function(){this.$parent.childValidFunList.push(this.validFun)},methods:{validFun:function(){var n=this;return new Promise((function(i,t){n.$refs["formRef"].validate((function(n){console.log(n),n?i(n):t(n)}))}))}}}}}]);

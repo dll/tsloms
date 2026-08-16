@@ -51,3 +51,14 @@ coverage/
 # Build artifacts (zip)
 dist.zip
 packages/admin/dist.zip
+
+# OpenClaw 工作区内部状态（工具运行时，不进业务仓库）
+.openclaw/
+
+# 参考项目 a：仅保留文档（markdown/文本），忽略代码/爬取内容
+# （.md / .txt 保留；JS chunks、爬取的 JSON、Python/脚本、HTML 均不入库）
+a/_chunks_all/
+a/_crawled/
+a/*.js
+a/*.py
+a/*.html
