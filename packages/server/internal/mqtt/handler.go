@@ -286,7 +286,45 @@ func (h *Handler) processFault(rec *EventRecord) {
 	if result.Error == nil {
 		// 故障已存在，检查是否在去重窗口内
 		if now.Sub(existing.LastSeen) <= dedupWindow {
-			// 在去重窗口内，更新 lastSeen；仅当电流/灯态有变化时才附带更新这些字段，
+			// 在去重窗口内：先尝试待确认升级（M2），再更新 lastSeen。
+			// M2 自动升级：若 existing 为待确认(pending_review)且尚未派单，本次上报证据使其达到高置信
+			// (judge==confirmed)，则升级为确认；若为 critical 则自动派单（复用 M1 原子防重，只建一条）。
+			// 绝不把已 confirmed/已派单/超窗 resolved 的故障误降级或重复派单。
+			dispatchIf := false
+			if existing.RecognitionStatus == model.RecognitionPendingReview &&
+				existing.WorkOrderID == nil &&
+				judge.RecognitionStatus == model.RecognitionConfirmed {
+				updGrade := map[string]interface{}{
+					"recognition_status": model.RecognitionConfirmed,
+					"confidence":         judge.Confidence,
+					"recognition_source": judge.RecognitionSource,
+					"evidence_count":     judge.EvidenceCount,
+					"last_evaluation_id": judge.EvaluationID,
+					"last_seen":          now,
+				}
+				if existing.CurrentR != rec.CurrentR || existing.CurrentY != rec.CurrentY ||
+					existing.CurrentG != rec.CurrentG || existing.LedState != rec.LedState {
+					updGrade["current_r"] = rec.CurrentR
+					updGrade["current_y"] = rec.CurrentY
+					updGrade["current_g"] = rec.CurrentG
+					updGrade["led_state"] = rec.LedState
+				}
+				model.DB.Model(&existing).Updates(updGrade)
+				// critical 自动派单（M1 原子防重，内部回填 work_order_id/confirmed）
+				if existing.FaultLevel == "critical" && judge.FaultLevel == "critical" {
+					model.EnsureActiveWorkOrder(model.DB, existing.ID, rec.LedHwID)
+					dispatchIf = true
+				}
+				h.logger.Info("待确认故障自动升级确认",
+					zap.Uint("faultId", existing.ID),
+					zap.Int8("errCode", rec.ErrCode),
+					zap.Float64("confidence", judge.Confidence),
+					zap.Bool("dispatched", dispatchIf),
+				)
+				return
+			}
+
+			// 常规在窗更新 lastSeen；仅当电流/灯态有变化时才附带更新这些字段，
 			// 避免高频上报时的无意义整行写（B2：恒真更新）。
 			updates := map[string]interface{}{
 				"last_seen": now,
@@ -355,40 +393,26 @@ func (h *Handler) processFault(rec *EventRecord) {
 	)
 }
 
-// createWorkOrder 自动生成维修工单
+// createWorkOrder 自动生成维修工单（M1：并发安全）
+// 委托 model.EnsureActiveWorkOrder 原子式创建/复用单条活跃工单，配合 work_orders 活跃工单部分唯一索引，
+// 保证同一故障无论从哪条并发入口触发都只建成一条活跃工单。
 func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 	if model.DB == nil {
 		return
 	}
 
-	// 生成工单编号：WO{yyyyMMdd}{4位自增序号}
-	orderNo := model.NextOrderNo(model.DB)
-
-	wo := model.WorkOrder{
-		OrderNo:    orderNo,
-		FaultID:    fault.ID,
-		DeviceHwID: fault.DeviceHwID,
-		Status:     model.WorkOrderStatusPending,
-	}
-
-	if err := model.DB.Create(&wo).Error; err != nil {
-		h.logger.Error("创建工单失败",
+	wo := model.EnsureActiveWorkOrder(model.DB, fault.ID, fault.DeviceHwID)
+	if wo == nil {
+		h.logger.Error("自动生成工单失败或已存在",
 			zap.Uint("faultId", fault.ID),
-			zap.Error(err),
+			zap.Uint32("hwId", fault.DeviceHwID),
 		)
 		return
 	}
 
-	// 关联故障记录的工单 ID，并将故障状态推进到“已确认”
-	now := time.Now()
-	model.DB.Model(fault).Updates(map[string]interface{}{
-		"work_order_id": wo.ID,
-		"status":        model.FaultStatusConfirmed,
-		"confirmed_at":  &now,
-	})
-
 	h.logger.Info("自动生成维修工单",
-		zap.String("orderNo", orderNo),
+		zap.String("orderNo", wo.OrderNo),
+		zap.Uint("orderId", wo.ID),
 		zap.Uint("faultId", fault.ID),
 		zap.Uint32("hwId", fault.DeviceHwID),
 	)

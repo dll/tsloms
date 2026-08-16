@@ -127,3 +127,39 @@
 - 案例库自动训练触发（定时/事件）未接，当前仅手动「训练」按钮（与后端 `Train` 骨架一致）。
 - 识别统计面板未做历史趋势/置信度分布图（后端已返 `false_positive_rate/false_negative_rate`），可后续可视化。
 - 识别引擎 → 案例库自动沉淀闭环（`SeedRecord` 已在 MQTT 接入）前端无需改动，仅展示可验证。
+
+---
+
+## 8. M1/M2 major 修复（reviewer 遗留项，leader 落实）
+
+> 处理：leader-tsloms ｜ 2026-08-17 ｜ 处理 reviewer-audit-tsloms 评审遗留的 2 个 major 级问题
+
+### M1（critical）ReviewFault 并发复核重复建单 ✅
+
+**问题**：`ReviewFault` 复核确认真故障后自动派单存在并发 TOCTOU 竞态——读 `WorkOrderID==nil` 后非原子建单，`work_orders.fault_id` 原为普通索引（无唯一约束），并发复核/与 processFault 自动派单并发时可能重复建单。
+
+**方案（近似“活跃工单唯一”语义，非破坏）**：
+1. **部分唯一索引**（`migrate.go` 新增 `migrateWorkOrderActiveUnique`）：`CREATE UNIQUE INDEX idx_wo_fault_active ON work_orders(fault_id) WHERE status IN ('pending','processing') AND fault_id > 0`——同一故障至多一条活跃工单，允许历史工单；迁移前先清理同 fault_id 多条活跃工单（保留最新，其余置 `rejected` 并注明“系统迁移清理:重复自动派单”，非破坏、可审计）。幂等（索引已存在则跳过）。
+   - **关键坑（已修复）**：部分索引必须 `AND fault_id > 0`，否则 `fault_id=0`（未关联故障的占位/测试工单）两条即触发唯一冲突，导致 `TestNextOrderNo_Sequential`、`TestDashboard_*` 等创建无 fault 工单的用例/数据写入失败。
+2. **原子防重**（`model/workorder.go` 新增 `EnsureActiveWorkOrder(db, faultID, deviceHwID)`）：先 `Create`（唯一索引为 DB 层闸门）→ 冲突则复用已存在活跃单 → 条件回填 `UPDATE fault_records SET work_order_id=?, status=confirmed WHERE id=? AND work_order_id IS NULL`（应用层抢锁）。
+3. **接入**：`mqtt/handler.go` 的 `createWorkOrder` 与 `handler/recognition.go` 的 `ReviewFault` 复核派单均改调用 `EnsureActiveWorkOrder`，删除旧 `faultReviewWorkorder` 直写逻辑。
+
+### M2（critical）pending_review 自动升级缺失 ✅（方案1：实现自动升级）
+
+**问题**：宣称“pending_review 可被证据补充后升级确认”，但自动链路实际不升级——`processFault` 去重窗口内命中 existing 后直接 `Updates(last_seen)` 并 `return`，丢弃本次 judge；critical 初次因电流矛盾降级者永不自动派单，只能人工复核。文档与行为不符。
+
+**方案1（已实现真升级）**：`mqtt/handler.go` `processFault` 去重窗口内，新增分支：若 `existing.RecognitionStatus==pending_review && existing.WorkOrderID==nil && 本次 judge==confirmed`，则把 existing 升级为确认（回写 confidence/recognition_source/evidence_count/last_evaluation_id/last_seen/电流灯态），若 `existing.FaultLevel==critical` 则经 `EnsureActiveWorkOrder` 原子派单（只建 1 单）。绝不把已 confirmed/已派单/超窗 resolved 的故障误降级或重复派单。
+
+### 新增测试（全 PASS）
+- `internal/handler/recognition_regression_test.go`：`TestM1_ConcurrentReviewDispatchOnce`——8 个 goroutine 并发复核同一 pending_review critical 故障 → 仅 1 条活跃工单、fault 回写 work_order_id。
+- `internal/mqtt/recognition_test.go`：`TestM2_PendingReviewAutoUpgradeDispatch`——预置 pending_review critical 故障 → 二次上报达 confirmed → 自动升级 + 自动派 1 单；已派单后再上报不重复派。
+
+### 验证
+`go build ./...` exit 0；`go vet ./internal/...` exit 0；`go test ./... -count=1` **12 包全 ok**（新增 M1/M2 用例 PASS，既有红线 R1–R10 无回归）。
+
+### 改动文件
+- `internal/model/migrate.go`（新增迁移函数+索引）
+- `internal/model/workorder.go`（新增 `EnsureActiveWorkOrder`）
+- `internal/mqtt/handler.go`（`createWorkOrder` 改造 + `processFault` M2 升级分支）
+- `internal/handler/recognition.go`（`ReviewFault` 用 `EnsureActiveWorkOrder`，删 `faultReviewWorkorder`）
+- 测试：`internal/handler/recognition_regression_test.go`、`internal/mqtt/recognition_test.go`

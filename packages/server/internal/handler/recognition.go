@@ -257,13 +257,10 @@ func ReviewFault(c *gin.Context) {
 		return
 	}
 
-	// 复核确认为真故障：若为 critical 且未自动派单（此前 pending_review 未派），则此时自动派单
+	// 复核确认为真故障：若为 critical 且未自动派单（此前 pending_review 未派），则自动派单。
+	// M1：委托 model.EnsureActiveWorkOrder 原子式防重（配合活跃工单部分唯一索引），并发复核也只建成一条。
 	if req.Confirmed && fault.FaultLevel == "critical" {
-		model.DB.First(&fault, id)
-		if fault.WorkOrderID == nil {
-			h := &faultReviewWorkorder{faultID: fault.ID, deviceHwID: fault.DeviceHwID}
-			h.create()
-		}
+		model.EnsureActiveWorkOrder(model.DB, fault.ID, fault.DeviceHwID)
 	}
 
 	// 同步更新案例库：该批次案例标记为正确性回标
@@ -276,31 +273,6 @@ func ReviewFault(c *gin.Context) {
 	model.DB.First(&fault, id)
 	recordOperation(c, model.OpUpdate, fmt.Sprintf("fault/%d", fault.ID), "待确认复核:"+fault.RecognitionStatus)
 	ok(c, gin.H{"fault": faultView(c, fault), "message": "复核完成"})
-}
-
-// faultReviewWorkorder 轻量自动派单封装（复核确认 critical 且此前未派单时）
-type faultReviewWorkorder struct {
-	faultID    uint
-	deviceHwID uint32
-}
-
-func (f *faultReviewWorkorder) create() {
-	orderNo := model.NextOrderNo(model.DB)
-	wo := model.WorkOrder{
-		OrderNo:    orderNo,
-		FaultID:    f.faultID,
-		DeviceHwID: f.deviceHwID,
-		Status:     model.WorkOrderStatusPending,
-	}
-	if err := model.DB.Create(&wo).Error; err != nil {
-		return
-	}
-	now := time.Now()
-	model.DB.Model(&model.FaultRecord{}).Where("id = ?", f.faultID).Updates(map[string]interface{}{
-		"work_order_id": wo.ID,
-		"status":        model.FaultStatusConfirmed,
-		"confirmed_at":  &now,
-	})
 }
 
 func validSourceType(s string) bool {

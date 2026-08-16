@@ -75,3 +75,45 @@ func NextOrderNo(db *gorm.DB) string {
 	db.Model(&WorkOrder{}).Where("order_no LIKE ?", prefix+"%").Count(&count)
 	return fmt.Sprintf("%s%04d", prefix, count+1)
 }
+
+// EnsureActiveWorkOrder 为故障原子式创建/复用一条活跃工单（pending），并回填 fault.work_order_id。
+// 并发安全（M1）：依赖 work_orders 的部分唯一索引 idx_wo_fault_active（活跃工单 fault_id 唯一）作为
+// 数据库层闸门，配合 fault_records.work_order_id 的条件更新（WHERE work_order_id IS NULL）做应用层抢锁，
+// 保证同一故障无论从多少入口（processFault 自动派单 / ReviewFault 复核派单）并发触发，最终只建成一条活跃工单。
+// 返回最终生效的工单；无需派单/建单失败时返回 nil。
+func EnsureActiveWorkOrder(db *gorm.DB, faultID uint, deviceHwID uint32) *WorkOrder {
+	if db == nil {
+		return nil
+	}
+
+	// 1) 尝试原子创建。冲突（唯一索引拦截或回填被抢先）时回退复用已有活跃单。
+	wo := &WorkOrder{
+		OrderNo:    NextOrderNo(db),
+		FaultID:    faultID,
+		DeviceHwID: deviceHwID,
+		Status:     WorkOrderStatusPending,
+	}
+	if err := db.Create(wo).Error; err != nil {
+		// 创建失败（唯一索引冲突或其他）：退化为查询已存在的活跃单并复用
+		var existing WorkOrder
+		if err2 := db.Where("fault_id = ? AND status IN ?", faultID,
+			[]string{WorkOrderStatusPending, WorkOrderStatusProcessing}).First(&existing).Error; err2 == nil {
+			// 复用已存在活跃单
+			wo = &existing
+		} else {
+			return nil
+		}
+	}
+
+	// 2) 回填 fault.work_order_id 与状态（条件更新保证并发下不覆盖他人的单）
+	now := time.Now()
+	db.Model(&FaultRecord{}).
+		Where("id = ? AND work_order_id IS NULL", faultID).
+		Updates(map[string]interface{}{
+			"work_order_id": wo.ID,
+			"status":        FaultStatusConfirmed,
+			"confirmed_at":  &now,
+		})
+
+	return wo
+}

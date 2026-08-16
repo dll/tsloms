@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -173,5 +174,42 @@ func TestB8_ReviewPendingCriticalDispatchOnce(t *testing.T) {
 	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", f.ID).Count(&woCount)
 	if woCount != before {
 		t.Errorf("重复复核不应重复派单, before=%d after=%d", before, woCount)
+	}
+}
+
+// TestM1_ConcurrentReviewDispatchOnce M1 并发幂等：多个请求并发复核同一 pending_review critical 故障，
+// 最终只建成 1 条活跃工单（依赖 work_orders 活跃工单部分唯一索引 + EnsureActiveWorkOrder 应用层抢锁）。
+func TestM1_ConcurrentReviewDispatchOnce(t *testing.T) {
+	r := covSetup(t)
+	rg := r.Group("/api/v1")
+	rg.POST("/faults/:id/review", ReviewFault)
+
+	f := seedRecognitionFault(508, model.FaultStatusOccurred, model.RecognitionPendingReview)
+	conf := 0.6
+	f.FaultLevel = "critical"
+	f.Confidence = &conf
+	model.DB.Save(&f)
+
+	// 并发复核同一 critical 故障
+	const n = 8
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = doReq(t, r, "POST", "/api/v1/faults/"+uid(f.ID)+"/review", `{"confirmed":true}`)
+		}()
+	}
+	wg.Wait()
+
+	var woCount int64
+	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", f.ID).Count(&woCount)
+	if woCount != 1 {
+		t.Errorf("并发复核 critical 应只建成 1 条活跃工单, 实际 %d", woCount)
+	}
+	var ff model.FaultRecord
+	model.DB.First(&ff, f.ID)
+	if ff.WorkOrderID == nil {
+		t.Error("复核后 fault 应回写 work_order_id")
 	}
 }

@@ -118,3 +118,46 @@ func TestReviewUpgrade_PendingToConfirmedDispatch(t *testing.T) {
 }
 
 func timeNow() (t time.Time) { return time.Now() }
+
+// TestM2_PendingReviewAutoUpgradeDispatch M2 自动升级：已存在的待确认(pending_review)故障，
+// 后续上报证据使研判达 confirmed 高置信 → existing 自动升级为确认，critical 自动派单（且只派 1 单）。
+func TestM2_PendingReviewAutoUpgradeDispatch(t *testing.T) {
+	h := newTestHandler(t)
+
+	// 预置一条待确认 critical 故障（同一设备同一 errCode，且在 30min 去重窗口内）
+	now := time.Now()
+	conf := 0.6
+	f := model.FaultRecord{
+		DeviceHwID: 7002, ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
+		Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now,
+		Confidence: &conf, RecognitionStatus: model.RecognitionPendingReview,
+	}
+	model.DB.Create(&f)
+
+	// 二次上报：无矛盾证据 → 引擎 judge=confirmed（高置信）→ 触发 M2 自动升级 + critical 派单
+	rec := createFaultRec(7002, LEDErrROFF)
+	h.processFault(rec)
+
+	var ff model.FaultRecord
+	model.DB.First(&ff, f.ID)
+	if ff.RecognitionStatus != model.RecognitionConfirmed {
+		t.Errorf("待确认故障应由证据补充自动升级为 confirmed, got %s", ff.RecognitionStatus)
+	}
+	if ff.WorkOrderID == nil {
+		t.Fatal("升级确认后 critical 应自动派单")
+	}
+
+	// 只派 1 条活跃工单
+	var woCount int64
+	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", f.ID).Count(&woCount)
+	if woCount != 1 {
+		t.Errorf("自动升级应只派 1 条工单, 实际 %d", woCount)
+	}
+
+	// 再次上报（已 confirmed 且已派单）不应重复派单
+	h.processFault(createFaultRec(7002, LEDErrROFF))
+	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", f.ID).Count(&woCount)
+	if woCount != 1 {
+		t.Errorf("已派单故障二次上报不应重复派单, 实际 %d", woCount)
+	}
+}
