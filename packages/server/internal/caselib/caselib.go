@@ -92,16 +92,16 @@ func buildSummary(e *recognition.Evaluator, judge model.FaultRecognition) string
 		aux = append(aux, evItem{Source: ev.SourceType, Raw: ev.RawData, ErrCode: ev.ErrCode, LedState: ev.LedState})
 	}
 	summary := map[string]interface{}{
-		"judged_type":   judge.FaultType,
-		"judged_level":  judge.FaultLevel,
-		"confidence":    judge.Confidence,
-		"status":        judge.RecognitionStatus,
-		"primary_err":   e.ErrCode,
-		"primary_led":   e.LedState,
-		"current_r":     e.CurrentR,
-		"current_y":     e.CurrentY,
-		"current_g":     e.CurrentG,
-		"aux_evidence":  aux,
+		"judged_type":  judge.FaultType,
+		"judged_level": judge.FaultLevel,
+		"confidence":   judge.Confidence,
+		"status":       judge.RecognitionStatus,
+		"primary_err":  e.ErrCode,
+		"primary_led":  e.LedState,
+		"current_r":    e.CurrentR,
+		"current_y":    e.CurrentY,
+		"current_g":    e.CurrentG,
+		"aux_evidence": aux,
 	}
 	b, _ := json.Marshal(summary)
 	return string(b)
@@ -135,12 +135,12 @@ func (c *CaseRecorder) Train() (map[string]interface{}, error) {
 	// 标记训练中的案例为已训练（流水线语义占位）
 	c.db.Model(&model.FaultCase{}).Where("status = ?", model.CaseStatusSeed).Update("status", model.CaseStatusConfirmed)
 	return map[string]interface{}{
-		"total_cases":        total,
-		"correct_cases":      correct,
-		"accuracy":           round3(accuracy),
-		"recognize_100pct":   total > 0 && correct == total,
-		"score_mode":         "rule_confidence", // 本阶段评分策略
-		"training_status":    "skeleton",        // 骨架阶段
+		"total_cases":      total,
+		"correct_cases":    correct,
+		"accuracy":         round3(accuracy),
+		"recognize_100pct": total > 0 && correct == total,
+		"score_mode":       "rule_confidence", // 本阶段评分策略
+		"training_status":  "skeleton",        // 骨架阶段
 	}, nil
 }
 

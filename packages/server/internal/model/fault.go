@@ -27,12 +27,12 @@ type FaultRecord struct {
 
 	// ---- 智能多源故障识别研判引擎(范围A)新增可空字段 ----
 	// 全部可空/带缺省，兼容旧记录与前端 fault.ts 解析；只做加法不改既有列。
-	Confidence        *float64 `json:"confidence" gorm:"comment:识别置信度(0-1)"`
-	RecognitionSource string   `json:"recognition_source" gorm:"size:24;default:rule;comment:判定来源(rule/multi-source/case)"`
-	RecognitionStatus string   `json:"recognition_status" gorm:"size:24;default:confirmed;comment:研判分流(confirmed/pending_review/filtered)"`
-	IsFalsePositive   *bool    `json:"is_false_positive" gorm:"comment:是否被后续判定为误报"`
-	EvidenceCount     int      `json:"evidence_count" gorm:"default:0;comment:参与研判的证据数"`
-	LastEvaluationID  string   `json:"last_evaluation_id" gorm:"size:40;index;comment:末次研判批次号"`
+	Confidence        *float64   `json:"confidence" gorm:"comment:识别置信度(0-1)"`
+	RecognitionSource string     `json:"recognition_source" gorm:"size:24;default:rule;comment:判定来源(rule/multi-source/case)"`
+	RecognitionStatus string     `json:"recognition_status" gorm:"size:24;default:confirmed;comment:研判分流(confirmed/pending_review/filtered)"`
+	IsFalsePositive   *bool      `json:"is_false_positive" gorm:"comment:是否被后续判定为误报"`
+	EvidenceCount     int        `json:"evidence_count" gorm:"default:0;comment:参与研判的证据数"`
+	LastEvaluationID  string     `json:"last_evaluation_id" gorm:"size:40;index;comment:末次研判批次号"`
 	ReviewedAt        *time.Time `json:"reviewed_at" gorm:"comment:待确认复核通过时间"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
@@ -50,9 +50,9 @@ const (
 
 // 判定来源常量
 const (
-	RecognitionSourceRule         = "rule"          // 确定性规则基座
-	RecognitionSourceMultiSource  = "multi-source"  // 多源交叉验证融合
-	RecognitionSourceCase         = "case"          // 案例库命中
+	RecognitionSourceRule        = "rule"         // 确定性规则基座
+	RecognitionSourceMultiSource = "multi-source" // 多源交叉验证融合
+	RecognitionSourceCase        = "case"         // 案例库命中
 )
 
 // FaultRecognition 携带判定结果的结构（engine 输出，供业务落库）

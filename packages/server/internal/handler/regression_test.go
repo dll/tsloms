@@ -82,8 +82,8 @@ func TestRegression_B1_ListWorkOrdersPreloadNames(t *testing.T) {
 		return wo.ID
 	}
 	// 三条工单：有处理人、无处理人、处理人指向不存在用户
-	_ = mkWO(f1.ID, &owner.ID)                        // assignee_name 应为 b1_owner
-	_ = mkWO(f2.ID, nil)                              // 无处理人 → 空
+	_ = mkWO(f1.ID, &owner.ID)                                      // assignee_name 应为 b1_owner
+	_ = mkWO(f2.ID, nil)                                            // 无处理人 → 空
 	_ = mkWO(seedFault(9603, model.FaultStatusOccurred).ID, &ghost) // ghost → 空
 
 	code, body := doReq(t, r, "GET", "/api/v1/work-orders?page_size=50", "")

@@ -244,10 +244,12 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 // processFault 故障研判与去重（智能多源故障识别研判引擎已接入，范围A）
 // 同一设备同一 errCode 在 30 分钟内只生成一条故障记录，后续更新 lastSeen（R3）。
 // 研判链路：
-//   · 确定性规则基座（内聚 FaultTypeFromErrCode/FaultLevelFromErrCode）→ 多源交叉验证 → 判定分流；
-//   · confirmed：按原逻辑落库，critical 自动工单（R6），并写 confidence/证据/案例；
-//   · pending_review：低置信/存疑 → 落入故障但【不自动派单】，可被证据补充后升级确认；
-//   · filtered：明确否证 → 误报过滤，仅记证据与案例，不产生故障/工单。
+//
+//	· 确定性规则基座（内聚 FaultTypeFromErrCode/FaultLevelFromErrCode）→ 多源交叉验证 → 判定分流；
+//	· confirmed：按原逻辑落库，critical 自动工单（R6），并写 confidence/证据/案例；
+//	· pending_review：低置信/存疑 → 落入故障但【不自动派单】，可被证据补充后升级确认；
+//	· filtered：明确否证 → 误报过滤，仅记证据与案例，不产生故障/工单。
+//
 // 红线保持：R2 状态机、R3 去重窗口、R6 自动工单、R9 兼容。
 func (h *Handler) processFault(rec *EventRecord) {
 	if model.DB == nil {
@@ -345,22 +347,22 @@ func (h *Handler) processFault(rec *EventRecord) {
 
 	// 创建新故障记录（研判结果落库）
 	fault := model.FaultRecord{
-		DeviceHwID:       rec.LedHwID,
-		ErrCode:          rec.ErrCode,
-		FaultType:        judge.FaultType,
-		FaultLevel:       judge.FaultLevel,
-		LedState:         rec.LedState,
-		CurrentR:         rec.CurrentR,
-		CurrentY:         rec.CurrentY,
-		CurrentG:         rec.CurrentG,
-		FirstSeen:        now,
-		LastSeen:         now,
-		Status:           model.FaultStatusOccurred,
-		Confidence:       &judge.Confidence,
+		DeviceHwID:        rec.LedHwID,
+		ErrCode:           rec.ErrCode,
+		FaultType:         judge.FaultType,
+		FaultLevel:        judge.FaultLevel,
+		LedState:          rec.LedState,
+		CurrentR:          rec.CurrentR,
+		CurrentY:          rec.CurrentY,
+		CurrentG:          rec.CurrentG,
+		FirstSeen:         now,
+		LastSeen:          now,
+		Status:            model.FaultStatusOccurred,
+		Confidence:        &judge.Confidence,
 		RecognitionSource: judge.RecognitionSource,
 		RecognitionStatus: judge.RecognitionStatus,
-		EvidenceCount:    judge.EvidenceCount,
-		LastEvaluationID: judge.EvaluationID,
+		EvidenceCount:     judge.EvidenceCount,
+		LastEvaluationID:  judge.EvaluationID,
 	}
 
 	if err := model.DB.Create(&fault).Error; err != nil {
@@ -620,12 +622,12 @@ func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) 
 			src = model.EvSourceVideoMonitor
 		}
 		eval.AddEvidence(recognition.RuleEvidence{
-			DeviceHwID:    hwID,
-			SourceType:    src,
-			RawData:       "媒体#" + md.Title + " | " + md.URL,
-			CapturedAt:    md.CreatedAt,
-			RefMediaID:    &mid,
-			Confidence:    0.9,
+			DeviceHwID: hwID,
+			SourceType: src,
+			RawData:    "媒体#" + md.Title + " | " + md.URL,
+			CapturedAt: md.CreatedAt,
+			RefMediaID: &mid,
+			Confidence: 0.9,
 		})
 	}
 }

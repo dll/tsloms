@@ -22,16 +22,16 @@ import (
 
 // 核心基础模块（恒启，不可配置关闭）
 const (
-	ModuleDashboard    = "dashboard"      // 仪表盘
-	ModuleDevice       = "device"         // 设备管理
-	ModuleIntersection = "intersection"   // 路口管理
-	ModuleMap          = "map"            // 地图大屏
-	ModuleFeedback     = "feedback"       // 问题反馈
-	ModuleFault        = "fault"          // 故障管理
-	ModuleWorkorder    = "workorder"      // 工单管理
-	ModuleFirmware     = "firmware"       // 固件管理
-	ModuleLog          = "log"            // 系统日志
-	ModuleSettings     = "settings"       // 系统设置
+	ModuleDashboard    = "dashboard"    // 仪表盘
+	ModuleDevice       = "device"       // 设备管理
+	ModuleIntersection = "intersection" // 路口管理
+	ModuleMap          = "map"          // 地图大屏
+	ModuleFeedback     = "feedback"     // 问题反馈
+	ModuleFault        = "fault"        // 故障管理
+	ModuleWorkorder    = "workorder"    // 工单管理
+	ModuleFirmware     = "firmware"     // 固件管理
+	ModuleLog          = "log"          // 系统日志
+	ModuleSettings     = "settings"     // 系统设置
 )
 
 // 可选模块（默认不加载，甲方购买后经 ENABLED_MODULES 启用）

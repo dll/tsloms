@@ -205,12 +205,12 @@ func TestRegression_C2_TopicHwID(t *testing.T) {
 	}{
 		{"trafficLight/up/8001/1001/U", 1001},
 		{"trafficLight/up/8001/42/U", 42},
-		{"trafficLight/up/8001/U", 0},          // 段数不足
-		{"bad-topic", 0},                        // 格式错误
-		{"trafficLight/up/8001/notnum/U", 0},    // 非数字
-		{"a/b/c/d/e", 0},                        // 最后一段非 U 且段位不对
+		{"trafficLight/up/8001/U", 0},            // 段数不足
+		{"bad-topic", 0},                         // 格式错误
+		{"trafficLight/up/8001/notnum/U", 0},     // 非数字
+		{"a/b/c/d/e", 0},                         // 最后一段非 U 且段位不对
 		{"trafficLight/up/8001/4294967296/U", 0}, // 超出 uint32
-		{"trafficLight/up/8001/-5/U", 0},        // 负数非法
+		{"trafficLight/up/8001/-5/U", 0},         // 负数非法
 	}
 	for _, c := range cases {
 		if got := topicHwID(c.topic); got != c.want {

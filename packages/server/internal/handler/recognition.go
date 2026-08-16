@@ -55,22 +55,23 @@ func ListFaultEvidence(c *gin.Context) {
 
 // IngestEvidence 预留外部数据源证据写入（内部归一化落 fault_evidence）
 // body: device_hw_id, source_type, err_code?, led_state?, current_r/y/g?, raw_data?,
-//       ref_media_id?, ref_feedback_id?, captured_at?, fault_id?
+//
+//	ref_media_id?, ref_feedback_id?, captured_at?, fault_id?
 func IngestEvidence(c *gin.Context) {
 	var req struct {
-		DeviceHwID   uint32  `json:"device_hw_id" binding:"required"`
-		SourceType   string  `json:"source_type" binding:"required"`
-		ErrCode      *int8   `json:"err_code"`
-		LedState     *int8   `json:"led_state"`
-		CurrentR     *uint16 `json:"current_r"`
-		CurrentY     *uint16 `json:"current_y"`
-		CurrentG     *uint16 `json:"current_g"`
-		RawData      string  `json:"raw_data"`
-		RefMediaID   *uint   `json:"ref_media_id"`
-		RefFeedbackID *uint  `json:"ref_feedback_id"`
-		CapturedAt   *time.Time `json:"captured_at"`
-		FaultID      *uint   `json:"fault_id"`
-		Confidence   *float64 `json:"confidence"`
+		DeviceHwID    uint32     `json:"device_hw_id" binding:"required"`
+		SourceType    string     `json:"source_type" binding:"required"`
+		ErrCode       *int8      `json:"err_code"`
+		LedState      *int8      `json:"led_state"`
+		CurrentR      *uint16    `json:"current_r"`
+		CurrentY      *uint16    `json:"current_y"`
+		CurrentG      *uint16    `json:"current_g"`
+		RawData       string     `json:"raw_data"`
+		RefMediaID    *uint      `json:"ref_media_id"`
+		RefFeedbackID *uint      `json:"ref_feedback_id"`
+		CapturedAt    *time.Time `json:"captured_at"`
+		FaultID       *uint      `json:"fault_id"`
+		Confidence    *float64   `json:"confidence"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（device_hw_id、source_type 必填）")
@@ -144,24 +145,25 @@ func ListFaultCases(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var list []model.FaultCase
-	q.Order("created_at DESC").Offset(int((page-1)*pageSize)).Limit(int(pageSize)).Find(&list)
+	q.Order("created_at DESC").Offset(int((page - 1) * pageSize)).Limit(int(pageSize)).Find(&list)
 	ok(c, gin.H{"list": list, "total": total, "page": page, "page_size": pageSize})
 }
 
 // CreateFaultCase 案例库新增/人工回标样本（管理员/运维）
 // body: device_hw_id, input_signature?, fault_type, fault_level, expected_result?,
-//       evidence_summary?, source_evaluation_id?
+//
+//	evidence_summary?, source_evaluation_id?
 func CreateFaultCase(c *gin.Context) {
 	var req struct {
-		DeviceHwID        uint32 `json:"device_hw_id" binding:"required"`
-		InputSignature    string `json:"input_signature"`
-		FaultType         string `json:"fault_type"`
-		FaultLevel        string `json:"fault_level"`
-		ExpectedResult    string `json:"expected_result"`
-		JudgedResult      string `json:"judged_result"`
-		EvidenceSummary   string `json:"evidence_summary"`
+		DeviceHwID         uint32 `json:"device_hw_id" binding:"required"`
+		InputSignature     string `json:"input_signature"`
+		FaultType          string `json:"fault_type"`
+		FaultLevel         string `json:"fault_level"`
+		ExpectedResult     string `json:"expected_result"`
+		JudgedResult       string `json:"judged_result"`
+		EvidenceSummary    string `json:"evidence_summary"`
 		SourceEvaluationID string `json:"source_evaluation_id"`
-		Status            string `json:"status"`
+		Status             string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（device_hw_id 必填）")

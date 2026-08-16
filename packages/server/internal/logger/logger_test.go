@@ -8,12 +8,12 @@ import (
 
 func TestParseLevel(t *testing.T) {
 	cases := map[string]zapcore.Level{
-		"debug":   zapcore.DebugLevel,
-		"warn":    zapcore.WarnLevel,
-		"warning": zapcore.WarnLevel,
-		"error":   zapcore.ErrorLevel,
-		"info":    zapcore.InfoLevel,
-		"":        zapcore.InfoLevel,
+		"debug":    zapcore.DebugLevel,
+		"warn":     zapcore.WarnLevel,
+		"warning":  zapcore.WarnLevel,
+		"error":    zapcore.ErrorLevel,
+		"info":     zapcore.InfoLevel,
+		"":         zapcore.InfoLevel,
 		"nonsense": zapcore.InfoLevel,
 	}
 	for in, want := range cases {
