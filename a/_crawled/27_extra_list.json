@@ -1,0 +1,6 @@
+{
+  "status": 404,
+  "body": {
+    "httperr": "{\"timestamp\":\"2026-08-16T22:02:49.551+08:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/extra/list\"}"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "status": 200,
+  "body": {
+    "msg": "操作成功",
+    "code": 200,
+    "data": [
+      {
+        "name": "Signal",
+        "path": "/signal",
+        "hidden": false,
+        "redirect": "noRedirect",
+        "component": "Layout",
+        "alwaysShow": true,
+        "meta": {
+          "title": "信号灯检测",
+          "icon": "button",
+          "noCache": false,
+          "link": null
+        },
+        "children": [
+          {
+            "name": "EarlyWarning",
+            "path": "earlyWarning",
+            "hidden": false,
+            "component": "signalDevice/warn/earlyWarning/index",
+            "meta": {
+              "title": "预警管理",
+              "icon": "client",
+              "noCache": false,
+              "link": null
+            }
+          },
+          {
+            "name": "WarningConfig",
+            "path": "warningConfig",
+            "hidden": false,
+            "component": "signalDevice/warn/config/index",
+            "meta": {
+              "title": "预警配置",
+              "icon": "bug",
+              "noCache": false,
+              "link": null
+            }
+          },
+          {
+            "name": "Device",
+            "path": "device",
+            "hidden": false,
+            "component": "signalDevice/device/device",
+            "meta": {
+              "title": "设备管理",
+              "icon": "build",
+              "noCache": false,
+              "link": null
+            }
+          },
+          {
+            "name": "Cross",
+            "path": "cross",
+            "hidden": false,
+            "component": "signalDevice/cross/crossCard",
+            "meta": {
+              "title": "路口配置",
+              "icon": "exit-fullscreen",
+              "noCache": false,
+              "link": null
+            }
+          },
+          {
+            "name": "MapScreen",
+            "path": "mapScreen",
+            "hidden": false,
+            "component": "signalDevice/device/mapScreen",
+            "meta": {
+              "title": "地图大屏",
+              "icon": "chart",
+              "noCache": false,
+              "link": null
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

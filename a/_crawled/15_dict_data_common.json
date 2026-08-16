@@ -1,0 +1,57 @@
+{
+  "status": 200,
+  "body": {
+    "msg": "操作成功",
+    "code": 200,
+    "data": [
+      {
+        "id": null,
+        "tenantId": "061b3fcc817544119385947c19d04dec",
+        "delFlag": null,
+        "searchValue": null,
+        "createBy": "admin",
+        "createTime": "2022-08-05 09:56:53",
+        "updateBy": null,
+        "updateTime": null,
+        "remark": "正常状态",
+        "params": {
+          "@type": "java.util.HashMap"
+        },
+        "dictCode": 8,
+        "dictSort": 1,
+        "dictLabel": "正常",
+        "dictValue": "0",
+        "dictType": "sys_job_status",
+        "cssClass": "",
+        "listClass": "primary",
+        "isDefault": "Y",
+        "status": "0",
+        "default": true
+      },
+      {
+        "id": null,
+        "tenantId": "061b3fcc817544119385947c19d04dec",
+        "delFlag": null,
+        "searchValue": null,
+        "createBy": "admin",
+        "createTime": "2022-08-05 09:56:53",
+        "updateBy": null,
+        "updateTime": null,
+        "remark": "停用状态",
+        "params": {
+          "@type": "java.util.HashMap"
+        },
+        "dictCode": 9,
+        "dictSort": 2,
+        "dictLabel": "暂停",
+        "dictValue": "1",
+        "dictType": "sys_job_status",
+        "cssClass": "",
+        "listClass": "danger",
+        "isDefault": "N",
+        "status": "0",
+        "default": false
+      }
+    ]
+  }
+}
