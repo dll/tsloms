@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tsloms/server/internal/config"
+	"github.com/tsloms/server/internal/logger"
 	"github.com/tsloms/server/internal/model"
 	"go.uber.org/zap"
 )
@@ -21,13 +22,12 @@ type OfflineCheck struct {
 
 // NewOfflineCheck 创建离线检测器
 func NewOfflineCheck(cfg *config.Config) *OfflineCheck {
-	logger, _ := zap.NewProduction()
 	timeout := time.Duration(cfg.OfflineAfterMin) * time.Minute
 	if timeout <= 0 {
 		timeout = 6 * time.Minute
 	}
 	return &OfflineCheck{
-		logger:  logger,
+		logger:  logger.Get(),
 		timeout: timeout,
 		done:    make(chan struct{}),
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/config"
+	"github.com/tsloms/server/internal/model"
 )
 
 // ok 统一成功响应，格式: { code: 0, msg: "success", data: {...} }
@@ -92,8 +93,12 @@ func paginate(c *gin.Context) (uint, uint) {
 	return page, pageSize
 }
 
+// RoleIsOperator 判断角色是否具备运维操作能力（管理人员亦具备运维权限）
+func RoleIsOperator(role string) bool {
+	return role == model.RoleAdmin || role == model.RoleOperator
+}
+
 // isOperator 判断当前用户是否为运维人员（管理员也具有运维权限）
 func isOperator(c *gin.Context) bool {
-	role := c.GetString("user_role")
-	return role == "admin" || role == "operator"
+	return RoleIsOperator(c.GetString("user_role"))
 }

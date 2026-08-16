@@ -5,6 +5,7 @@ import (
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/tsloms/server/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -20,9 +21,8 @@ type MQTTClient struct {
 
 // NewMQTTClient 创建 MQTT 客户端实例
 func NewMQTTClient() *MQTTClient {
-	logger, _ := zap.NewProduction()
 	return &MQTTClient{
-		logger: logger,
+		logger: logger.Get(),
 	}
 }
 

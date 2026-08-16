@@ -4,10 +4,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/tsloms/server/internal/logger"
 	"github.com/tsloms/server/internal/model"
 	"go.uber.org/zap"
 )
@@ -21,9 +23,8 @@ type Handler struct {
 
 // NewHandler 创建消息处理器实例
 func NewHandler(mc *MQTTClient) *Handler {
-	logger, _ := zap.NewProduction()
 	return &Handler{
-		logger:     logger,
+		logger:     logger.Get(),
 		mqttClient: mc,
 	}
 }
@@ -110,9 +111,13 @@ func (h *Handler) HandleCheckin(frame *CmdFrame, eventPak *EventPak, uplinkTopic
 
 	// 遍历事件记录，更新设备信息并检查故障
 	if eventPak != nil {
-		for _, rec := range eventPak.Records {
+		// 同帧内同一硬件ID只对末条记录做一次 upsert（B3：减少热路径重复查询往返；
+		// 设备版本字段采用末条记录值，与原逐条覆盖语义一致）
+		for _, rec := range lastRecords(eventPak.Records) {
 			h.upsertDevice(rec, now)
-			// 签到中如果包含故障记录，也进行故障研判
+		}
+		for _, rec := range eventPak.Records {
+			// 签到中如果包含故障记录，也进行故障研判（逐条执行，语义不变）
 			if rec.ErrCode != LEDErrOK {
 				h.processFault(&rec)
 			}
@@ -140,10 +145,12 @@ func (h *Handler) HandleAlarm(frame *CmdFrame, eventPak *EventPak) {
 		return
 	}
 
-	for _, rec := range eventPak.Records {
-		// 更新设备信息
+	// 更新设备信息（同帧同硬件ID取末条记录合并为一次 upsert，减少重复查询；设备版本字段取末条值）
+	for _, rec := range lastRecords(eventPak.Records) {
 		h.upsertDevice(rec, time.Now())
-		// 故障研判与工单生成
+	}
+	for _, rec := range eventPak.Records {
+		// 故障研判与工单生成（逐条执行，语义不变）
 		h.processFault(&rec)
 	}
 
@@ -160,7 +167,8 @@ func (h *Handler) HandlePowerOn(frame *CmdFrame, eventPak *EventPak, uplinkTopic
 	now := time.Now()
 
 	if eventPak != nil {
-		for _, rec := range eventPak.Records {
+		// 同帧同硬件ID取末条记录做一次 upsert（B3：减少重复查询；设备版本字段取末条值）
+		for _, rec := range lastRecords(eventPak.Records) {
 			h.upsertDevice(rec, now)
 		}
 	}
@@ -172,6 +180,21 @@ func (h *Handler) HandlePowerOn(frame *CmdFrame, eventPak *EventPak, uplinkTopic
 		zap.Uint32("swVer", frame.SwVer),
 		zap.Uint16("cmdSeq", frame.CmdSeq),
 	)
+}
+
+// lastRecords 返回每个硬件ID（hwID）在 Records 中最后一次出现的记录。
+// 用于 B3 同帧设备 upsert 合并：同一 hwID 一帧内只 upsert 一次，且取值与原逐条覆盖语义一致（末条生效）。
+func lastRecords(records []EventRecord) []EventRecord {
+	// 记录每个 hwID 最后一次出现的索引
+	lastIdx := make(map[uint32]int, len(records))
+	for i := range records {
+		lastIdx[records[i].LedHwID] = i
+	}
+	out := make([]EventRecord, 0, len(lastIdx))
+	for _, i := range lastIdx {
+		out = append(out, records[i])
+	}
+	return out
 }
 
 // upsertDevice 新增或更新设备信息
@@ -238,13 +261,17 @@ func (h *Handler) processFault(rec *EventRecord) {
 	if result.Error == nil {
 		// 故障已存在，检查是否在去重窗口内
 		if now.Sub(existing.LastSeen) <= dedupWindow {
-			// 在去重窗口内，仅更新 lastSeen 和电流值
+			// 在去重窗口内，更新 lastSeen；仅当电流/灯态有变化时才附带更新这些字段，
+			// 避免高频上报时的无意义整行写（B2：恒真更新）。
 			updates := map[string]interface{}{
 				"last_seen": now,
-				"current_r": rec.CurrentR,
-				"current_y": rec.CurrentY,
-				"current_g": rec.CurrentG,
-				"led_state": rec.LedState,
+			}
+			if existing.CurrentR != rec.CurrentR || existing.CurrentY != rec.CurrentY ||
+				existing.CurrentG != rec.CurrentG || existing.LedState != rec.LedState {
+				updates["current_r"] = rec.CurrentR
+				updates["current_y"] = rec.CurrentY
+				updates["current_g"] = rec.CurrentG
+				updates["led_state"] = rec.LedState
 			}
 			model.DB.Model(&existing).Updates(updates)
 			return
@@ -337,7 +364,7 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 // 设备上报当前 swVer，服务器查询是否有已发布的更高版本固件：
 // 有 -> 回应含目标版本与固件信息，指导设备发起升级；无 -> 回应无新版本（目标版本号填 0）
 func (h *Handler) HandleCheckFW(frame *CmdFrame, uplinkTopic string) {
-	deviceHwID := frameHwID(frame)
+	deviceHwID := topicHwID(uplinkTopic)
 	h.logger.Info("固件查询请求",
 		zap.Uint32("hwId", deviceHwID),
 		zap.Uint32("swVer", frame.SwVer),
@@ -405,7 +432,7 @@ func (h *Handler) sendFWCheckAck(frame *CmdFrame, uplinkTopic string, targetSwVe
 // HandleGetFW 处理设备固件数据请求（CMD_GET_FW 0x31）
 // 设备请求固件升级数据，服务器回应最新已发布固件包的位域值供其校验
 func (h *Handler) HandleGetFW(frame *CmdFrame, uplinkTopic string) {
-	deviceHwID := frameHwID(frame)
+	deviceHwID := topicHwID(uplinkTopic)
 	h.logger.Info("固件数据请求",
 		zap.Uint32("hwId", deviceHwID),
 		zap.Uint32("swVer", frame.SwVer),
@@ -430,10 +457,20 @@ func buildDownTopic(uplinkTopic string, cmdSeq uint16) string {
 	return down
 }
 
-// frameHwID 从命令帧中提取设备硬件 ID
-// 固件命令帧不含事件记录，无法直接取 LedHwID；此处返回 0（无事件数据时）
-func frameHwID(frame *CmdFrame) uint32 {
-	return 0
+// topicHwID 从设备上行 Topic 提取硬件 ID
+// 上行 Topic 格式：{prefix}/{网络号}/{站点号}/{硬件ID}/U，硬件ID 位于倒数第 2 段。
+// 无法解析时返回 0（无意义），仅用于日志溯源，不影响业务。
+func topicHwID(uplinkTopic string) uint32 {
+	segments := strings.Split(uplinkTopic, "/")
+	// 需至少有 {prefix}/{net}/{station}/{hwid}/{U} 五段，hwid 在倒数第 2 段
+	if len(segments) < 5 {
+		return 0
+	}
+	n, err := strconv.ParseUint(segments[len(segments)-2], 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(n)
 }
 
 // swVerMajor / swVerMinor 提取位域版本号主/次版本（bit31:28 / bit27:24）

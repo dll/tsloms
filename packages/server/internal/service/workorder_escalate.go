@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/tsloms/server/internal/logger"
 	"github.com/tsloms/server/internal/model"
 	"go.uber.org/zap"
 )
@@ -21,9 +22,8 @@ type WorkOrderEscalator struct {
 
 // NewWorkOrderEscalator 创建工单超时升级器
 func NewWorkOrderEscalator() *WorkOrderEscalator {
-	logger, _ := zap.NewProduction()
 	return &WorkOrderEscalator{
-		logger: logger,
+		logger: logger.Get(),
 		done:   make(chan struct{}),
 	}
 }

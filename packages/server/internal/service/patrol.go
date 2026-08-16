@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tsloms/server/internal/ai"
+	"github.com/tsloms/server/internal/logger"
 	"github.com/tsloms/server/internal/model"
 	"go.uber.org/zap"
 )
@@ -25,7 +26,6 @@ type PatrolService struct {
 
 // NewPatrolService 创建 AI 主动巡检服务
 func NewPatrolService() *PatrolService {
-	logger, _ := zap.NewProduction()
 	hour, minute := 8, 0
 	if h := os.Getenv("PATROL_DAILY_HOUR"); h != "" {
 		if n, err := strconv.Atoi(h); err == nil && n >= 0 && n <= 23 {
@@ -37,7 +37,7 @@ func NewPatrolService() *PatrolService {
 			minute = n
 		}
 	}
-	return &PatrolService{logger: logger, done: make(chan struct{}), hour: hour, minute: minute}
+	return &PatrolService{logger: logger.Get(), done: make(chan struct{}), hour: hour, minute: minute}
 }
 
 // Start 启动巡检协程
@@ -131,33 +131,26 @@ func (p *PatrolService) checkAlerts(s *ai.DailySnapshot) {
 }
 
 // checkStockAlerts 低库存/缺货物料检测
+// 低库存：threshold>0 且 0<stock<=threshold；缺货：threshold>0 且 stock<=0
 func (p *PatrolService) checkStockAlerts(alerts *int) {
-	var low, out stdMaterial
-	var lowList []string
-	var outList []string
-	model.DB.Model(&model.Material{}).Where("threshold > 0 AND stock <= threshold AND stock > 0").
-		Select("COUNT(*) AS count").Scan(&low)
-	lowList = p.lowStockNames(true)
-	model.DB.Model(&model.Material{}).Where("threshold > 0 AND stock <= 0").
-		Select("COUNT(*) AS count").Scan(&out)
-	outList = p.lowStockNames(false)
-	if low.Count > 0 {
-		p.notifyOps("alert", fmt.Sprintf("%d 种物料低于预警阈值", low.Count),
+	lowCount, lowList := p.stockCountAndNames(true)
+	outCount, outList := p.stockCountAndNames(false)
+	if lowCount > 0 {
+		p.notifyOps("alert", fmt.Sprintf("%d 种物料低于预警阈值", lowCount),
 			"低库存物料："+joinStr(lowList, ", ")+", 建议近期安排采购。", "/inventory/material", "inventory", 0)
 		*alerts++
 	}
-	if out.Count > 0 {
-		p.notifyOps("alert", fmt.Sprintf("%d 种物料已缺货", out.Count),
+	if outCount > 0 {
+		p.notifyOps("alert", fmt.Sprintf("%d 种物料已缺货", outCount),
 			"缺货物料："+joinStr(outList, ", ")+", 请尽快补货。", "/inventory/material", "inventory", 0)
 		*alerts++
 	}
 }
 
-type stdMaterial struct {
-	Count int64
-}
-
-func (p *PatrolService) lowStockNames(low bool) []string {
+// stockCountAndNames 一次查询同时取指定库存状态的物料数（count）与前 N 名单（topN）
+// low=true 取“低库存”（0<stock<=threshold）；low=false 取“缺货”（stock<=0）
+// 原实现 count 与名单各自查询一遍（B4：重复扫描），这里合并为一次扫描；语义不变（名单按 stock 升序取前 6）。
+func (p *PatrolService) stockCountAndNames(low bool) (int, []string) {
 	q := model.DB.Model(&model.Material{}).Where("threshold > 0 AND stock <= threshold")
 	if low {
 		q = q.Where("stock > 0")
@@ -167,12 +160,22 @@ func (p *PatrolService) lowStockNames(low bool) []string {
 	var rows []struct {
 		Name string
 	}
-	q.Select("name").Order("stock ASC").Limit(6).Scan(&rows)
-	out := make([]string, 0, len(rows))
-	for _, r := range rows {
+	q.Select("name").Order("stock ASC").Find(&rows)
+	topN := rows
+	if len(topN) > 6 {
+		topN = topN[:6]
+	}
+	out := make([]string, 0, len(topN))
+	for _, r := range topN {
 		out = append(out, r.Name)
 	}
-	return out
+	return len(rows), out
+}
+
+// lowStockNames 保留：由 stockCountAndNames 取代（不再逐次独立查询）
+func (p *PatrolService) lowStockNames(low bool) []string {
+	_, names := p.stockCountAndNames(low)
+	return names
 }
 
 // notifyOps 推送通知给运维与管理员（role in admin/operator/自定义含 ai:ops 者）

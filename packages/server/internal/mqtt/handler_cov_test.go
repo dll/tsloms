@@ -172,9 +172,15 @@ func TestMqttHelpers(t *testing.T) {
 	if swVerMajor(0x34000000) != 3 || swVerMinor(0x04000000) != 4 {
 		t.Error("swVer 位域提取错误")
 	}
-	// frameHwID
-	if frameHwID(&CmdFrame{}) != 0 {
-		t.Error("frameHwID 应返回 0")
+	// topicHwID（替代原恒返回 0 的 frameHwID）：从 Topic 提取硬件 ID，非法返回 0
+	if topicHwID("trafficLight/up/8001/1001/U") != 1001 {
+		t.Error("topicHwID 应从 Topic 提取硬件 ID")
+	}
+	if topicHwID("bad-topic") != 0 {
+		t.Error("topicHwID 非法 Topic 应返回 0")
+	}
+	if topicHwID("trafficLight/up/8001/notnum/U") != 0 {
+		t.Error("topicHwID 非数字硬件 ID 应返回 0")
 	}
 	// HandleCheckin/PowerOn 直接调用（regenlog 不 panic）
 	h.HandleCheckin(&CmdFrame{Cmd: CmdCheckin, SwVer: 1, CmdSeq: 1}, nil, "trafficLight/up/8001/U")

@@ -8,6 +8,48 @@ import (
 	"github.com/tsloms/server/internal/model"
 )
 
+// activeStatuses 旧 “active” 兼容语义 = 未解决：occurred/confirmed/dispatched
+var activeStatuses = []string{
+	model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
+}
+
+// ParseStatusFilter 解析故障状态筛选参数
+// “active” 为兼容旧语义（= 未解决三态），其余按字面状态匹配；空返回（不筛选）
+func ParseStatusFilter(status string) (op string, arg interface{}, ok bool) {
+	if status == "" {
+		return "", nil, false
+	}
+	if status == "active" {
+		return "IN", activeStatuses, true
+	}
+	return "=", status, true
+}
+
+// ParseFaultTimeRange 解析故障时间范围参数
+// 兼容 start_time/start_date 与 end_time/end_date 两套参数名，格式 2006-01-02
+func ParseFaultTimeRange(c *gin.Context) (start, end *time.Time) {
+	startStr := c.Query("start_time")
+	if startStr == "" {
+		startStr = c.Query("start_date")
+	}
+	if startStr != "" {
+		if t, err := time.Parse("2006-01-02", startStr); err == nil {
+			start = &t
+		}
+	}
+	endStr := c.Query("end_time")
+	if endStr == "" {
+		endStr = c.Query("end_date")
+	}
+	if endStr != "" {
+		if t, err := time.Parse("2006-01-02", endStr); err == nil {
+			e := t.Add(24 * time.Hour)
+			end = &e
+		}
+	}
+	return
+}
+
 // ListFaults 故障记录列表查询
 // 支持按设备、状态、故障类型、时间范围筛选，分页查询
 func ListFaults(c *gin.Context) {
@@ -22,12 +64,12 @@ func ListFaults(c *gin.Context) {
 
 	// 按状态筛选（active 兼容旧语义 = 未解决：occurred/confirmed/dispatched）
 	if status := c.Query("status"); status != "" {
-		if status == "active" {
-			query = query.Where("status IN ?", []string{
-				model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,
-			})
-		} else {
-			query = query.Where("status = ?", status)
+		if op, arg, ok := ParseStatusFilter(status); ok {
+			if op == "IN" {
+				query = query.Where("status IN ?", arg)
+			} else {
+				query = query.Where("status = ?", arg)
+			}
 		}
 	}
 
@@ -42,23 +84,12 @@ func ListFaults(c *gin.Context) {
 	}
 
 	// 按时间范围筛选（兼容 start_time/end_time 与 start_date/end_date 两套参数名）
-	startTime := c.Query("start_time")
-	if startTime == "" {
-		startTime = c.Query("start_date")
+	start, end := ParseFaultTimeRange(c)
+	if start != nil {
+		query = query.Where("first_seen >= ?", *start)
 	}
-	if startTime != "" {
-		if t, err := time.Parse("2006-01-02", startTime); err == nil {
-			query = query.Where("first_seen >= ?", t)
-		}
-	}
-	endTime := c.Query("end_time")
-	if endTime == "" {
-		endTime = c.Query("end_date")
-	}
-	if endTime != "" {
-		if t, err := time.Parse("2006-01-02", endTime); err == nil {
-			query = query.Where("last_seen <= ?", t.Add(24*time.Hour))
-		}
+	if end != nil {
+		query = query.Where("last_seen <= ?", *end)
 	}
 
 	// 总数
@@ -72,10 +103,11 @@ func ListFaults(c *gin.Context) {
 		Limit(int(pageSize)).
 		Find(&faults)
 
-	// 转为带负责人/维修人姓名的视图
+	// 转为带负责人/维修人姓名的视图（批量预取避免逐行 N+1）
 	list := make([]gin.H, 0, len(faults))
+	userNames := faultUserNames(faults)
 	for i := range faults {
-		list = append(list, faultView(c, faults[i]))
+		list = append(list, faultViewWithNames(c, faults[i], userNames))
 	}
 
 	ok(c, gin.H{
@@ -86,7 +118,56 @@ func ListFaults(c *gin.Context) {
 	})
 }
 
-// GetFault 获取单个故障记录详情
+// faultUserNames 批量预取故障负责人/维修人姓名（避免 faultView 逐行单查 N+1）
+func faultUserNames(faults []model.FaultRecord) map[uint]string {
+	ids := make([]uint, 0, len(faults)*2)
+	seen := make(map[uint]bool, len(faults)*2)
+	for _, f := range faults {
+		for _, uid := range []*uint{f.OwnerID, f.RepairerID} {
+			if uid != nil && !seen[*uid] {
+				seen[*uid] = true
+				ids = append(ids, *uid)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return map[uint]string{}
+	}
+	var users []model.User
+	if err := model.DB.Select("id, username").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return map[uint]string{}
+	}
+	out := make(map[uint]string, len(users))
+	for _, u := range users {
+		out[u.ID] = u.Username
+	}
+	return out
+}
+
+// faultViewWithNames 使用预取的姓名 map 构建故障视图
+func faultViewWithNames(c *gin.Context, f model.FaultRecord, names map[uint]string) gin.H {
+	v := gin.H{
+		"id": f.ID, "device_hw_id": f.DeviceHwID, "err_code": f.ErrCode,
+		"fault_type": f.FaultType, "fault_level": f.FaultLevel, "led_state": f.LedState,
+		"current_r": f.CurrentR, "current_y": f.CurrentY, "current_g": f.CurrentG,
+		"first_seen": f.FirstSeen, "last_seen": f.LastSeen, "status": f.Status,
+		"owner_id": f.OwnerID, "repairer_id": f.RepairerID,
+		"confirmed_at": f.ConfirmedAt, "dispatched_at": f.DispatchedAt, "resolved_at": f.ResolvedAt,
+		"work_order_id": f.WorkOrderID, "created_at": f.CreatedAt, "updated_at": f.UpdatedAt,
+	}
+	if f.OwnerID != nil {
+		if name, ok := names[*f.OwnerID]; ok && name != "" {
+			v["owner_name"] = name
+		}
+	}
+	if f.RepairerID != nil {
+		if name, ok := names[*f.RepairerID]; ok && name != "" {
+			v["repairer_name"] = name
+		}
+	}
+	return v
+}
+
 func GetFault(c *gin.Context) {
 	id, err := parseUint(c.Param("id"))
 	if err != nil {

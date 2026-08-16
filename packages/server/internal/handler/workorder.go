@@ -64,9 +64,9 @@ func ListWorkOrders(c *gin.Context) {
 
 	// 关联处理人姓名
 	list := make([]gin.H, 0, len(orders))
+	assigneeNames := workOrderAssigneeNames(orders)
 	for _, o := range orders {
-		item := workOrderView(o)
-		list = append(list, item)
+		list = append(list, workOrderViewWithNames(o, assigneeNames))
 	}
 
 	ok(c, gin.H{
@@ -75,6 +75,47 @@ func ListWorkOrders(c *gin.Context) {
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+// workOrderAssigneeNames 批量预取工单处理人姓名（避免逐行单查的 N+1 查询）
+// 返回 map[userID]username；未匹配到或处理人为空时 map 中无对应项
+func workOrderAssigneeNames(orders []model.WorkOrder) map[uint]string {
+	ids := make([]uint, 0, len(orders))
+	seen := make(map[uint]bool, len(orders))
+	for _, o := range orders {
+		if o.AssigneeID != nil && !seen[*o.AssigneeID] {
+			seen[*o.AssigneeID] = true
+			ids = append(ids, *o.AssigneeID)
+		}
+	}
+	if len(ids) == 0 {
+		return map[uint]string{}
+	}
+	var users []model.User
+	if err := model.DB.Select("id, username").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return map[uint]string{}
+	}
+	out := make(map[uint]string, len(users))
+	for _, u := range users {
+		out[u.ID] = u.Username
+	}
+	return out
+}
+
+// workOrderViewWithNames 工单视图：使用预取的处理人姓名构建
+func workOrderViewWithNames(o model.WorkOrder, names map[uint]string) gin.H {
+	assigneeName := ""
+	if o.AssigneeID != nil {
+		assigneeName = names[*o.AssigneeID]
+	}
+	overdueHours := model.WorkOrderOverdueHours(&o)
+	return gin.H{
+		"id": o.ID, "order_no": o.OrderNo, "fault_id": o.FaultID,
+		"device_hw_id": o.DeviceHwID, "status": o.Status,
+		"assignee_id": o.AssigneeID, "assignee_name": assigneeName,
+		"result": o.Result, "created_at": o.CreatedAt, "closed_at": o.ClosedAt,
+		"overdue": overdueHours > 0, "overdue_hours": overdueHours,
+	}
 }
 
 // workOrderView 工单视图：附带处理人姓名与超时状态
@@ -291,11 +332,6 @@ func UpdateWorkOrderStatus(c *gin.Context) {
 		model.DB.Model(&model.FaultRecord{}).
 			Where("id = ?", wo.FaultID).
 			Update("status", model.FaultStatusConfirmed)
-	}
-
-	// 工单驳回后重新派发（rejected → pending）：清空关闭时间
-	if req.Status == model.WorkOrderStatusPending && wo.Status == model.WorkOrderStatusRejected {
-		updates["closed_at"] = nil
 	}
 
 	if err := model.DB.Model(&wo).Updates(updates).Error; err != nil {
