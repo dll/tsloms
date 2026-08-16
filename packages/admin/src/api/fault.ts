@@ -13,8 +13,30 @@ export interface FaultQuery {
   end_date?: string
 }
 
+// 故障列表项（智能识别字段：仅做加法，兼容旧记录）
+export interface FaultItem {
+  id: number | string
+  device_hw_id?: number | string
+  err_code?: number
+  fault_level?: string
+  status?: string
+  owner_id?: number | null
+  repairer_id?: number | null
+  owner_name?: string | null
+  repairer_name?: string | null
+  last_seen?: string
+  // ---- 智能识别研判字段（范围B新增） ----
+  confidence?: number | null
+  recognition_source?: string
+  recognition_status?: string // confirmed / pending_review / filtered
+  is_false_positive?: boolean | null
+  evidence_count?: number
+  reviewed_at?: string | null
+  [key: string]: any
+}
+
 // 获取故障列表（分页）
-export function getFaults(params: FaultQuery): Promise<ApiResponse> {
+export function getFaults(params: FaultQuery): Promise<ApiResponse<{ list: FaultItem[]; total: number }>> {
   return request.get('/faults', { params }) as unknown as Promise<ApiResponse>
 }
 

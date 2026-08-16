@@ -51,6 +51,9 @@ func TestLoadDefaults(t *testing.T) {
 	if c.AdminInitPwd != "" {
 		t.Errorf("AdminInitPwd 默认应为空, got %q", c.AdminInitPwd)
 	}
+	if c.EnabledModules != "" {
+		t.Errorf("EnabledModules 默认应为空（仅核心模块）, got %q", c.EnabledModules)
+	}
 }
 
 func TestLoadEnvOverrides(t *testing.T) {
@@ -79,6 +82,7 @@ func TestLoadEnvOverrides(t *testing.T) {
 	setEnv(t, "AI_TEXT_MODEL", "deepseek")
 	setEnv(t, "AI_VISION_MODEL", "glm-4v-plus")
 	setEnv(t, "ADMIN_INIT_PASSWORD", "Init@Pass2026")
+	setEnv(t, "ENABLED_MODULES", "ai,inventory")
 
 	c := Load()
 	if c.ServerPort != "9100" || c.AppEnv != "production" || c.DBDriver != "sqlite" {
@@ -107,6 +111,9 @@ func TestLoadEnvOverrides(t *testing.T) {
 	}
 	if c.AdminInitPwd != "Init@Pass2026" {
 		t.Errorf("AdminInitPwd 覆盖失败: %q", c.AdminInitPwd)
+	}
+	if c.EnabledModules != "ai,inventory" {
+		t.Errorf("EnabledModules 覆盖失败: %q", c.EnabledModules)
 	}
 }
 

@@ -171,6 +171,9 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		auth := api.Group("")
 		auth.Use(middleware.Auth(cfg))
 		{
+			// 当前实例已启模块列表（核心 + 已购可选）——前端动态菜单/路由依据
+			auth.GET("/modules", handler.ListEnabledModules)
+
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)
 			auth.PUT("/user/phone", handler.UpdateMyPhone)
@@ -195,6 +198,20 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.PUT("/faults/:id", middleware.RequirePerm("fault:update"), handler.UpdateFault)
 			auth.DELETE("/faults/:id", middleware.RequirePerm("fault:delete"), handler.DeleteFault)
 			auth.POST("/faults/:id/dispatch", middleware.RequirePerm("fault:dispatch"), handler.DispatchFault)
+
+			// ---- 智能多源故障识别研判引擎（范围A，独立路径向后兼容） ----
+			// 多源证据明细（待确认/被过滤证据亦可回看）
+			auth.GET("/faults/:id/evidence", handler.ListFaultEvidence)
+			// 待确认复核：证据补充后升级为确认（可自动派单）
+			auth.POST("/faults/:id/review", middleware.RequirePerm("fault:review"), handler.ReviewFault)
+			// 预留外部数据源证据写入（举证/反馈/监控）
+			auth.POST("/evidence/ingest", middleware.RequirePerm("evidence:ingest"), handler.IngestEvidence)
+			auth.GET("/evidence/sources", handler.ListEvidenceSources)
+			// 识别案例库（列表/回标/训练/统计）
+			auth.GET("/fault-cases", handler.ListFaultCases)
+			auth.POST("/fault-cases", middleware.RequirePerm("faultcase:manage"), handler.CreateFaultCase)
+			auth.POST("/fault-cases/train", middleware.RequirePerm("faultcase:manage"), handler.TrainFaultCases)
+			auth.GET("/recognition/stats", handler.RecognitionStats)
 
 			// 工单管理（查看：所有角色，操作：管理员/运维）
 			auth.GET("/work-orders", handler.ListWorkOrders)
@@ -253,7 +270,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 设备媒体（视频举证/监控/时间视频）
 			auth.GET("/media", handler.ListDeviceMedia)
 			auth.POST("/media/upload", middleware.RequirePerm("media:upload"), handler.UploadDeviceMedia)
-			auth.POST("/media/streams", middleware.RequirePerm("media:upload"), handler.CreateRTSPMedia)
+			// RTSP 实时拉流仅视频监控模块（可选）
+			auth.POST("/media/streams", handler.RequireModule(handler.ModuleVideo), middleware.RequirePerm("media:upload"), handler.CreateRTSPMedia)
 			auth.DELETE("/media/:id", middleware.RequirePerm("media:delete"), handler.DeleteDeviceMedia)
 
 			// 固件管理（OTA 升级）
@@ -267,37 +285,37 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.POST("/firmware-upgrades", middleware.RequirePerm("firmware:manage"), handler.CreateFirmwareUpgrade)
 			auth.DELETE("/firmware-upgrades/:id", middleware.RequirePerm("firmware:delete"), handler.DeleteFirmwareUpgrade)
 
-			// 库存管理（物料档案 + 出入库流水 + 统计）
-			auth.GET("/inv/materials", handler.ListMaterialsV2)
-			auth.GET("/inv/materials/stats", handler.MaterialStats)
-			auth.POST("/inv/materials", middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
-			auth.PUT("/inv/materials/:id", middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
-			auth.DELETE("/inv/materials/:id", middleware.RequirePerm("inventory:delete"), handler.DeleteMaterialV2)
-			auth.GET("/inv/stocks", handler.ListMaterialStocks)
-			auth.POST("/inv/stocks/adjust", middleware.RequirePerm("inventory:manage"), handler.AdjustMaterialStock)
-			auth.POST("/inv/stocks/use", middleware.RequirePerm("inventory:manage"), handler.UseMaterialStock)
+			// 库存管理（物料档案 + 出入库流水 + 统计）【可选模块 inventory】
+			auth.GET("/inv/materials", handler.RequireModule(handler.ModuleInventory), handler.ListMaterialsV2)
+			auth.GET("/inv/materials/stats", handler.RequireModule(handler.ModuleInventory), handler.MaterialStats)
+			auth.POST("/inv/materials", handler.RequireModule(handler.ModuleInventory), middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
+			auth.PUT("/inv/materials/:id", handler.RequireModule(handler.ModuleInventory), middleware.RequirePerm("inventory:manage"), handler.SaveMaterial)
+			auth.DELETE("/inv/materials/:id", handler.RequireModule(handler.ModuleInventory), middleware.RequirePerm("inventory:delete"), handler.DeleteMaterialV2)
+			auth.GET("/inv/stocks", handler.RequireModule(handler.ModuleInventory), handler.ListMaterialStocks)
+			auth.POST("/inv/stocks/adjust", handler.RequireModule(handler.ModuleInventory), middleware.RequirePerm("inventory:manage"), handler.AdjustMaterialStock)
+			auth.POST("/inv/stocks/use", handler.RequireModule(handler.ModuleInventory), middleware.RequirePerm("inventory:manage"), handler.UseMaterialStock)
 
-			// 供应商
-			auth.GET("/suppliers", handler.ListSuppliers)
-			auth.POST("/suppliers", middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
-			auth.PUT("/suppliers/:id", middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
-			auth.DELETE("/suppliers/:id", middleware.RequirePerm("supplier:delete"), handler.DeleteSupplier)
+			// 供应商【可选模块 supplier】
+			auth.GET("/suppliers", handler.RequireModule(handler.ModuleSupplier), handler.ListSuppliers)
+			auth.POST("/suppliers", handler.RequireModule(handler.ModuleSupplier), middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
+			auth.PUT("/suppliers/:id", handler.RequireModule(handler.ModuleSupplier), middleware.RequirePerm("supplier:manage"), handler.SaveSupplier)
+			auth.DELETE("/suppliers/:id", handler.RequireModule(handler.ModuleSupplier), middleware.RequirePerm("supplier:delete"), handler.DeleteSupplier)
 
-			// 采购单（进销存）
-			auth.GET("/purchases", handler.ListPurchaseOrders)
-			auth.GET("/purchases/:id", handler.GetPurchaseOrder)
-			auth.POST("/purchases", middleware.RequirePerm("purchase:manage"), handler.CreatePurchaseOrder)
-			auth.POST("/purchases/:id/receive", middleware.RequirePerm("purchase:manage"), handler.ReceivePurchase)
-			auth.POST("/purchases/:id/cancel", middleware.RequirePerm("purchase:manage"), handler.CancelPurchase)
-			auth.DELETE("/purchases/:id", middleware.RequirePerm("purchase:delete"), handler.DeletePurchase)
+			// 采购单（进销存）【可选模块 purchase】
+			auth.GET("/purchases", handler.RequireModule(handler.ModulePurchase), handler.ListPurchaseOrders)
+			auth.GET("/purchases/:id", handler.RequireModule(handler.ModulePurchase), handler.GetPurchaseOrder)
+			auth.POST("/purchases", handler.RequireModule(handler.ModulePurchase), middleware.RequirePerm("purchase:manage"), handler.CreatePurchaseOrder)
+			auth.POST("/purchases/:id/receive", handler.RequireModule(handler.ModulePurchase), middleware.RequirePerm("purchase:manage"), handler.ReceivePurchase)
+			auth.POST("/purchases/:id/cancel", handler.RequireModule(handler.ModulePurchase), middleware.RequirePerm("purchase:manage"), handler.CancelPurchase)
+			auth.DELETE("/purchases/:id", handler.RequireModule(handler.ModulePurchase), middleware.RequirePerm("purchase:delete"), handler.DeletePurchase)
 
-			// 维修费用（耗材/人工/交通/其它）
-			auth.GET("/expenses", handler.ListRepairExpenses)
-			auth.GET("/expenses/stats", handler.ExpenseStats)
-			auth.POST("/expenses", middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
-			auth.PUT("/expenses/:id", middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
-			auth.PUT("/expenses/:id/confirm", middleware.RequirePerm("expense:manage"), handler.ConfirmRepairExpense)
-			auth.DELETE("/expenses/:id", middleware.RequirePerm("expense:delete"), handler.DeleteRepairExpense)
+			// 维修费用（耗材/人工/交通/其它）【可选模块 expense】
+			auth.GET("/expenses", handler.RequireModule(handler.ModuleExpense), handler.ListRepairExpenses)
+			auth.GET("/expenses/stats", handler.RequireModule(handler.ModuleExpense), handler.ExpenseStats)
+			auth.POST("/expenses", handler.RequireModule(handler.ModuleExpense), middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id", handler.RequireModule(handler.ModuleExpense), middleware.RequirePerm("expense:manage"), handler.SaveRepairExpense)
+			auth.PUT("/expenses/:id/confirm", handler.RequireModule(handler.ModuleExpense), middleware.RequirePerm("expense:manage"), handler.ConfirmRepairExpense)
+			auth.DELETE("/expenses/:id", handler.RequireModule(handler.ModuleExpense), middleware.RequirePerm("expense:delete"), handler.DeleteRepairExpense)
 
 			// 问题反馈
 			auth.GET("/feedbacks", handler.ListFeedbacks)
@@ -305,52 +323,53 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.PUT("/feedbacks/:id", handler.UpdateFeedbackStatus)
 
 			// 派单参考（设备聚合：故障/工单/耗材/媒体）
-			auth.GET("/dispatch/reference", handler.DispatchReference)
+			auth.GET("/dispatch/reference", handler.RequireModule(handler.ModuleDispatch), handler.DispatchReference)
 
-			// 站内通知（AI 主动巡检推送：报告提醒/异常预警）
-			auth.GET("/notifications", handler.ListNotificationsAPI)
-			auth.GET("/notifications/unread-count", handler.UnreadCountAPI)
-			auth.PUT("/notifications/:id/read", handler.ReadNotificationAPI)
-			auth.PUT("/notifications/read-all", handler.ReadAllNotificationsAPI)
+			// 站内通知（AI 主动巡检推送：报告提醒/异常预警）【可选模块 notification】
+			auth.GET("/notifications", handler.RequireModule(handler.ModuleNotification), handler.ListNotificationsAPI)
+			auth.GET("/notifications/unread-count", handler.RequireModule(handler.ModuleNotification), handler.UnreadCountAPI)
+			auth.PUT("/notifications/:id/read", handler.RequireModule(handler.ModuleNotification), handler.ReadNotificationAPI)
+			auth.PUT("/notifications/read-all", handler.RequireModule(handler.ModuleNotification), handler.ReadAllNotificationsAPI)
 
 			// 可派单人员（运维/管理员），供工单派单
 			auth.GET("/users/assignable", handler.ListAssignableUsers)
 
-			// ---- AI 分析 ----
+			// ---- AI 分析（可选模块 ai）----
+			aiM := handler.RequireModule(handler.ModuleAI)
 			// 配置（管理员读写，普通用户读）+ 我的额度
-			auth.GET("/ai/config", handler.GetAIConfig)
-			auth.PUT("/ai/config", middleware.RequirePerm("ai:config"), handler.UpdateAIConfig)
-			auth.GET("/ai/usage", handler.MyAIUsage)
-			auth.GET("/ai/usage/logs", middleware.RequirePerm("ai:config"), handler.AIUsagePage)
-			auth.POST("/ai/usage/reset", middleware.RequirePerm("ai:config"), handler.ResetAIUsage)
+			auth.GET("/ai/config", aiM, handler.GetAIConfig)
+			auth.PUT("/ai/config", aiM, middleware.RequirePerm("ai:config"), handler.UpdateAIConfig)
+			auth.GET("/ai/usage", aiM, handler.MyAIUsage)
+			auth.GET("/ai/usage/logs", aiM, middleware.RequirePerm("ai:config"), handler.AIUsagePage)
+			auth.POST("/ai/usage/reset", aiM, middleware.RequirePerm("ai:config"), handler.ResetAIUsage)
 			// 故障预测
-			auth.POST("/ai/predict/run", middleware.RequirePerm("ai:ops"), handler.RunPrediction)
-			auth.GET("/ai/predict/by-intersection", middleware.RequirePerm("ai:ops"), handler.RunPredictionByIntersection)
-			auth.GET("/ai/predict", middleware.RequirePerm("ai:ops"), handler.AIPredictions)
-			auth.POST("/ai/predict/:id/enhance", middleware.RequirePerm("ai:ops"), handler.EnhancePredictionPlan)
+			auth.POST("/ai/predict/run", aiM, middleware.RequirePerm("ai:ops"), handler.RunPrediction)
+			auth.GET("/ai/predict/by-intersection", aiM, middleware.RequirePerm("ai:ops"), handler.RunPredictionByIntersection)
+			auth.GET("/ai/predict", aiM, middleware.RequirePerm("ai:ops"), handler.AIPredictions)
+			auth.POST("/ai/predict/:id/enhance", aiM, middleware.RequirePerm("ai:ops"), handler.EnhancePredictionPlan)
 			// 故障诊断（反馈，含图片）
-			auth.POST("/ai/diagnose/:id", middleware.RequirePerm("ai:ops"), handler.DiagnoseFeedbackAPI)
+			auth.POST("/ai/diagnose/:id", aiM, middleware.RequirePerm("ai:ops"), handler.DiagnoseFeedbackAPI)
 			// 生命周期溯源
-			auth.GET("/ai/lifecycle/:hwid", middleware.RequirePerm("ai:ops"), handler.BuildLifecycleAPI)
+			auth.GET("/ai/lifecycle/:hwid", aiM, middleware.RequirePerm("ai:ops"), handler.BuildLifecycleAPI)
 
 			// ---- AI 原生增强（库存/成本分析 + 运维报告 + 核心流程建议） ----
 			// 库存健康 / 成本归因分析
-			auth.GET("/ai/analyze/inventory", middleware.RequirePerm("ai:ops"), handler.AnalyzeInventoryAPI)
-			auth.GET("/ai/analyze/cost", middleware.RequirePerm("ai:ops"), handler.AnalyzeCostAPI)
+			auth.GET("/ai/analyze/inventory", aiM, middleware.RequirePerm("ai:ops"), handler.AnalyzeInventoryAPI)
+			auth.GET("/ai/analyze/cost", aiM, middleware.RequirePerm("ai:ops"), handler.AnalyzeCostAPI)
 			// 运维报告（日报/指定模块）生成与历史查询
-			auth.POST("/ai/report/generate", middleware.RequirePerm("ai:ops"), handler.GenerateReportAPI)
-			auth.GET("/ai/reports", middleware.RequirePerm("ai:ops"), handler.ListReportsAPI)
+			auth.POST("/ai/report/generate", aiM, middleware.RequirePerm("ai:ops"), handler.GenerateReportAPI)
+			auth.GET("/ai/reports", aiM, middleware.RequirePerm("ai:ops"), handler.ListReportsAPI)
 			// 核心流程 AI 建议：故障确认/派单辅助 + 工单 Copilot + 历史查询
-			auth.GET("/ai/advice/fault/:id", middleware.RequirePerm("ai:ops"), handler.SuggestFaultAdviceAPI)
-			auth.GET("/ai/advice/workorder/:id", middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderAdviceAPI)
-			auth.POST("/ai/advice/device", middleware.RequirePerm("ai:ops"), handler.SuggestDeviceCopilotAPI)
-			auth.POST("/ai/advice/workorder/create", middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderCreateAPI)
-			auth.POST("/ai/advice/purchase", middleware.RequirePerm("ai:ops"), handler.SuggestPurchaseCopilotAPI)
-			auth.GET("/ai/advices", middleware.RequirePerm("ai:ops"), handler.ListAdvicesAPI)
-			auth.POST("/ai/nl/interact", middleware.RequirePerm("ai:ops"), handler.NLInteractAPI)
-			auth.POST("/ai/decision/center", middleware.RequirePerm("ai:ops"), handler.DecisionCenterAPI)
-			auth.POST("/ai/decision/adopt", middleware.RequirePerm("ai:ops"), middleware.RequirePerm("purchase:manage"), handler.AdoptDecisionAPI)
-			auth.GET("/ai/anomaly/stream", middleware.RequirePerm("ai:ops"), handler.AnomalyStreamAPI)
+			auth.GET("/ai/advice/fault/:id", aiM, middleware.RequirePerm("ai:ops"), handler.SuggestFaultAdviceAPI)
+			auth.GET("/ai/advice/workorder/:id", aiM, middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderAdviceAPI)
+			auth.POST("/ai/advice/device", aiM, middleware.RequirePerm("ai:ops"), handler.SuggestDeviceCopilotAPI)
+			auth.POST("/ai/advice/workorder/create", aiM, middleware.RequirePerm("ai:ops"), handler.SuggestWorkOrderCreateAPI)
+			auth.POST("/ai/advice/purchase", aiM, middleware.RequirePerm("ai:ops"), handler.SuggestPurchaseCopilotAPI)
+			auth.GET("/ai/advices", aiM, middleware.RequirePerm("ai:ops"), handler.ListAdvicesAPI)
+			auth.POST("/ai/nl/interact", aiM, middleware.RequirePerm("ai:ops"), handler.NLInteractAPI)
+			auth.POST("/ai/decision/center", aiM, middleware.RequirePerm("ai:ops"), handler.DecisionCenterAPI)
+			auth.POST("/ai/decision/adopt", aiM, middleware.RequirePerm("ai:ops"), middleware.RequirePerm("purchase:manage"), handler.AdoptDecisionAPI)
+			auth.GET("/ai/anomaly/stream", aiM, middleware.RequirePerm("ai:ops"), handler.AnomalyStreamAPI)
 		}
 	}
 

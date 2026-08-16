@@ -1,216 +1,298 @@
-# TSLOMS 重构优化核对清单（pm-checklist）
+# TSLOMS 智能多源故障识别研判引擎 —— 需求核对清单（pm-checklist）
 
-> 核对专员：pm-tsloms（只读核对）｜ 日期：2026-08-16
-> 依据：现有代码基线（`origin/main` latest `a460365`）+ 需求文档（PRD v1.0–v4.3、SAR v6.1/v6.2、TSLOMS-RP-1.0、核心功能清单）
-> 性质：**本清单仅用于核对重构优化范围，未修改任何代码。** 重构必须保持既有业务行为不变。
+> 产出专员：pm-tsloms（只读核对，禁止改码）｜ 日期：2026-08-17
+> 范围 = **A（仅后端 `packages/server`，前端 `packages/admin` 不动）**
+> 性质：**功能性新工程**——把故障识别从"固件单一 errCode 1:1 直判"升级为"多源融合智能研判引擎"。
+> 说明：本文件为需求核对产物，仅诊断现状与界定范围，**未修改任何源码/文件**。
 
 ---
 
-## 一、项目概览
+## 〇、本次工程一句话需求（用户原话要点）
 
-### 1.1 技术栈
+> 重构系统核心故障管理：**固件 → 信号灯数据 → 协议判断 → 故障识别/可视化/预警/判断 → 派工单 → 维修**。
+> 核心目标：**从数据中自动识别故障，准确率 ≥ 99.9999%（最终趋近 100%）**。
+> 辅助手段：群众反映、手机举证、视频监控 —— 本次阶段**仅预留数据模型与接口，不要求真实接入**。
+> 要求：建立识别案例库、训练模型达到 100% 识别率。
 
-| 层 | 技术 | 说明 |
+---
+
+## 一、现状诊断 vs 目标差距
+
+### 1.1 现状（已核实的代码事实）
+
+**故障识别链路（单一数据源、单点直判）：**
+- 协议解析：`internal/mqtt/parser.go`（CMD_FRAME/EVENT_PAK/EVENT_RECORD 二进制解析）+ `internal/mqtt/commands.go`。
+- 判定函数：`FaultTypeFromErrCode` / `FaultLevelFromErrCode`（commands.go）——**errCode 到类型/等级的 1:1 switch 直判**。
+- 处理入口：`internal/mqtt/handler.go` 的 `processFault(rec)`：
+  - 同一设备同一 `errCode` 在 **30 分钟去重窗口**内只维护一条活跃故障，仅更新 `last_seen`/电流/灯态；
+  - 超窗把旧故障置 `resolved`，新建故障；
+  - `faultLevel == "critical"` 时自动调 `createWorkOrder` 生成工单（状态 `pending`），并把故障置 `confirmed`、回写 `work_order_id`。
+- 故障状态机：`occurred → confirmed → dispatched → resolved`（model/fault.go 四态）。
+
+**现状特征：**
+- **单一数据源**：只信固件 `errCode`（事件记录里的单字节错误码）。
+- **单点直判**：不做多源交叉验证、无置信度、无误报过滤、无持久化"证据"回溯。
+- **已具备但未融合的外部数据载体**：`DeviceMedia`（evidence/monitoring/timelapse 三类，已含手机举证、监控来源）、`Feedback`（群众反映，可关联设备/工单）——但**当前不参与故障识别**。
+
+### 1.2 现状短板（目标差距 GAP）
+
+| # | 现状 | 目标 | 差距 |
+|---|---|---|---|
+| G1 | errCode 单点直判，判定即可信 | 多源融合 + 证据交叉验证 + 置信度 | 缺多源汇聚、置信度、误报过滤 |
+| G2 | 判定结果不可审计（无证据明细落库） | 每次研判可溯源多源证据 | 缺 `fault_evidence` 证据表 |
+| G3 | 无识别案例沉淀 | 建立识别案例库、训练模型达 100% | 缺 `fault_case` 案例库及样本回流闭环 |
+| G4 | 规则硬编码在 switch，无法迭代 | 确定性规则引擎为主 + 案例库模型兜底长尾 | 缺研判引擎分层架构 |
+| G5 | 群众/举证/监控未接入识别 | 预留数据模型与接口（本阶段不强接） | DeviceMedia/Feedback 已有载体，需补判定对接点 |
+
+### 1.3 关键结论：为什么 99.9999% 必须走确定性系统路径（非纯黑盒模型）
+
+> 已在第四节详析，结论先行：**对安全关键交通信号故障，99.9999%（6 个 9）准确率不可能由任何纯统计/黑盒模型在可验证性上单点满足；必须"确定性规则引擎为主、多源交叉验证提可信、案例库模型兜底长尾"三层组合，并用真实案例巡检 + 样本回流训练到 100% 识别率。**
+
+---
+
+## 二、功能范围界定（范围=A，仅后端）
+
+### 2.1 本次必须实现（核心交付）
+
+| 编号 | 能力 | 说明 |
 |---|---|---|
-| 后端 | Go 1.22+ / Gin / GORM / paho.mqtt.golang / golang-jwt / zap / redis-go | 单体 Web 服务，`packages/server` |
-| 前端 | Vue3 + Vite + Element Plus + ECharts + Cesium + Pinia + axios | SPA 管理后台，`packages/admin` |
-| 数据库 | MySQL 8.0（生产）/ SQLite（开发/测试双模） | GORM AutoMigrate 托管 schema |
-| 缓存 | Redis 7.0（TSLOMS 用 DB1，与 EQS 隔离） | SQLite 模式降级跳过 |
-| 消息 | EMQX 5.0（MQTT） | 设备上行/下行 Topic；固件/时间同步/牌告 |
-| 部署 | Docker / systemd / nginx | `deploy/` 目录 |
+| S1 | 多源证据统一模型 & 落库 | 新增 `fault_evidence`（见第五节），承接固件 errCode 事件、电流/灯态、群众反映、手机举证、视频监控等**多源证据记录** |
+| S2 | 证据归一化与汇聚 | 把不同源头的原始信号归一成统一"证据"，按 设备+灯组+时间窗 聚合 |
+| S3 | 确定性规则研判引擎（主通道） | 保留并内聚现有 errCode→type/level 的 `FaultTypeFromErrCode/FaultLevelFromErrCode` 作为**规则基座**，扩展为带**置信度**的规则库 |
+| S4 | 多源交叉验证 & 误报过滤 | 固件信号为主，其它证据（举证/反馈/电流异常/视频报警）交叉印证；低置信/矛盾证据降级/过滤，不误报 |
+| S5 | 置信度计算与判定分层 | 每起发起研判输出置信度，低置信进"待确认"不自动派单；高置信直判 |
+| S6 | 故障落库/去重/自动工单改造 | 在保留 30min 去重、critical 自动工单、状态机的前提下，接入新研判结果（含置信度/证据来源/是否误报过滤） |
+| S7 | 识别案例库 `fault_case`（数据模型+基础读写） | 沉淀判定样本（输入证据+结论+结果），供长尾学习（见第五节） |
+| S8 | 案例库模型训练/召回框架（服务端） | 训练到 100% 识别率的调度与 API 骨架：样本回流、模型训练触发、案例检索命中（暂用可解释检索引擎，不引入不可控黑盒） |
+| S9 | 面向外部数据源的预留接口 | 群众反映/手机举证/视频监控的**写入与查询接口骨架**（可落库，真实视频分析不实现，见 2.3） |
+| S10 | 新增后端接口 + 既有接口向后兼容 | 新增研判/证据/案例接口；`/faults*` 既有契约保持不变（见第六节） |
 
-### 1.2 模块结构
+### 2.2 本阶段"仅预留、不实现实质"
 
-**后端 `packages/server`：**
-- `cmd/server`：入口 + `setupRouter` 路由装配（main.go，311 行，偏大）
-- `internal/config`：环境变量配置单例（`sync.Once` 缓存）
-- `internal/model`：GORM 模型 + `DB`/`RDB` 全局句柄 + 迁移 + RBAC 种子 + 管理员种子（db.go 352 行，职责较重）
-- `internal/mqtt`：MQTT 客户端、二进制协议解析（parser）、消息处理/故障研判（handler，463 行，偏大）
-- `internal/handler`：REST 路由处理器（`ok/fail/paginate` 等统一响应）——**业务逻辑大量堆在此层**
-- `internal/middleware`：Auth / RBAC / CORS / Logger
-- `internal/service`：后台协程（OfflineCheck、PatrolService、WorkOrderEscalator）
-- `internal/ai`：LLM 网关 + 规则兜底引擎（预测 engine、建议 advice、报告 reports、自然语言 nl 729 行、决策 decision 559 行、分析 analyze、异常 anomaly）
+| 编号 | 预留项 | 程度 |
+|---|---|---|
+| P1 | 多媒体/群众反馈**真实接入识别** | 只预留 `DeviceMedia`/`Feedback` 关联到 `fault_evidence` 的字段与接口；不做视频分析/AI 视觉故障识别 |
+| P2 | 监控视频 RTSP 分析 | 不接入；监控类媒体仅记录，供人工查看 |
+| P3 | 规模化分布式训练/在线学习 | 预留模型服务接口；本阶段用批式训练 + 规则样例库即可 |
 
-**前端 `packages/admin/src`：**
-- `api/*.ts`：按域封装的 axios 请求（request.ts 统一拦截/401 跳转）
-- `views/*`：按模块页面（dashboard/device/fault/workorder/inventory/ai/map/settings 等）
-- `components/`：`AiAssistant.vue`（L5 全局 AI 助手）、`AiCopilot.vue`（L4 流程嵌入）
-- Cesium/ECharts 为重型产物，SAR 标记为 P2 性能风险
+### 2.3 明确不做（本期红线外）
 
-### 1.3 业务主线（演进到 PRD v4.3 的 AI 化六级）
-
-L1 基础 AI → L2 数据级 AI 原生（报告/建议）→ L3 主动巡检/站内通知 → L4 流程 Copilot → L5 自然语言交互 → L6 决策建议中心 + 实时异常流。
+- **不做前端改动**（范围=A：`packages/admin` 不动，接口需向后兼容而非改前端）。
+- **不重写 MQTT 二进制协议**（CMD_FRAME/EVENT_RECORD 设备契约不可变）。
+- **不删除/不修改** 现有 `FaultTypeFromErrCode/FaultLevelFromErrCode` 的既有判定语义（作为规则基座内聚复用，不改变业务含义）。
+- **不引入不可解释的黑盒模型作为唯一判定**（安全关键场景，需人工/规则可审计）。
+- **不做自动派单策略变更**（仅维持"critical 自动生成工单"现状语义）。
 
 ---
 
-## 二、重构目标与范围
+## 三、核心指标与判定分层设计建议
 
-本次重构为**非功能性优化**（代码结构 / 性能 / 可读性 / 可维护性），**严禁改变业务行为、接口契约、数据模型与外部返回结构**。
+### 3.1 目标指标
 
-重构范围建议集中在 4 类：
+| 指标 | 目标 | 度量方式 |
+|---|---|---|
+| 故障识别准确率 | ≥ 99.9999%（最终逼近 100%） | 判定正确样本 / 判定样本总数（以案例库回标为真值） |
+| 误报率 | 趋近 0 | 误报样本 / 非故障样本 |
+| 漏报率 | 趋近 0 | 漏报真实故障 / 真实故障总数 |
+| 案例库识别率 | 100%（模型训练达标） | 训练后对案例库样本的识别命中 |
+| 研判可追溯 | 100% | 每起发起研判（含被过滤的）均有 `fault_evidence` 证据记录 |
 
-1. **结构**：消除全局可变状态依赖、拆分上帝文件、统一后台协程生命周期、迁移 handler 中溢出的业务逻辑。
-2. **性能**：消除 N+1 查询、重复查询、不必要的全量扫描、减少无效 DB 写入与报文解析复制。
-3. **可读性/健壮性**：删除重复代码、统一错误处理、补充可测试拆分、修正明显死代码/缺陷。
-4. **安全/稳定性**：保持既有安全门禁（auth/RBAC/timeout）不动，重构中不引入权限绕过或行为漂移。
+### 3.2 判定分层设计（建议）
 
-> 范围红线：**不新增业务功能**（如自动派单、多代理等属后续 PRD 二期，不在本次）；**不迁移数据模型**（时序库/事件模型属 RP-1.0 后续基建）；**不重写协议**（MQTT 二进制帧结构与设备契约不可变）。
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 第 0 层：多源证据采集/归一化（fault_evidence 落库）          │
+│   固件errCode事件 | 电流/灯态 | 群众反映 | 手机举证 | 视频监控│
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 第 1 层：确定性规则引擎（主通道，可解释/可审计/可单测）       │
+│   ·基础：FaultTypeFromErrCode / FaultLevelFromErrCode（内聚）│
+│   ·规则：errCode × 灯态 × 电流阈值 × 持续时长 × 同型重复      │
+│   ·输出：候选故障 + 基础置信度                                 │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 第 2 层：多源交叉验证 & 置信度融合（防误报提可信）            │
+│   ·固件为主信号，其它证据加权印证/否证                        │
+│   ·矛盾证据 → 降级/挂起待确认；孤证 → 低置信                  │
+│   ·输出：融合置信度 conf                                    │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 第 3 层：判定与分流                                           │
+│   conf≥T_high：确认故障 → 落库/去重/自动工单（critical）      │
+│   T_low≤conf<T_high：待确认（入列，可人工复核）→ 不自动派单   │
+│   conf<T_low 或明确否证：误报过滤，仅记证据日志不产生工单     │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 第 4 层：案例库 fault_case + 模型训练/召回（长尾/100%目标）    │
+│   ·判定结论 + 结果回标 → 沉淀为案例                            │
+│   ·模型/检索引擎学习案例 → 使 long-tail 型误判收敛            │
+│   ·真实案例巡检脚本：持续以样本回流方式提升到 100%            │
+└─────────────────────────────────────────────────────────────┘
+```
 
----
+### 3.3 为什么 99.9999% 必须走确定性系统性路径（核心论证）
 
-## 三、逐条重构优化问题点
+1. **可审计与可解释是安全关键红线**。交通信号故障涉公共安全，任何识别结果需能被人工、规则、监管复验——纯黑盒模型无法给出"为什么判这个故障"，无法满足审计与事故追责需求。
+2. **99.9999%（6 个 9）超出黑盒可证明精度**。黑盒模型（含深度学习）准确率受训练分布、对抗样本、泛化误差限制，无法在数学/验证层面声明"错误率 < 百万分之一"；而确定规则引擎对 `errCode`/`电流`/`灯态` 的可判定组合可做到**可复现、可穷举、可单测固化**。
+3. **低成本 + 主源决定性强**。固件 `errCode` + 电流 + 灯态这些字段本身就是设备主动上报的**强判定信号**，与故障一一强相关，纯规则即可达到极高准确率且零推理成本；黑盒用于此是其精度冗余且不可验证。
+4. **黑盒的正确位置是"长尾兜底 + 多源辅助"**。对规则无法覆盖的模糊/多因互扰/新形态故障，用案例库检索 + 可解释模型**补充判断**，而非替代规则主通道。
+5. **"训练到 100%"在此处含义需锚定**：**在已沉淀的识别案例库上，让模型+规则组合达到 100% 命中（0 漏 0 误）**——通过样本回流闭环（判定→回标→再训练→再验证）逼近，而非声称对无限未知样本也 100%。这是可实现且能验证的目标表述。
 
-> 位置标注为仓库相对路径。建议按优先级 P0（风险/必改）、P1（结构重要）、P2（可读性锦上添花）推进。
-
-### A. 结构 & 全局状态
-
-**A1. [P1] `model.DB` / `model.RDB` 全局句柄被全包直接引用**
-- 文件：`internal/model/db.go`（`var DB *gorm.DB` / `var RDB *redis.Client`）
-- 问题：mqtt.Handler、service.*、handler.*、ai.* 全部直接读写 `model.DB`，形成全局可变依赖，难以隔离测试与并发控制；`InitTestDB` 每次覆盖 `DB` 与真实库冲突。
-- 建议：重构为依赖注入（构造时传入 `*gorm.DB`），Handler/Service 持有 DB 成员；至少先将`service`/`ai`收敛到显式参数，避免跨包裸引用全局。
-
-**A2. [P1] 三个后台协程重复同样的“ticker + done channel + context”骨架**
-- 文件：`internal/service/offline.go`、`patrol.go`、`workorder_escalate.go`
-- 问题：`Start(ctx)`/`Done()`/`runOnce`+`done chan` 结构三处复制，间隔/启动即执行逻辑各异，future 新增后台任务必然再复制。
-- 建议：抽象统一的 `BackgroundLoop`（interval、startImmediate、runc func(ctx)）复用；同时**保留现有执行时机语义**（offline runOnce 立即+1min、escalator 立即+15min、patrol 立即+60s 轮询窗口），避免行为改变。
-
-**A3. [P1] handler 层职责过重，业务逻辑与 HTTP 耦合**
-- 文件：`internal/handler/workorder.go`(344)、`fault.go`(324)、`inventory.go`(335)、`purchase.go`(317)、`rbac.go`(282)、`ai.go`(400)、`firmware.go`(395)、`media.go`(317)
-- 问题：工单状态机/派单规则/费用校验等业务都内联在 gin handler 中，`recordOperation`、`workOrderView`、`faultView` 等既有部分视图逻辑又散落。难以单测（需 mock gin context + DB），也难复用（MQTT 自动建工单与 handler 手动建单逻辑重复）。
-- 建议：业务规则下沉到 `internal/service`（如 `WorkOrderService`），handler 只做参数解析/鉴权/响应；至少把**工单状态机流转**（pending→processing→completed/rejected）抽成纯函数以单元测试。
-
-**A4. [P1] 日志 Logger 每处 `zap.NewProduction()` 新建**
-- 文件：`mqtt/client.go`、`mqtt/handler.go`、`service/*.go`（offline/patrol/escalate）、`service` 构造器
-- 问题：每个 Handler/Service 自建 logger，无统一链路 id / 级别配置 / 采样，panic 栈不易串连。
-- 建议：提供 `internal/logger` 包单例（复用 `config` 的 sync.Once 模式），各构造器注入，并支持日志级别环境变量。
-
-**A5. [P2] `cmd/server/main.go` 偏大且含启动编排细节**
-- 文件：`cmd/server/main.go`（311 行）
-- 问题：连接初始化、协程启动、路由装配、优雅停机、超时兜底全在一个文件；`mqttClient` 包级变量仅服务于停机。
-- 建议：抽出 `app` 装配器（init db+redis+mqtt+cron → Start/Stop），main 只做编排与信号；`setupRouter` 已有测试（`main_test.go`），重构注意保持其构造签名稳定。
-
-### B. 性能
-
-**B1. [P0] 列表接口存在 N+1 查询**
-- 文件：`handler/workorder.go` `ListWorkOrders`→`workOrderView`（每行额外查一次 user）；`handler/fault.go` `ListFaults`→`faultView`（每行查设备+负责人）；`GetWorkOrder`/`GetFault` 详情同样多次单查
-- 问题：page_size 最大 100，意味最多 100×(2~3) 次额外查询，接口随 pageSize 线性放大 DB 往返。
-- 建议：用一次 `IN` 批量预取（按 id 集合取 username/device），或 GORM `Preload`，在 `workOrderView`/`faultView` 外联查询；**保持返回字段结构不变**。
-
-**B2. [P1] MQTT 热路径逐条落库导致单包多次写**
-- 文件：`internal/mqtt/handler.go` `logPacket` / `upsertDevice` / `processFault` / `createWorkOrder`
-- 问题：每帧：1 次 packet_log 写入 + 每条事件记录的 device 读判 + 故障查重 + 可能建单，全在消息回调内**同步串行执行**（paho 消息按订阅回调分发），高并发设备上报时会阻塞、放大 DB 写压力；故障查重命中但仍在窗口内也照常 `Updates`（恒真更新）。
-- 建议：(1) 故障查重先判断 `now.Sub(existing.LastSeen)<=window` 命中时跳过无变化历史更新（仅在电流/灯态有差异时更新）；(2) 消息处理异步化（channel + worker pool）并保证**顺序性/去重语义不变**；(3) 报文日志批量/异步写库，与业务写解耦。
-
-**B3. [P1] `processFault` 与 `createWorkOrder` 关键路径重复查询**
-- 文件：`mqtt/handler.go`
-- 问题：同一方法内多处 `model.DB.Where(...).First`；`HandleCheckin`/`HandleAlarm`/`HandlePowerOn` 都调用 `upsertDevice`，同一 packet 内多条 event record 会对同一 device 反复 `WHERE ... First`。
-- 建议：同一帧内合并设备 upsert（一次查询缓存 map[hwID] 复用），减少热路径 DB 往返。
-
-**B4. [P2] `patrol.lowStockNames` 与 `checkStockAlerts` 语义重复查询**
-- 文件：`internal/service/patrol.go`
-- 问题：`checkStockAlerts` 先 `Scan` 计数，再调 `lowStockNames` 各独立再查一次，导致同类物料的计数与名单各查一遍。
-- 建议：一次查询同时取 count 与 topN 名单，减少一次扫描。
-
-**B5. [P2] `handler/fault.go` `ListFaults` 旧字段 `active` 兼容映射每次解析**
-- 文件：`handler/fault.go`
-- 问题：兼容代码把“active 兼容语义”写成每次查询分支，逻辑重复且文案散落。
-- 建议：抽出常量 `ActiveStatuses` 与 `ParseStatusFilter` 工具函数统一处理 start/end_time 与 start/end_date 双参数别名，避免多接口重复。
-
-### C. 可读性 & 缺陷
-
-**C1. [P0] `UpdateWorkOrderStatus` 存在重复分支（疑似冗余/潜在缺陷）**
-- 文件：`handler/workorder.go` 第 285–299 行
-- 问题：`rejected → pending` 的处理**连续写了两遍相同的 if 条件**（`req.Status==pending && wo.Status==rejected`），第一个块已做 `closed_at=nil` + 故障回`confirmed`，第二个块又无条件把 `closed_at` 置 nil（仅清空时间、多余）。同一条件重复、语义冗余，易让维护者误改。
-- 建议：合并为单个分支，保留故障回“已确认”+ 清空 closed_at 的唯一语义；**重构后行为应与原逻辑一致**（注：当前第二块追加的 closed_at=nil 在常态 rejected→pending 路径下与第一块叠加，无害但应清理）。
-
-**C2. [P1] `mqtt` `frameHwID` 恒返回 0（死代码/误导）**
-- 文件：`internal/mqtt/handler.go`
-- 问题：`frameHwID` 注释称“固件命令帧不含事件记录，返回 0”，`HandleCheckFW`/`HandleGetFW` 用它打日志，恒为 0，无法溯源设备；纯误导性死代码。
-- 建议：要么从 topic 或既有数据补取 hwID，要么让日志去掉无意义的 hwId=0，避免误导排障。
-
-**C3. [P1] `logPacket` 的 `valid` 参数恒为 `true`（无效分支不可达）**
-- 文件：`mqtt/handler.go`
-- 问题：所有调用处 `valid` 都传 `true`；解析失败路径在 `logPacket(0,...,false)`（这里 valid=false 但 deviceHwID=0 且 cmd=0 等全 0），有效/无效的区分实际没被用起来。
-- 建议：明确“无效包”记录语义（保留解析失败原文日志以便排障），并统一 `valid` 判定避免误导统计。
-
-**C4. [P2] `llm.go` 中 `ImageURL` 字段类型 `*imageURL` 在 `contentPart` 未使用 omitempty 且空转仍拼接**
-- 文件：`internal/ai/llm.go` `contentPart`
-- 问题：多模态 parts 对文本 part 也携带空 `ImageURL`（带 omitempty? 当前 `image_url` tag 无 `omitempty`，空指针序列化为 `"image_url":null`）。文本与图像混用时可能上送 null 字段。
-- 建议：为 `ImageURL` 补 `omitempty` 或在拼装时按类型只放非空字段。
-
-**C5. [P2] `ai` 包文件过大（上帝文件）**
-- 文件：`internal/ai/nl.go`(729)、`decision.go`(559)、`analyze.go`(414)
-- 问题：单文件承载大量意图/工具/规则，可读性与测试定位成本高。
-- 建议：按“意图识别 / 工具执行器 / 规则解析”拆分；**不改变对外 endpoint 与降级行为**。
-
-**C6. [P2] `handler` 中 `isOperator` 与 `middleware.RequireOperator` 语义重复且角色字面量散落**
-- 文件：`handler/response.go` `isOperator`；多处 `role=="admin"||role=="operator"` 字符串比较
-- 问题：角色判定在 handler 与 middleware 两套实现，字面量 `"admin"`/`"operator"` 多处编码；`requirePerm`（RBAC）与遗留 `isOperator`/`RequireOperator` 并存，权限模型有两条线，易不一致。
-- 建议：统一走 RBAC（`RoleIsOperator` 帮助函数 + 常量），逐步弃用遗留 `isOperator`。**注意不改变现有效力**（保留 viewer 只读等既有判定）。
-
-**C7. [P2] `model/db.go` 同时承担模型定义、迁移、种子、数据迁移、工具函数**
-- 文件：`internal/model/db.go`（352 行）
-- 问题：`AutoMigrate`、`SeedRBAC`、`MigrateLegacyDeviceMaterials`、`SeedAdmin`、`randomStrongPassword`、`containsAny` 混在同一文件。
-- 建议：拆分 `migrate.go`/`seed.go`/`legacy_migrate.go`/`util.go`，逻辑不变。
+> **结论**：以**确定性规则引擎为判定主通道**，**多源交叉验证提升可信度与抗误报**，**案例库模型兜底长尾并持续蒸馏收敛**，三结合是安全关键场景下达成"6 个 9"且保可审计的唯一现实路径。
 
 ---
 
-## 四、业务核心逻辑说明（供 dev/qa 重构后回归依据）
+## 四、红线清单（不得破坏的既有行为——继承上次流水线固化红线）
 
-> **重构不得改变以下业务行为。** dev 改代码、qa 做回归，都以本节为准绳。
+以下为**行为级硬约束**，任何重构/新工程都不得使其回归：
 
-### 4.1 MQTT 设备接入与研判链路
-- 上行订阅：`{topicPrefix}/+/+/+/U`（+ 匹配网络号/站点号/硬件ID），下行把末尾 `/U` 换 `/D`。
-- 二进制帧：CMD_FRAME 16 字节头 +（可选）EVENT_PAK（4 字节头 + N×24 字节 EVENT_RECORD）。字段包括 token(0x55)、cmd、ver、checksum(整包 uint8 累加==0xFF)、swVer、cmdSeq、datLen、userVal；EVENT_RECORD 含 ledHwId/subHwId/swVer/confVer/ledState/errCode/current[R|Y|G]。
-- 命令分派：CmdCheckin(签到)、CmdAlarm(告警)、CmdPowerOn(上电)、CmdCheckFW(固件查询)、CmdGetFW(固件数据请求)。签到/告警内的事件记录若有故障（errCode!=0）触发 `processFault`。
-- **故障去重（关键）**：同一 `deviceHwId + errCode` 且状态为 occurred/confirmed/dispatched 的故障，在**30 分钟窗口内只更新 `last_seen`+电流/灯态，不新建记录**；超窗则将旧故障置为 `resolved` 并新建。违反该窗口会出现重复故障/误算活跃数。
+||红线|现有锚点（代码）|不得破坏的语义|
+|---|---|---|---|
+|R1|工单状态机|`model.WorkOrder`：pending→processing→completed/rejected|状态流转、`OrderNo` 唯一、`closed_at` 闭环语义不可变|
+|R2|故障状态机|`fault_records`：occurred→confirmed→dispatched→resolved|四态流转及 operator/owner/repairer 字段语义不可变|
+|R3|30 分钟去重窗口|`processFault`（handler.go）：同设备同 errCode 30min 内不新增|去重窗口锚点与"超窗旧置 resolved、新建"逻辑保持|
+|R4|工单序号 `NextOrderNo`|model/workorder.go：`WO{yyyyMMdd}{4位自增}`|当日序号连续唯一，竞态安全语义保持|
+|R5|SLA 24/48h|`WorkOrderPendingSLASeconds=24h` / `ProcessingSLASeconds=48h`|超时判定阈值与 `WorkOrderOverdueHours` 语义不变|
+|R6|严重故障自动工单|`processFault`/`createWorkOrder`：critical→自动生成 pending|critical 才自动工单、置 confirmed、回写 work_order_id 语义保持|
+|R7|AI 兜底|`internal/ai`（diagnostic/decision/engine/anomaly 等）规则降级路径|兜底与现有 AI 能力不因引入新引擎而退化/绕过|
+|R8|RBAC / 鉴权|`middleware/rbac.go` + 权限码 `fault:update/dispatch/delete`、`workorder:*`|权限模型、角色、内置角色授权不动；新接口必须守鉴权|
+|R9|既有 REST 契约|`/faults*`、`/work-orders*` 返回结构（`faultView`/`workOrderView`）|接口路径、参数、返回字段**向后兼容**（前端不动）|
+|R10|MQTT 二进制协议|parser.go CMD_FRAME/EVENT_PAK/EVENT_RECORD 布局|设备通信契约不可改，仅新增解读，不改字节格式|
 
-### 4.2 严重故障自动建单
-- `processFault` 中当 `faultLevel == "critical"` 时自动 `createWorkOrder`：生成 `WO{yyyyMMdd}{4位序号}`，CREATE 工单（pending）→ 回写故障 `work_order_id` 并置 `confirmed`+`confirmed_at`。
-- 手动建单（handler.CreateWorkOrder）与自动建单共用 `model.NextOrderNo`，序号唯一性依赖该函数，重构时**不得改其生成规则**。
-
-### 4.3 工单状态机与 SLA
-- 状态：pending(待处理)→processing(处理中)→completed(已完成)/rejected(已驳回)。
-- **派单**：pending 工单派单→processing，故障推进 `dispatched`+记录 repairer_id/dispatched_at。
-- **完成**：工单置 completed 记 closed_at，其关联故障置 `resolved`+resolved_at。
-- **驳回重派**：rejected→pending 时清空 closed_at，故障回 `confirmed`（对应 C1 需合并的分支）。
-- SLA：pending 超 24h / processing 超 48h。`WorkOrderEscalator` 后台把超时 pending 自动升 processing 并写“系统自动升级”result；processing 超时仅日志预警不改状态。看板用 `WorkOrderOverdueHours` 标超时。
-
-### 4.4 设备离线判定
-- OfflineCheck 每 1 分钟扫描 `online_status=true` 且 `last_checkin_at < now - OfflineAfterMin(默认6min=2min签到周期×3)` 的设备置离线。
-
-### 4.5 AI 主动巡检与站内推送
-- PatrolService 启动即执行一次，之后每 60s 轮询，仅在 `PATROL_DAILY_HOUR/MIN`（默认 08:00）分钟窗口触发每日巡检。
-- 巡检=生成运维日报（AI 或规则兜底）+ 推送 report 通知；异常检测（超时工单/高风险设备/低库存/缺货）→ alert 通知。
-- 推送对象：`role in (admin,operator)` 且启用；**无目标用户则退化**用 `user_id=0` 面向全体。notification_reads 承载用户级已读。
-
-### 4.6 AI 降级兜底（核心一致性要求）
-- 所有 AI 能力均有**规则兜底**：无 LLM key / AI 停用 / 额度超限时回退规则引擎（预测 `PredictDevice`、报告 `rule` 版、建议固定文案、NL 意图规则识别），**保证功能可用**。
-- 额度：LLM 调用先 `checkQuota`（按日次数/Token 限额），每次调用 `record` 写 AIUsage 流水。
-- 决策一键采纳：`/ai/decision/adopt` 同时要求 `ai:ops` 与 `purchase:manage`（多头权限）。
-
-### 4.7 权限模型（重构不可破坏）
-- 双线并存：新旧 RBAC（`permission/role/user_permission`，`RequirePerm`）+ 遗留 `RequireAdmin/RequireOperator/isOperator`。Auth 中间件校验 JWT(HS256)+用户存在+未停用。
-- 停用用户既有 JWT 即时失效（auth.go 查库校验 status）。
-- 公开端点仅 login / health / 地图瓦片代理；其余全在 `Auth` 保护下。
+> 新增能力（置信度/证据/案例）**只做加法**：对现有 `/fault*` 响应增加可选字段（带缺省），不删不改既有字段；加表不加"寄居"改表语义。
 
 ---
 
-## 五、风险提示
+## 五、数据模型变更建议
 
-1. **全局 DB 依赖（A1）是重构最大雷区**：`model.DB` 被 mqtt/service/handler/ai 四面引用，任何“改成注入”的改动都可能触达全链路。建议分步（先 service/ai，再 handler/mqtt），每步 `go build`+全量测试通过再继续。
-2. **MQTT 总线改异步（B2）**：设备运维关乎交通安全侧，异步化若乱序或丢消息会造成故障漏判/工单漏建。必须保证同一设备/事件**顺序**与 `logPacket` 不丢；先做“仅异步化报文日志”，业务研判保持同步，验证后再扩大。
-3. **状态机/故障去重是行为红线（4.1/4.3）**：C1 合并分支时务必核对 completed/resolved、rejected→pending 组合形态，建议 qa 补 `pending→processing→completed` 与 `pending→rejected→pending` 两条回归用例。
-4. **AI 兜底（4.6）**：降级路径规则兜底若被重构旁路，会在无 LLM key 环境整个 AI 功能失效。任何 ai/llm 改动都要在**无 key**环境跑一遍降级冒烟。
-5. **覆盖率门禁**：SAR v6.2 已达 80.5%（≥80%）。重构牵动 handler/service —— 每批改动必须保持 `go test ./...` 全绿且覆盖率**不回退**到 80% 以下，否则 CI（`Makefile coverage-check`）会拦截。
-6. **CI 超时环境（SAR v6.0/6.1 记录）**：Windows 工作区并行任务多时 `go test` 曾 >180s 未收敛。重构验证建议在干净 CI/预发布跑全量，勿把本地并行超时当成失败。
-7. **前端重型产物（Cesium/ECharts）**：SAR 标记 P2 低网速首屏风险；本次重构若只动后端可不动前端，若默认拆分则需回归地图大屏与 ECharts 看板渲染。
-8. **不破坏既有接口契约**：`ok`/`fail` 返回结构、`{code,msg,data}` 与分页 `{list,total,page,page_size}` 为前端 `request.ts` 依赖，重构前后端契约必须字面一致。
+### 5.1 新增表
+
+**(1) `fault_evidence`（多源证据表）——每起研判的证据来源明细**
+
+| 字段 | 类型/说明 | 与现有关系 |
+|---|---|---|
+| `id` | PK | — |
+| `fault_id` | *FK→fault_records.id*（可空：被误报过滤的未落故障也可留证据，加 `evaluation_id` 关联研判批次） | 关联 FaultRecord |
+| `evaluation_id` | 研判批次号（一次研判一组证据同批次） | 关联 FaultRecord |
+| `device_hw_id` | 设备硬件ID（关联 Device.HwID） | 关联 Device |
+| `source_type` | 证据来源：`firmware/current/led_state/citizen/photo_evidence/video_monitor` | 枚举 |
+| `err_code` | 固件错误码（firmware 类证据带） | 关联 ErrCode 常量 |
+| `led_state` / `current_r/y/g` | 电流/灯态原始值（firmware 类） | 关联 EventRecord |
+| `raw_data` | 原始报文/JSON/图片URL/文本（text） | 可关联 PacketLog.device_hw_id 或 DeviceMedia.url |
+| `ref_media_id` | *FK→device_media.id*（举证/监控证据关联媒体） | 关联 DeviceMedia |
+| `ref_feedback_id` | *FK→feedbacks.id*（群众反映证据） | 关联 Feedback |
+| `captured_at` | 证据发生时间 | 时间窗聚合依据 |
+| `confidence` | 该证据对判定的贡献度 0-1 | — |
+| `created_at` | — | — |
+
+>(建议)索引：`(device_hw_id, captured_at)`、`(fault_id)`、`(source_type)`。
+
+**(2) `fault_case`（识别案例库表）——训练及 100% 识别率达标的数据基础**
+
+| 字段 | 类型/说明 |
+|---|---|
+| `id` | PK |
+| `fault_type` / `fault_level` | 标准类型/等级（对齐现有故障分类） |
+| `device_hw_id` | 关联设备 |
+| `input_signature` | 输入证据指纹（特征向量/组合签名，text/JSON，用于检索召回） |
+| `evidence_summary` | 证据摘要（text） |
+| `expected_result` | 回标真值：真实故障类型/等级 |
+| `judged_result` | 引擎原始判定（用于对比学习） |
+| `is_correct` | 引擎判定是否与真值一致（true/false） |
+| `source_evaluation_id` | 来源研判批次（可回溯） |
+| `status` | `seed/confirmed/training/test` |
+| `created_at` / `updated_at` | — |
+
+>(建议)唯一约束：`(input_signature, device_hw_id)` 防重复样本；`(fault_type)` 索引便于按类训练。
+
+### 5.2 现有表字段变更建议（全部可空/带缺省，兼容）
+
+| 表 | 字段 | 说明 |
+|---|---|---|
+| `fault_records` | `+ confidence` *float*（识别置信度，可空） | 兼容：缺省 null，不影响旧记录 |
+| `fault_records` | `+ recognition_source` *string*（判定来源：rule/multi-source/case） | 可空 |
+| `fault_records` | `+ is_false_positive` *bool 或 *int8*（是否被后续判定为误报） | 可空 |
+| `fault_records` | `+ evidence_count` / `last_evaluation_id`（可选，便于详情带证据） | 可空 |
+
+> 原则：**对既有表只加可空列，不删/不改/不重排既有列**，保证 AutoMigrate 与旧数据兼容、前端 `fault.ts` 解析不破。
+
+### 5.3 与现有表的关系图
+
+```
+fault_records 1─┐
+   ▲            └─< 1..N ── fault_evidence
+   │                            │           └─> device_media (举证/监控)
+   │                            └─> feedbacks   (群众反映)
+   │
+   ├─<生成── work_orders（critical 自动工单，语义不变）
+   └─>参与── 案例沉淀 ──> fault_case（回标/训练/100%达标）
+```
 
 ---
 
-## 六、附注（本次核对新增发现，非规划文本）
+## 六、接口设计建议
 
-- 前端依赖含 `cesium@^1.144.0`、`echarts@^6.1.0` 重型库；`AiAssistant.vue`/`AiCopilot.vue` 承载 L5/L4 逻辑，体积与复杂度偏高，可作前端可读性优化候选（P2）。
-- 前端 `api/*.ts` 已按域清晰拆分，是良好参照；后端 handler 若照此拆分到 `service` 可明显提升对称性。
-- 上述问题点均为**结构性/性能性/可读性**判断，未改动任何代码，供 dev/qa 排期与回归参考。
+### 6.1 既有接口（不变，向后兼容）
+
+- `GET /faults`、`GET /faults/:id`、`PUT /faults/:id`、`DELETE /faults/:id`、`POST /faults/:id/dispatch` —— **路径、参数、返回结构保持原样**；仅允许对响应**新增可选字段**（如 `confidence`/`evidence`），带缺省值，前端无需改动。
+- `GET /work-orders*` 系列同样保持不变。
+
+### 6.2 新增接口建议（范围=A）
+
+| 方法/路径 | 权限 | 用途 |
+|---|---|---|
+| `GET /faults/:id/evidence` | 登录可读 | 拉取某起故障的多源证据明细（fault_evidence） |
+| `POST /evidence/ingest` | `media:upload` 或新权限 | **预留**外部数据源（举证/反馈/监控）证据写入（内部归一化落 fault_evidence） |
+| `GET /evidence/sources` | 登录可读 | 多源证据类型/来源枚举（供前端下拉，前端本阶段可不用） |
+| `POST /fault-cases` | 管理员/运维 | 案例库新增/人工回标样本（可选，也可仅由引擎自动沉淀） |
+| `GET /fault-cases` | 登录可读 | 案例库检索/列表（供长尾排查与训练状态） |
+| `POST /fault-cases/train` | 管理员 | 触发案例库模型/检索引擎训练到 100% 达标 |
+| `GET /recognition/stats` | 登录可读 | 识别准确率/误报/漏报/置信度分布统计（验证 99.9999% 进展） |
+
+### 6.3 向后兼容策略
+
+- 所有**新增接口**走独立路径，不占 `/faults/:id` 既有方法（避免与 PUT/DELETE 语义冲突）。
+- 现有 `faultView`/`workOrderView` 的返回**只增可选字段**，缺失或 null 时前端照常渲染。
+- 新权限建议走既有 RBAC `fault:update` 或新增 `fault:review` 等码，需在 `rbac.go` `AllPermissions` 追加并赋予内置角色——**只增不删既有权限码**。
+
+---
+
+## 七、实施步骤建议与风险
+
+### 7.1 建议步骤（dev 参考，本清单不代具实施）
+
+1. **模型层先行**：新建 `model/fault_evidence.go`、`model/fault_case.go`，加入 `AutoMigrate`；对 `fault_records` 加可空列。跑 `AutoMigrate` 迁移验证旧数据兼容。
+2. **证据归一化服务**：抽取 `internal/recognition`（或 `internal/faultengine`）新包，实现证据采集/归一化/汇聚，承接现 `processFault` 里的多源输入（先固件 errCode 为主，接入 DeviceMedia/Feedback 载体）。
+3. **规则引擎内聚**：把现有 `FaultTypeFromErrCode/FaultLevelFromErrCode` 内聚为规则基座，扩展出置信度打分 + 多源交叉验证 + 误报过滤器。
+4. **研判接入故障链路**：改造 `processFault`/`createWorkOrder`——在保留 R3/R4/R6 红线前提下，把判定结果(conf/来源/是否误报)写入 fault_records + fault_evidence；低置信进"待确认"不自动派单。
+5. **案例库训练/召回**：`fault_case` 样本回流 + 训练/检索引擎 + 巡检脚本，向 100% 达标推进。
+6. **预留接口 + 兼容**：新增第六节接口；`/faults*` 仅加可选字段。
+7. **QA 回归 + Reviewer 评审**：完整覆盖 R1–R10 红线回归。
+
+### 7.2 风险与对策
+
+| 风险 | 等级 | 对策 |
+|---|---|---|
+| 误报过滤不当导致**漏报**真故障（安全场景严重） | 高 | 误报过滤仅作用于"明确否证"的高置信场景；孤证/弱证降级为"待确认"而非删除；`.is_false_positive` 可回审 |
+| 99.9999% 被误读为对未知样本也保证 | 高 | 文档锚定定义（见 3.3 第 5 点）：在已回标案例库上 0 漏 0 误，样本回流持续收敛；避免承诺不可验证精度 |
+| 新增表/列影响既有 AutoMigrate 与前端 | 中 | 只增可空列/新表；前端不动，`/faults*` 返回只加可选字段并带缺省 |
+| `internal/ai` 既有 AI 兜底被新引擎影响 | 中 | 新引擎独立包，不修改 ai 包既有判定路径（R7）；可复用诊断上下文但不动其逻辑 |
+| 多源数据量/性能 | 中 | 证据表按 `(device_hw_id, captured_at)` 索引；汇聚按时间窗批处理，避免热路径逐条写 |
+| 训练数据冷启动不足 | 低-中 | 以现有真实故障 + 固件规则组合生成 seed 案例，先保规则主通道准确率，案例库渐进 |
+| Windows 本机聚合覆盖率/工具链限制 | 低 | 同上次流水线：在干净 CI 复核 `go test ./...` 与覆盖率门槛 |
+
+### 7.3 验收标准（建议）
+
+- `go build ./...` / `go vet ./...` 通过；`go test ./...` 全绿。
+- 红线 R1–R10 逐一回归无退化。
+- 新引擎单测覆盖：去重、critical 自动工单、低置信不派单、**误报过滤不漏真故障**、案例回标/训练链路。
+- 既有 `/faults*` 接口契约向后兼容（前端 fault.ts 不变即可用）。
+- 识别准确率/误报/漏报指标有 `recognition/stats` 可观测，并朝 99.9999% 收敛路径清晰。
+
+---
+
+*本清单由 pm-tsloms（只读）产出，未修改任何代码。仅供 dev/qa/reviewer 作为功能范围与红线依据。*

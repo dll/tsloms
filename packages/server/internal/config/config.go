@@ -34,6 +34,7 @@ type Config struct {
 	AITextModel     string // AI 文本模型（默认 glm-4-flash）
 	AIVisionModel   string // AI 多模态模型（默认 glm-4v）
 	AdminInitPwd    string // 首次初始化管理员密码（ADMIN_INIT_PASSWORD，空则生成随机）
+	EnabledModules  string // 可选模块启用列表（ENABLED_MODULES，逗号分隔，空=仅核心模块）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -64,6 +65,7 @@ func Load() *Config {
 		AITextModel:     getEnv("AI_TEXT_MODEL", "glm-4-flash"),
 		AIVisionModel:   getEnv("AI_VISION_MODEL", "glm-4v"),
 		AdminInitPwd:    getEnv("ADMIN_INIT_PASSWORD", ""),
+		EnabledModules:  getEnv("ENABLED_MODULES", ""),
 	}
 }
 

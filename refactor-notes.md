@@ -1,141 +1,129 @@
-# TSLOMS 重构改动记录（refactor-notes）
+# TSLOMS 智能多源故障识别研判引擎 —— 重构改动记录（refactor-notes）
 
-> 重构专员：dev-refactor-tsloms｜日期：2026-08-16
-> 依据：项目根目录 `pm-checklist.md`（pm-tsloms 需求核对结论）
-> 原则：**严格不改变业务行为**。涉及行为红线（工单状态机 / 30 分钟故障去重 / 严重故障自动建单 WO 序号 / SLA 24/48h / AI 降级兜底 / RBAC 权限）的改动均保持返回结构与流转语义不变。
->
-> 验证：`go build ./...` 通过；`go test ./...` 全绿（9 个包全部 ok）。
-
----
-
-## 已完成改动（P0 优先）
-
-### P0-1（C1）：`UpdateWorkOrderStatus` 重复分支合并
-
-- **文件**：`packages/server/internal/handler/workorder.go`
-- **改动前**：`rejected → pending` 的同一 `if` 条件连续写了两遍（第一块做 `closed_at=nil` + 故障回 `confirmed`；第二块又无条件 `closed_at=nil`）。
-- **改动后**：合并为单个分支，只保留「`closed_at=nil` + 故障回 `FaultStatusConfirmed`」的唯一语义。
-- **理由**：消除冗余/潜在维护误改点（清单 C1）。
-- **是否改动行为**：否（原第一块已含 `closed_at=nil`，第二块为冗余叠加；合并后结果一致）。
-
-### P0-2（B1）：工单列表 N+1 查询消除
-
-- **文件**：`packages/server/internal/handler/workorder.go`
-- **改动前**：`ListWorkOrders` 对每行订单调用 `workOrderView`，内部逐行 `First` 查一次 user（page_size 最大 100 → 最多 100 次额外查询）。
-- **改动后**：新增 `workOrderAssigneeNames(orders)` 用一次 `WHERE id IN (...) Select("id, username")` 批量预取处理人姓名；新增 `workOrderViewWithNames(o, names)` 用预取结果构建视图。原 `workOrderView`（单对象场景）保持不变。
-- **理由**：消除 N+1，返回字段结构不变。
-- **是否改动行为**：否（assignee_name 取值逻辑与缺省值一致）。
-
-### P0-3（B1）：故障列表 N+1 查询消除
-
-- **文件**：`packages/server/internal/handler/fault.go`
-- **改动前**：`ListFaults` → `faultView` 每行查负责人 + 维修人（每行最多 2 次额外查询）。
-- **改动后**：新增 `faultUserNames(faults)` 批量预取（一次 `IN` 查询聚合 owner/repairer 的 username）；新增 `faultViewWithNames` 用预取 map 构建。原 `faultView`（详情/其他单对象场景）保持不变。
-- **理由**：消除 N+1。
-- **是否改动行为**：否。
-
-### P0-4（B2）：MQTT 故障去重命中的无意义写优化
-
-- **文件**：`packages/server/internal/mqtt/handler.go`（`processFault`）
-- **改动前**：去重窗口内每次均无条件 `Updates`（last_seen + current 三色 + led_state），即便电流/灯态无变化也写整行。
-- **改动后**：仍始终更新 `last_seen`（保持 30 分钟窗口锚点不变）；仅当 current_r/y/g 或 led_state 相较既有记录发生变化时才附带更新这些字段，否则只写 `last_seen`。
-- **理由**：减少高频上报的无意义 DB 写（清单 B2）。
-- **是否改动行为**：否（`last_seen` 推进保持一致；电流/灯态有差异时仍更新——与 `fault_test.go` 的「窗口内更新电流值」断言一致）。
-
-### P1（B3）：同帧内设备 upsert 合并
-
-- **文件**：`packages/server/internal/mqtt/handler.go`（`HandleCheckin` / `HandleAlarm` / `HandlePowerOn`）
-- **改动前**：同一帧内每条 EventRecord 都对同一 `ledHwID` 重复 `upsertDevice`（各自 `WHERE ... First`）。
-- **改动后**：三个 handler 均增加 per-frame `map[uint32]bool` 去重，同一硬件 ID 只 upsert 一次；故障研判（`processFault`）仍逐条执行，去重/自动建单语义不变。
-- **理由**：减少热路径 DB 往返（清单 B3）。
-- **是否改动行为**：否（upsert 语义为「同 hwID 最后一条记录的值生效」，合并后结果等价）。
-
-### P1（C2）：`frameHwID` 死代码 → `topicHwID` 溯源
-
-- **文件**：`packages/server/internal/mqtt/handler.go`
-- **改动前**：`frameHwID(frame)` 无视入参恒返回 0，`HandleCheckFW`/`HandleGetFW` 打日志 `hwId=0`，无法溯源设备（误导性死代码）。
-- **改动后**：移除 `frameHwID`，新增 `topicHwID(uplinkTopic)` 从 Topic（`{prefix}/{net}/{station}/{hwid}/U`）解析硬件 ID；两个 FW handler 日志改用 `topicHwID`。
-- **理由**：消除误导性死代码，改善排障溯源（清单 C2，仅日志内容变化）。
-- **是否改动行为**：否（仅日志字段；无法解析时仍为 0）。同步更新 `handler_cov_test.go` 中对 `frameHwID` 的断言为 `topicHwID`。
-
-### P2（B4）：巡检库存计数与名单合并为单次扫描
-
-- **文件**：`packages/server/internal/service/patrol.go`
-- **改动前**：`checkStockAlerts` 先 `Scan` 计数一次、再 `lowStockNames` 各自独立再查一次（每态 2 次扫描）。
-- **改动后**：新增 `stockCountAndNames(low)` 一次查询取所有匹配物料名（count=len 全量、名单取 stock ASC 前 6），`checkStockAlerts` 改用之；`lowStockNames` 保留为薄封装（兼容既有测试/调用）。
-- **理由**：减少重复扫描（清单 B4）。
-- **是否改动行为**：否（count=全部匹配数、名单=前 6，与原语义一致）。
-
-### P2（B5）：故障列表 `active` 状态与时间参数别名抽取
-
-- **文件**：`packages/server/internal/handler/fault.go`
-- **改动前**：`active` 兼容语义（occurred/confirmed/dispatched）与 `start_time/start_date`、`end_time/end_date` 双参数别名内联在 `ListFaults`。
-- **改动后**：新增 `activeStatuses` 常量、`ParseStatusFilter(status)`、`ParseFaultTimeRange(c)` 工具函数；`ListFaults` 复用。
-- **理由**：消除重复/散落兼容逻辑（清单 B5）。
-- **是否改动行为**：否。
-
-### P2（C6）：角色判定统一走常量
-
-- **文件**：`packages/server/internal/handler/response.go`
-- **改动前**：`isOperator` 用字面量 `"admin"`/`"operator"`。
-- **改动后**：新增 `RoleIsOperator(role)`（使用 `model.RoleAdmin`/`model.RoleOperator` 常量），`isOperator` 委托之。
-- **理由**：角色字面量统一（清单 C6）。
-- **是否改动行为**：否（判定逻辑一致，不影响 viewer 只读等既有效力）。
-
-### P1（A4）：统一日志单例
-
-- **文件**：新增 `packages/server/internal/logger/logger.go`；修改 `mqtt/client.go`、`mqtt/handler.go`、`service/offline.go`、`service/patrol.go`、`service/workorder_escalate.go`
-- **改动前**：各 Handler/Service 构造器各自 `zap.NewProduction()` 新建 logger。
-- **改动后**：新增 `logger.Get()`（`sync.Once` 单例，支持 `LOG_LEVEL` 环境变量），各构造器改用它注入；保留 `*zap.Logger` 字段类型不变。
-- **理由**：统一日志构造与级别配置（清单 A4）。
-- **是否改动行为**：否（日志输出语义不变）。
-
-### P2（C7）：`model/db.go` 职责拆分
-
-- **文件**：`packages/server/internal/model/db.go`（瘦身）+ 新增 `migrate.go`、`seed.go`、`legacy_migrate.go`
-- **改动前**：`db.go` 352 行混合连接管理 / `AutoMigrate` / `SeedRBAC` / `MigrateLegacyDeviceMaterials` / `SeedAdmin` / `randomStrongPassword` / `containsAny` / `hasClasses` / `InitTestDB`。
-- **改动后**：`db.go` 仅保留 `DB`/`RDB` 全局句柄 + `InitDB`/`InitRedis`/`InitTestDB`；`migrate.go` 放 `AutoMigrate`；`seed.go` 放 `SeedRBAC`/`SeedAdmin`/`randomStrongPassword`/`hasClasses`；`legacy_migrate.go` 放 `MigrateLegacyDeviceMaterials`/`containsAny`。
-- **理由**：单一职责（清单 C7），纯文件移动、逻辑不变。
-- **是否改动行为**：否。
-
-### 补充：`internal/logger` 单测
-
-- **文件**：新增 `packages/server/internal/logger/logger_test.go`
-- **理由**：保护覆盖门禁（清单风险 5），覆盖 `ParseLevel` 与 `Get` 单例语义。
+> **产出专员**：dev-refactor-tsloms
+> **日期**：2026-08-17
+> **范围**：**B（前端可视化适配 + 文档）**；后端识别引擎（范围 A）为既有交付物，本记录一并汇总，供前后端对齐。
+> 依据：项目根目录 `pm-checklist.md`（识别准确率 ≥ 99.9999% / 案例库 / 训练 100% 识别率目标）。
+> 原则：**不改变既有 /faults* 前端调用与返回结构**（只增字段 / 新增文件，不删改既有字段绑定）；**不改后端核心逻辑**。
 
 ---
 
-## 未实施项（说明）
+## 0. 一句话交付
 
-以下清单项本次**未改动**，理由如下，供后续排期：
-
-- **A1（`model.DB`/`RDB` 全局句柄 DI 化）**：清单风险提示明确这是「重构最大雷区」，触达 mqtt/service/handler/ai 全链路，需分步推进。本次仅收敛日志单例（A4）与职责拆分（C7），未做跨包裸引用迁移，避免大爆炸式改动导致覆盖率回退。已在 `db.go` 注释中标注演进方向。
-- **A2（后台协程 BackgroundLoop 抽象）**：三处执行时机语义各异（offline/escalator 立即+各自间隔、patrol 立即+60s 窗口判定），抽象需谨慎保持时机不变，风险收益不匹配本次 P0 优先范围。
-- **A3（handler 业务逻辑下沉 service）**：涉及工单状态机/派单规则等行为红线，下沉需配套单测与回归，未纳入本次非破坏性重构。
-- **A5（`cmd/server/main.go` 抽 app 装配器）**：`main.go` 311 行偏大，但 `setupRouter` 已有测试依赖其签名；本次未动以免破坏入口稳定性。
-- **C3（`logPacket` 的 `valid` 参数语义）**：`valid` 在解析失败路径实际已传 `false`，区分是存在的；属可读性微调，未触及报文日志写入行为。
-- **C4（`llm.go` `ImageURL` omitempty）**：核对实际代码，`contentPart.ImageURL` 已带 `json:"image_url,omitempty"`（清单描述已过时），无需改动。
-- **C5（ai 包上帝文件拆分）**：`nl.go`/`decision.go`/`analyze.go` 拆分属大范围结构性重构，且需严格保证 AI 降级兜底不被旁路，未纳入本次。
+后端「智能多源故障识别研判引擎」已交付并通过全绿验证（`go build` / `go vet` 通过，`go test ./...` 12 包全 ok）；本次范围 B 完成**前端可视化适配**：新增识别 API 封装、故障列表「置信度/研判状态」列与「待复核」筛选与复核交互、详情「多源证据」区、识别统计面板、案例库视图与训练入口。前端通过 `vite build`（exit 0），`vue-tsc --noEmit` 对本次改动文件 **0 错误**（仅存既有非本次范围的 CesiumMap.vue 类型告警，见 §6）。
 
 ---
 
-## 行为红线核对结论
+## 1. 后端识别引擎（范围 A，已有，汇总）
 
-以下业务逻辑在本次重构中**均未被改动**：
+> 后端逻辑**本次未修改**，此处仅汇总既有接口/字段清单，供前端消费与后续排期核对。
 
-| 红线 | 处置 |
+### 1.1 新增包 / 组件
+
+| 组件 | 说明 |
 |---|---|
-| 工单状态机（pending→processing→completed/rejected，rejected→pending） | C1 仅合并重复分支，流转语义不变 |
-| 30 分钟故障去重窗口 | B2 仅跳过无变化历史写，`last_seen` 仍始终推进，窗口锚点不变 |
-| 严重故障自动建单（WO 序号 `NextOrderNo`） | 未触碰 `NextOrderNo`，B3 仅合并同帧设备 upsert |
-| SLA（24h/48h 升级） | `workorder_escalate.go` 仅改 logger 构造，逻辑未动 |
-| AI 降级兜底 | 未改动 `internal/ai` 业务代码 |
-| RBAC 权限 | C6 仅用常量替换字面量，判定效力不变 |
+| `internal/recognition` | 判定引擎：`Validate`（规则基座）、`crossValidate`（多源交叉验证）、`BuildSignature`（证据特征指纹）等 |
+| `internal/caselib` | 案例库 `CaseRecorder`：`SeedRecord`（研判沉淀样本）、`Train`（训练骨架）、`Stats`（识别统计） |
+| `internal/faultcode` | 错误码 + 分类规则基座 |
+
+### 1.2 新增模型与表（AutoMigrate）
+
+- **`FaultRecord` 新增字段**（仅做加法，兼容旧记录）：
+  `confidence`(置信度0-1)、`recognition_source`(rule/multi-source/case)、`recognition_status`(confirmed/pending_review/filtered)、`is_false_positive`、`evidence_count`、`last_evaluation_id`、`reviewed_at`。
+- **新表 `fault_evidence`**：多源证据（来源、错误码、灯态、三色电流、原始报文、媒体/反馈引用、捕获时间、单条置信度）。
+- **新表 `fault_case`**：案例库（故障类型/等级、设备、输入签名 `input_signature`、证据摘要 `evidence_summary`、预期真值 `expected_result`、引擎判定 `judged_result`、判定置信度、是否正确 `is_correct`、来源研判批次 `source_evaluation_id`、状态 seed/confirmed/training/test）。
+
+### 1.3 REST 接口清单（`internal/handler/recognition.go`）
+
+| Method | 路径 | 说明 |
+|---|---|---|
+| GET | `/faults/:id/evidence` | 拉取某起故障的多源证据明细（按 fault_id / 末次研判批次并集） |
+| POST | `/evidence/ingest` | 预留外部数据源证据写入（举证/反馈/监控归一化落 fault_evidence） |
+| GET | `/evidence/sources` | 多源证据类型枚举：firmware/current/led_state/citizen/photo_evidence/video_monitor |
+| GET | `/fault-cases` | 案例库检索/列表（page/page_size/device_hw_id/fault_type/status/is_correct） |
+| POST | `/fault-cases` | 案例库新增 / 人工回标 |
+| POST | `/fault-cases/train` | 触发案例库训练（骨架：向 100% 识别率收敛） |
+| GET | `/recognition/stats` | 识别统计：`total_cases/accuracy/false_positive/false_negative/false_positive_rate/false_negative_rate/confirmed_or_seed/filtered_as_normal` |
+| POST | `/faults/:id/review` | 待确认复核：`{confirmed:bool}` 确认真故障 / 标记误报；确认后回写高置信(0.99)，critical 且此前未派单则自动派单，并同步回标案例库 |
+
+### 1.4 MQTT 引擎接入（`internal/mqtt/handler.go` 的 `processFault`）
+
+- `confirmed`：落库 + critical 自动派单；
+- `pending_review`：落库**但不派单**（待人工复核）；
+- `filtered`：不产生故障/工单，仅记证据日志。
+- `faultView` 已序列化识别字段（`confidence`、`recognition_status`、`recognition_source`、`is_false_positive`、`evidence_count`、`last_evaluation_id`、`reviewed_at`），前端可直接消费。
 
 ---
 
-## 验证结果
+## 2. leader 修复的两个缺陷（范围 A 遗留，本次如实记录）
 
-- `go build ./...`：通过（exit 0）
-- `go test ./...`：全绿（1 package 列表：cmd/server、internal/ai、config、handler、logger、middleware、model、mqtt、service 均 `ok`）
-- 关键回归用例覆盖：`mqtt` 的 `TestProcessFault_DedupWithinWindow`、`TestProcessFault_NewRecordAfterWindow`、`TestProcessFault_CriticalCreatesWorkOrder` 等均通过，佐证去重窗口与自动建单行为未漂移。
+> 这两个缺陷由 **leader 修复**（在本次 dev 接手前已改好并验证），此处列出供回归追溯：
+
+1. **`caselib_test` 编译错误：`&e` → `e`**
+   - 文件中误将取值写为 `&e`（对循环变量取地址），导致编译失败；leader 修正为 `e` 后编译通过。
+
+2. **`recognition` 电流矛盾降级逻辑：单通道电流矛盾未被识别**
+   - 原逻辑仅对双通道/多通道电流矛盾做降级处理，单通道电流矛盾被遗漏，无法进入 `pending_review` 待复核分流；leader 补全单通道电流矛盾→降级逻辑，使矛盾信号可被判为低置信待复核而非错误确认。
+
+---
+
+## 3. 本次范围 B：前端改动清单（dev-refactor-tsloms，2026-08-17）
+
+> 目录：`packages/admin/src`。沿用 Element Plus + Vue3 + 既有 `@/utils/request` 封装，**未引入任何新依赖**（依赖包中即含，未新增）。
+
+### 3.1 新增文件
+
+| 文件 | 内容 |
+|---|---|
+| `src/api/recognition.ts` | 新增识别 API 封装：`getFaultEvidence`、`ingestEvidence`、`listEvidenceSources`、`listFaultCases`、`createFaultCase`、`trainFaultCases`、`getRecognitionStats`、`reviewFault`；并含展示辅助常量与函数：`RECOGNITION_STATUSES`（confirmed/pending_review/filtered）、`recognitionStatusLabel/Tag`、`EVIDENCE_SOURCES`（firmware=固件、current=电流、led_state=灯态、citizen=群众反映、photo_evidence=手机举证、video_monitor=视频监控）、`RECOGNITION_SOURCES`（rule/multi-source/case）、`fmtConfidence`（0-1→百分比） |
+| `src/views/fault/cases.vue` | **案例库视图**：`listFaultCases` 列表（设备/故障类型/预期结果/引擎判定/是否正确/置信度/状态/研判批次），支持筛选与分页，提供「训练案例库」按钮调 `trainFaultCases` |
+
+### 3.2 变更文件
+
+| 文件 | 改动 |
+|---|---|
+| `src/api/fault.ts` | 新增 `FaultItem` 接口并补充识别字段：`confidence`、`recognition_source`、`recognition_status`、`is_false_positive`、`evidence_count`、`reviewed_at`（仅做加法，兼容旧字段）；`getFaults` 返回类型收窄为 `{ list: FaultItem[]; total: number }` |
+| `src/views/fault/index.vue` | 故障页可视化适配（详见 §3.3） |
+| `src/modules/index.ts` | 在 fault 模块下新增第二条路由 `/fault/cases`（`FaultCases` → cases.vue），复用既有 `routes.length>1` 自动生成侧边栏子菜单机制；**不破坏既有 /fault 路由** |
+
+### 3.3 故障页 `index.vue` 可视化细节
+
+1. **表格新增「置信度」「研判状态」列**：
+   - 置信度用 `fmtConfidence`（0-1→%），≥0.8 绿色、0.6~0.8 橙、其余默认。
+   - 研判状态标签映射：`confirmed=已确认/绿`、`pending_review=待复核/橙`、`filtered=已过滤/灰`。
+2. **搜索栏新增「研判状态」筛选**：提供「待复核(pending_review)」过滤项（filtered 故障后端不落库，故只提供待复核筛选；见 §5 后端限制说明）。
+3. **行内「复核」操作**：对 `recognition_status==='pending_review'` 且具权限（admin/operator）的行显示「复核」按钮 → 弹窗（确认真故障 / 标记误报，调 `reviewFault(id, bool)`）；确认后自动 `fetchData()+loadStats()` 刷新。
+4. **详情多源证据区**：`getFault` 详情抽屉下新增「多源证据（识别研判）」区，调 `getFaultEvidence` 渲染证据（来源标签、捕获时间、单条置信度、固件错误码/灯态/电流或原始文本、研判批次号）。
+5. **顶部识别统计面板**：调 `getRecognitionStats` 展示总案例数、识别准确率、误报、漏报、已确认案例，及误报率/漏报率（准确率按 ≥100%绿 / ≥90%蓝 / 否则橙 着色）。
+
+---
+
+## 4. 前后端契约对齐
+
+- 前端所有识别接口路径/参数与 §1.3 后端 `recognition.go` 完全一致；`/faults*` 既有点调（`getFaults/getFault/updateFault/dispatchFault`）与返回结构未变，仅新增字段。
+- 判研状态常量 `confirmed/pending_review/filtered`、判定来源 `rule/multi-source/case`、证据来源枚举均与后端 `internal/model/fault.go`、`fault_evidence.go` 对齐。
+
+---
+
+## 5. 接口缺口与处置记录
+
+1. **`GET /faults` 的 `recognition_status` 筛选（已由 leader 补实现 ✅）**：dev 开发时发现 `ListFaults` 仅按 `status(工单状态)/fault_type/fault_level/时间/设备` 过滤，未支持 `recognition_status`，若不做则前端「待复核」筛选是空操作（参数被忽略、不报错）。**leader 后续在 `internal/handler/fault.go` 的 `ListFaults` 已补上**可选参数下推：`recognition_status=active` 兼容旧语义（=未解决三态 occurred/confirmed/dispatched），其余按字面匹配 `recognition_status` 列；不带该参数时行为完全不变（向后兼容）。已 `go build` + `go test ./internal/handler/` 验证通过。文档与代码现一致。
+2. **`filtered` 故障不落 `FaultRecord`**：故故障列表天然不含已过滤项，「已过滤/灰」标签主要用于同名 `fault_evidence`/`fault_case` 溯源（列表行基本不出现），符合需求（前端主要展示已落库故障的 status+confidence）。
+
+---
+
+## 6. 验证结果
+
+- **前端 `vite build`**：✅ exit 0（built in ~2m46s；`cases-*.js`、`recognition-*.js` 等新增 chunk 正常产出；仅 chunk 体积提示，与本次无关）。
+- **前端 `vue-tsc --noEmit`**：本次改动文件 **0 错误**；仅残留一座**既有非本次范围**的类型告警：
+  `src/views/map/CesiumMap.vue(432)` —— `faultByDev` 索引类型 `undefined`（该文件本次未触碰，属历史遗留；如需根治需单独排期，且必须回归地图大屏）。
+- **后端**：本次未改后端，不重复跑；沿用此前 `go build/vet` 全绿、`go test ./...` 12 包全 ok 的验证结论。
+
+---
+
+## 7. 未实施 / 后续建议
+
+- 案例库「新增/人工回标」后端入口已就绪（`POST /fault-cases`），本次前端仅落地列表+训练；「手动新增人工回标样本」交互未做（留待后续，避免扩大本次改动面）。
+- 案例库自动训练触发（定时/事件）未接，当前仅手动「训练」按钮（与后端 `Train` 骨架一致）。
+- 识别统计面板未做历史趋势/置信度分布图（后端已返 `false_positive_rate/false_negative_rate`），可后续可视化。
+- 识别引擎 → 案例库自动沉淀闭环（`SeedRecord` 已在 MQTT 接入）前端无需改动，仅展示可验证。

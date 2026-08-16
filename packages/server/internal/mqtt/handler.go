@@ -9,8 +9,10 @@ import (
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/tsloms/server/internal/caselib"
 	"github.com/tsloms/server/internal/logger"
 	"github.com/tsloms/server/internal/model"
+	"github.com/tsloms/server/internal/recognition"
 	"go.uber.org/zap"
 )
 
@@ -239,9 +241,14 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 	}
 }
 
-// processFault 故障研判与去重
-// 同一设备同一 errCode 在 30 分钟内只生成一条故障记录，后续更新 lastSeen
-// 严重故障自动生成维修工单
+// processFault 故障研判与去重（智能多源故障识别研判引擎已接入，范围A）
+// 同一设备同一 errCode 在 30 分钟内只生成一条故障记录，后续更新 lastSeen（R3）。
+// 研判链路：
+//   · 确定性规则基座（内聚 FaultTypeFromErrCode/FaultLevelFromErrCode）→ 多源交叉验证 → 判定分流；
+//   · confirmed：按原逻辑落库，critical 自动工单（R6），并写 confidence/证据/案例；
+//   · pending_review：低置信/存疑 → 落入故障但【不自动派单】，可被证据补充后升级确认；
+//   · filtered：明确否证 → 误报过滤，仅记证据与案例，不产生故障/工单。
+// 红线保持：R2 状态机、R3 去重窗口、R6 自动工单、R9 兼容。
 func (h *Handler) processFault(rec *EventRecord) {
 	if model.DB == nil {
 		return
@@ -249,6 +256,24 @@ func (h *Handler) processFault(rec *EventRecord) {
 
 	now := time.Now()
 	dedupWindow := 30 * time.Minute
+
+	// 智能研判：多源证据采集/归一化 → 规则判定 → 置信度融合 → 分流
+	eval := recognition.NewEvaluator(rec.LedHwID, rec.ErrCode, rec.LedState, rec.CurrentR, rec.CurrentY, rec.CurrentG)
+	// 主信号本身即含 errCode/电流/灯态；可检索注入辅助证据（群众反映/举证/监控）
+	injectAuxEvidence(eval, rec.LedHwID, now)
+	judge := eval.Validate()
+
+	// 误报过滤：明确否证，仅记证据与案例，不产生故障/工单（绝不把真故障当误报丢弃）
+	if judge.RecognitionStatus == model.RecognitionFiltered {
+		h.persistEvidence(eval, nil, judge, rec, now)
+		h.persistCase(eval, judge)
+		h.logger.Info("故障研判(误报过滤)",
+			zap.Uint32("hwId", rec.LedHwID),
+			zap.Int8("errCode", rec.ErrCode),
+			zap.Float64("confidence", judge.Confidence),
+		)
+		return
+	}
 
 	// 查找同一设备同一错误码的活跃故障记录
 	var existing model.FaultRecord
@@ -280,22 +305,24 @@ func (h *Handler) processFault(rec *EventRecord) {
 		model.DB.Model(&existing).Update("status", model.FaultStatusResolved)
 	}
 
-	// 创建新故障记录
-	faultType := FaultTypeFromErrCode(rec.ErrCode)
-	faultLevel := FaultLevelFromErrCode(rec.ErrCode)
-
+	// 创建新故障记录（研判结果落库）
 	fault := model.FaultRecord{
-		DeviceHwID: rec.LedHwID,
-		ErrCode:    rec.ErrCode,
-		FaultType:  faultType,
-		FaultLevel: faultLevel,
-		LedState:   rec.LedState,
-		CurrentR:   rec.CurrentR,
-		CurrentY:   rec.CurrentY,
-		CurrentG:   rec.CurrentG,
-		FirstSeen:  now,
-		LastSeen:   now,
-		Status:     model.FaultStatusOccurred,
+		DeviceHwID:       rec.LedHwID,
+		ErrCode:          rec.ErrCode,
+		FaultType:        judge.FaultType,
+		FaultLevel:       judge.FaultLevel,
+		LedState:         rec.LedState,
+		CurrentR:         rec.CurrentR,
+		CurrentY:         rec.CurrentY,
+		CurrentG:         rec.CurrentG,
+		FirstSeen:        now,
+		LastSeen:         now,
+		Status:           model.FaultStatusOccurred,
+		Confidence:       &judge.Confidence,
+		RecognitionSource: judge.RecognitionSource,
+		RecognitionStatus: judge.RecognitionStatus,
+		EvidenceCount:    judge.EvidenceCount,
+		LastEvaluationID: judge.EvaluationID,
 	}
 
 	if err := model.DB.Create(&fault).Error; err != nil {
@@ -307,16 +334,23 @@ func (h *Handler) processFault(rec *EventRecord) {
 		return
 	}
 
-	// 严重故障自动生成工单
-	if faultLevel == "critical" {
+	// 多源证据落库 + 案例沉淀（本次研判批次）
+	h.persistEvidence(eval, &fault, judge, rec, now)
+	h.persistCase(eval, judge)
+
+	// 严重故障自动生成工单 —— 仅当研判为【确认】状态才自动派单（R6 语义保持）；
+	// 待确认/存疑故障不自动派单，可被证据补充后升级确认后再派。
+	if judge.FaultLevel == "critical" && judge.RecognitionStatus == model.RecognitionConfirmed {
 		h.createWorkOrder(&fault)
 	}
 
 	h.logger.Info("故障研判完成",
 		zap.Uint32("hwId", rec.LedHwID),
 		zap.Int8("errCode", rec.ErrCode),
-		zap.String("faultType", faultType),
-		zap.String("faultLevel", faultLevel),
+		zap.String("faultType", judge.FaultType),
+		zap.String("faultLevel", judge.FaultLevel),
+		zap.Float64("confidence", judge.Confidence),
+		zap.String("recognitionStatus", judge.RecognitionStatus),
 		zap.Uint("faultId", fault.ID),
 	)
 }
@@ -528,7 +562,117 @@ func (h *Handler) logPacket(deviceHwID uint32, rawData []byte, cmdType uint8, cm
 	}
 }
 
-// buildParsedResult 构造解析结果 JSON 字符串
+// injectAuxEvidence 检索并注入该设备在近时间窗内的辅助证据（群众反映/手机举证/视频监控/电流异常）。
+// 本阶段：真实视频分析/AI 视觉不实现（P1/P2），此处从 DeviceMedia/Feedback 已落库记录中
+// 汇入已归一化的佐证信号，作为多源交叉验证的输入；无记录则不注入（不阻塞规则主通道）。
+func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) {
+	windowStart := now.Add(-24 * time.Hour) // 检索窗口：近 24h 的辅助证据
+
+	// 群众反映（Feedback）—— 辅助证据
+	var feedbacks []model.Feedback
+	model.DB.Where("device_hw_id = ? AND created_at >= ?", hwID, windowStart).Find(&feedbacks)
+	for i := range feedbacks {
+		fb := &feedbacks[i]
+		fid := fb.ID
+		eval.AddEvidence(recognition.RuleEvidence{
+			DeviceHwID:    hwID,
+			SourceType:    model.EvSourceCitizen,
+			RawData:       "反馈#" + fb.Title + " | " + fb.Content,
+			CapturedAt:    fb.CreatedAt,
+			RefFeedbackID: &fid,
+			Confidence:    0.9,
+		})
+	}
+
+	// 手机举证 / 视频监控媒体（DeviceMedia）—— 辅助证据
+	var medias []model.DeviceMedia
+	model.DB.Where("device_hw_id = ? AND media_type IN ? AND created_at >= ?",
+		hwID, []string{model.MediaEvidence, model.MediaMonitoring, model.MediaTimelapse}, windowStart).Find(&medias)
+	for i := range medias {
+		md := &medias[i]
+		mid := md.ID
+		src := model.EvSourcePhotoEvidence
+		if md.MediaType == model.MediaMonitoring || md.MediaType == model.MediaTimelapse {
+			src = model.EvSourceVideoMonitor
+		}
+		eval.AddEvidence(recognition.RuleEvidence{
+			DeviceHwID:    hwID,
+			SourceType:    src,
+			RawData:       "媒体#" + md.Title + " | " + md.URL,
+			CapturedAt:    md.CreatedAt,
+			RefMediaID:    &mid,
+			Confidence:    0.9,
+		})
+	}
+}
+
+// persistEvidence 把本次研判的多源证据落库（fault_evidence）。
+// 主信号（firmware：errCode/电流/灯态）+ 注入的辅助证据统一写库，可溯源。
+// faultID 为 nil 时表示被过滤/未落故障的证据（仍保留，保证 100% 可溯源）。
+func (h *Handler) persistEvidence(eval *recognition.Evaluator, fault *model.FaultRecord, judge model.FaultRecognition, rec *EventRecord, now time.Time) {
+	var faultID *uint
+	if fault != nil {
+		faultID = &fault.ID
+	}
+
+	// 主信号固件证据
+	errCode := rec.ErrCode
+	led := rec.LedState
+	curR := rec.CurrentR
+	curY := rec.CurrentY
+	curG := rec.CurrentG
+	primaryEv := recognition.RuleEvidence{
+		DeviceHwID:    rec.LedHwID,
+		SourceType:    model.EvSourceFirmware,
+		ErrCode:       &errCode,
+		LedState:      &led,
+		CurrentR:      &curR,
+		CurrentY:      &curY,
+		CurrentG:      &curG,
+		RawData:       convertInt8(errCode),
+		CapturedAt:    now,
+		RefMediaID:    nil,
+		RefFeedbackID: nil,
+		Confidence:    judge.Confidence,
+	}
+	recs := []*recognition.RuleEvidence{&primaryEv}
+
+	// 注入的辅助证据
+	for i := range eval.Evidence() {
+		ev := eval.Evidence()[i]
+		if ev.DeviceHwID == 0 {
+			ev.DeviceHwID = rec.LedHwID
+		}
+		recs = append(recs, &ev)
+	}
+
+	for _, r := range recs {
+		m := recognition.EvidenceToModel(*r, faultID, judge.EvaluationID)
+		if err := model.DB.Create(&m).Error; err != nil {
+			h.logger.Error("写入多源证据失败",
+				zap.Uint32("hwId", rec.LedHwID),
+				zap.String("source", r.SourceType),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
+// persistCase 把本次研判沉淀为案例库样本（fault_case），供后续训练/100% 识别达标。
+func (h *Handler) persistCase(eval *recognition.Evaluator, judge model.FaultRecognition) {
+	cr := caselib.NewCaseRecorder(model.DB)
+	if _, err := cr.SeedRecord(eval, judge, judge.EvaluationID); err != nil {
+		h.logger.Error("写入案例库失败",
+			zap.Uint32("hwId", eval.DeviceHwID),
+			zap.Error(err),
+		)
+	}
+}
+
+// convertInt8 把 errCode 转为可读文本（证据 raw_data 用）
+func convertInt8(v int8) string {
+	return strconv.Itoa(int(v))
+}
 func (h *Handler) buildParsedResult(frame *CmdFrame, eventPak *EventPak) string {
 	result := map[string]interface{}{
 		"cmd":     frame.Cmd,

@@ -9,6 +9,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&Device{},
 		&PacketLog{},
 		&FaultRecord{},
+		&FaultEvidence{},
+		&FaultCase{},
 		&WorkOrder{},
 		&User{},
 		&Department{},

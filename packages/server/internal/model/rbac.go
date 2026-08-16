@@ -104,6 +104,10 @@ var AllPermissions = []Permission{
 	{Code: "fault:update", Name: "故障-更新/确认", Module: PermModuleFault, Sort: 6},
 	{Code: "fault:dispatch", Name: "故障-派单", Module: PermModuleFault, Sort: 7},
 	{Code: "fault:delete", Name: "故障-删除", Module: PermModuleFault, Sort: 8},
+	// 故障识别研判（范围A：多源证据/案例库/复核	—— 只增不删既有权限码）
+	{Code: "fault:review", Name: "故障-待确认复核", Module: PermModuleFault, Sort: 8},
+	{Code: "faultcase:manage", Name: "识别案例库-管理/训练", Module: PermModuleFault, Sort: 9},
+	{Code: "evidence:ingest", Name: "多源证据-写入/注入", Module: PermModuleFault, Sort: 10},
 	// 工单管理
 	{Code: "workorder:create", Name: "工单-新建", Module: PermModuleWorkorder, Sort: 8},
 	{Code: "workorder:update", Name: "工单-状态流转", Module: PermModuleWorkorder, Sort: 9},
@@ -144,7 +148,7 @@ var BuiltinRolePerms = map[string][]string{
 	BuiltinRoleOperator: {
 		"device:create", "device:update",
 		"intersection:update",
-		"fault:update", "fault:dispatch",
+		"fault:update", "fault:dispatch", "fault:review",
 		"workorder:create", "workorder:update", "workorder:assign",
 		"media:upload",
 		"firmware:manage",

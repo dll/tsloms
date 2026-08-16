@@ -46,6 +46,11 @@ func unauthorized(c *gin.Context, message string) {
 	fail(c, http.StatusUnauthorized, "unauthorized", message)
 }
 
+// forbidden 403（含模块未启用/权限不足）
+func forbidden(c *gin.Context, message string) {
+	fail(c, http.StatusForbidden, "forbidden", message)
+}
+
 // notFound 资源不存在
 func notFound(c *gin.Context, message string) {
 	fail(c, http.StatusNotFound, "not_found", message)

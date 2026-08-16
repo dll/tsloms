@@ -83,6 +83,16 @@ func ListFaults(c *gin.Context) {
 		query = query.Where("fault_level = ?", faultLevel)
 	}
 
+	// 按研判分流状态筛选（范围B：智能识别引擎 confirmed/pending_review/filtered）
+	// 兼容旧语义：recognition_status=active 视为未解决三态（occurred/confirmed/dispatched）
+	if recogStatus := c.Query("recognition_status"); recogStatus != "" {
+		if recogStatus == "active" {
+			query = query.Where("status IN ?", activeStatuses)
+		} else {
+			query = query.Where("recognition_status = ?", recogStatus)
+		}
+	}
+
 	// 按时间范围筛选（兼容 start_time/end_time 与 start_date/end_date 两套参数名）
 	start, end := ParseFaultTimeRange(c)
 	if start != nil {
@@ -154,6 +164,10 @@ func faultViewWithNames(c *gin.Context, f model.FaultRecord, names map[uint]stri
 		"owner_id": f.OwnerID, "repairer_id": f.RepairerID,
 		"confirmed_at": f.ConfirmedAt, "dispatched_at": f.DispatchedAt, "resolved_at": f.ResolvedAt,
 		"work_order_id": f.WorkOrderID, "created_at": f.CreatedAt, "updated_at": f.UpdatedAt,
+		// 识别研判可选字段（带缺省，前端无需改动）
+		"confidence": f.Confidence, "recognition_source": f.RecognitionSource,
+		"recognition_status": f.RecognitionStatus, "is_false_positive": f.IsFalsePositive,
+		"evidence_count": f.EvidenceCount, "last_evaluation_id": f.LastEvaluationID,
 	}
 	if f.OwnerID != nil {
 		if name, ok := names[*f.OwnerID]; ok && name != "" {
@@ -214,6 +228,10 @@ func faultView(c *gin.Context, f model.FaultRecord) gin.H {
 		"owner_id": f.OwnerID, "repairer_id": f.RepairerID,
 		"confirmed_at": f.ConfirmedAt, "dispatched_at": f.DispatchedAt, "resolved_at": f.ResolvedAt,
 		"work_order_id": f.WorkOrderID, "created_at": f.CreatedAt, "updated_at": f.UpdatedAt,
+		// 识别研判可选字段（带缺省，前端无需改动）
+		"confidence": f.Confidence, "recognition_source": f.RecognitionSource,
+		"recognition_status": f.RecognitionStatus, "is_false_positive": f.IsFalsePositive,
+		"evidence_count": f.EvidenceCount, "last_evaluation_id": f.LastEvaluationID,
 	}
 	if f.OwnerID != nil {
 		var u model.User

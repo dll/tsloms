@@ -15,75 +15,36 @@
         text-color="rgba(255, 255, 255, 0.65)"
         active-text-color="#fff"
       >
-        <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
-          <template #title>仪表盘</template>
-        </el-menu-item>
-        <el-menu-item index="/device">
-          <el-icon><Cpu /></el-icon>
-          <template #title>设备管理</template>
-        </el-menu-item>
-        <el-menu-item index="/intersection">
-          <el-icon><Location /></el-icon>
-          <template #title>路口管理</template>
-        </el-menu-item>
-        <el-menu-item index="/map">
-          <el-icon><MapLocation /></el-icon>
-          <template #title>地图大屏</template>
-        </el-menu-item>
-        <el-menu-item index="/video">
-          <el-icon><VideoCamera /></el-icon>
-          <template #title>视频监控</template>
-        </el-menu-item>
-        <el-menu-item index="/monitor">
-          <el-icon><Monitor /></el-icon>
-          <template #title>监控大屏</template>
-        </el-menu-item>
-        <el-menu-item index="/feedback">
-          <el-icon><ChatDotRound /></el-icon>
-          <template #title>问题反馈</template>
-        </el-menu-item>
-        <el-menu-item index="/fault">
-          <el-icon><Warning /></el-icon>
-          <template #title>故障管理</template>
-        </el-menu-item>
-        <el-menu-item index="/workorder">
-          <el-icon><Tickets /></el-icon>
-          <template #title>工单管理</template>
-        </el-menu-item>
-        <el-sub-menu v-if="authStore.hasPerm('ai:ops') || authStore.hasPerm('ai:config')" index="/ai">
-          <template #title>
-            <el-icon><TrendCharts /></el-icon>
-            <span>AI 分析</span>
-          </template>
-          <el-menu-item index="/ai/predict">故障预测</el-menu-item>
-          <el-menu-item index="/ai/workbench">AI 工作台</el-menu-item>
-          <el-menu-item index="/ai/diagnose">AI 诊断</el-menu-item>
-          <el-menu-item index="/ai/lifecycle">生命周期</el-menu-item>
-          <el-menu-item v-if="authStore.hasPerm('ai:config')" index="/ai/config">额度设置</el-menu-item>
-        </el-sub-menu>
-        <el-menu-item index="/firmware">
-          <el-icon><Upload /></el-icon>
-          <template #title>固件管理</template>
-        </el-menu-item>
-        <el-sub-menu index="/inventory">
-          <template #title>
-            <el-icon><Box /></el-icon>
-            <span>库存与成本</span>
-          </template>
-          <el-menu-item index="/inventory/material">物料库存</el-menu-item>
-          <el-menu-item index="/inventory/purchase">采购管理</el-menu-item>
-          <el-menu-item index="/inventory/expense">维修费用</el-menu-item>
-          <el-menu-item index="/inventory/supplier">供应商</el-menu-item>
-        </el-sub-menu>
-        <el-menu-item index="/log">
-          <el-icon><Document /></el-icon>
-          <template #title>系统日志</template>
-        </el-menu-item>
-        <el-menu-item v-if="authStore.hasPerm('user:manage') || authStore.hasPerm('dept:manage') || authStore.hasPerm('role:manage')" index="/settings">
-          <el-icon><Setting /></el-icon>
-          <template #title>系统设置</template>
-        </el-menu-item>
+        <!-- 按已启模块动态渲染：核心恒启 + 甲方购买的可选模块；带 group 的合并为子菜单 -->
+        <template v-for="node in menuTree" :key="node.type === 'submenu' ? node.group : node.module!.key">
+          <!-- 分组子菜单（如库存与成本） -->
+          <el-sub-menu v-if="node.type === 'submenu'" :index="node.group!">
+            <template #title>
+              <el-icon><Box /></el-icon>
+              <span>{{ node.group }}</span>
+            </template>
+            <template v-for="m in node.items!" :key="m.key">
+              <el-menu-item v-for="r in m.routes" :key="r.path" :index="r.path">
+                {{ r.title }}
+              </el-menu-item>
+            </template>
+          </el-sub-menu>
+          <!-- 多路由子模块（如 AI 分析 / 视频监控） -->
+          <el-sub-menu v-else-if="node.module!.routes.length > 1" :index="node.module!.path">
+            <template #title>
+              <el-icon><component :is="node.module!.icon" /></el-icon>
+              <span>{{ node.module!.title }}</span>
+            </template>
+            <el-menu-item v-for="r in node.module!.routes" :key="r.path" :index="r.path">
+              {{ r.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <!-- 单路由直链模块 -->
+          <el-menu-item v-else :index="node.module!.path">
+            <el-icon><component :is="node.module!.icon" /></el-icon>
+            <template #title>{{ node.module!.title }}</template>
+          </el-menu-item>
+        </template>
       </el-menu>
 
       <!-- 侧边栏收起/展开按钮：垂直右边中间，红黄绿信号灯图标 -->
@@ -105,14 +66,14 @@
           <span class="system-title">TSLOMS 交通信号灯运维系统</span>
         </div>
         <div class="header-right">
-          <!-- 顶部 AI 助手：自然语言查询/操作（L5） -->
-          <el-tooltip content="AI 助手（自然语言查询/报修）" placement="bottom">
+          <!-- 顶部 AI 助手：自然语言查询/操作（L5，AI 模块启用时显示） -->
+          <el-tooltip v-if="authStore.hasModule('ai')" content="AI 助手（自然语言查询/报修）" placement="bottom">
             <div class="ai-assist-entry" @click="assistantVisible = true">
               <el-icon :size="20"><MagicStick /></el-icon>
             </div>
           </el-tooltip>
-          <!-- 通知铃铛：AI 主动巡检推送 -->
-          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge">
+          <!-- 通知铃铛：AI 主动巡检推送（notification 模块启用时显示） -->
+          <el-badge v-if="authStore.hasModule('notification')" :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notify-badge">
             <el-popover placement="bottom-end" :width="380" trigger="click" @show="openNotify">
               <template #reference>
                 <div class="notify-bell">
@@ -172,6 +133,8 @@ import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { getNotifications, getUnreadCount, readNotification, readAllNotifications, type NotificationItem } from '@/api/notification'
 import AiAssistant from '@/components/AiAssistant.vue'
+import { buildMenuTree, type MenuItemNode } from '@/modules'
+import { registerModuleRoutes } from '@/router'
 
 const route = useRoute()
 const router = useRouter()
@@ -233,6 +196,11 @@ const isCollapse = ref(true)
 // 当前激活的菜单项
 const activeMenu = computed(() => route.path)
 
+// 按已启模块 + 权限点构建菜单树（核心恒启 + 已购可选；带 group 合并为子菜单）
+const menuTree = computed<MenuItemNode[]>(() =>
+  buildMenuTree(authStore.enabledModules, (p) => authStore.hasPerm(p)),
+)
+
 // 下拉菜单命令处理
 async function handleCommand(command: string) {
   if (command === 'logout') {
@@ -252,7 +220,7 @@ async function handleCommand(command: string) {
   }
 }
 
-// 页面加载时获取用户信息
+// 页面加载：拉取用户信息 / 权限 / 已启模块，并动态注册路由
 onMounted(async () => {
   if (authStore.token && !authStore.user) {
     try {
@@ -263,9 +231,14 @@ onMounted(async () => {
   }
   // 拉取当前用户功能权限（供菜单/按钮联动）
   await authStore.loadPermissions()
-  // 拉取未读通知数（AI 巡检推送），每 2 分钟刷新
-  refreshUnread()
-  setInterval(refreshUnread, 120000)
+  // 拉取已启模块（模块化/插件化），并动态注册路由
+  await authStore.loadModules()
+  registerModuleRoutes(authStore.enabledModules)
+  // 通知模块启用时拉取未读数（每 2 分钟刷新）
+  if (authStore.hasModule('notification')) {
+    refreshUnread()
+    setInterval(refreshUnread, 120000)
+  }
 })
 </script>
 
@@ -519,5 +492,4 @@ onMounted(async () => {
   color: #c0c4cc;
   margin-top: 4px;
 }
-
 </style>

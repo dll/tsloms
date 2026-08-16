@@ -67,6 +67,7 @@ func Login(c *gin.Context) {
 			"department_id": user.DepartmentID,
 			"status":        user.Status,
 		},
+		"enabled_modules": EnabledModuleList(),
 	})
 
 	// 记录登录操作日志
@@ -106,5 +107,6 @@ func GetUserInfo(c *gin.Context) {
 			"center_lat": user.CenterLat,
 			"center_lng": user.CenterLng,
 		},
+		"enabled_modules": EnabledModuleList(),
 	})
 }
