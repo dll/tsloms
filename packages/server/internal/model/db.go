@@ -319,14 +319,42 @@ func SeedAdmin(initPwd string) (string, error) {
 	return "", nil
 }
 
-// randomStrongPassword 生成包含大小写字母与数字的随机强密码
+// randomStrongPassword 生成包含大小写字母与数字的随机强密码（保证每类至少一个）
 func randomStrongPassword(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const lower = "abcdefghijklmnopqrstuvwxyz"
+	const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const digits = "0123456789"
+	const all = lower + upper + digits
+	if n < 3 {
+		n = 3
+	}
 	sb := make([]byte, n)
-	for i := range sb {
-		sb[i] = letters[rand.Intn(len(letters))]
+	// 重试直到三字符类（大写/小写/数字）至少各出现一次，杜绝偶发缺类
+	for {
+		for i := range sb {
+			sb[i] = all[rand.Intn(len(all))]
+		}
+		if hasClasses(sb, lower, upper, digits) {
+			break
+		}
 	}
 	return string(sb)
+}
+
+func hasClasses(p []byte, classes ...string) bool {
+	for _, cset := range classes {
+		ok := false
+		for _, b := range p {
+			if strings.ContainsRune(cset, rune(b)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // InitTestDB 创建内存 SQLite 数据库（仅供单元测试）

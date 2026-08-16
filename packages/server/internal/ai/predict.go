@@ -39,7 +39,7 @@ func BuildDeviceFacts(dev *model.Device) DeviceFacts {
 	// 电流统计：取该设备最近报文里的电流均值/最大
 	var pack model.PacketLog
 	model.DB.Where("device_hw_id = ? AND parsed_content LIKE ?", dev.HwID, "%current%").
-		Order("created_at DESC").Limit(50).Find(&pack)
+		Order("received_at DESC").Limit(50).Find(&pack)
 	// 简化：统计 fault_records 里的电流
 	if len(recent) > 0 {
 		var rSum, ySum, gSum uint64
@@ -68,7 +68,7 @@ func BuildDeviceFacts(dev *model.Device) DeviceFacts {
 	// 近30天离线次数（按报文间隔推算：最近30天报文数少则视为离线频繁）
 	var packetCount int64
 	model.DB.Model(&model.PacketLog{}).
-		Where("device_hw_id = ? AND created_at >= ?", dev.HwID, since30).Count(&packetCount)
+		Where("device_hw_id = ? AND received_at >= ?", dev.HwID, since30).Count(&packetCount)
 	// 粗略：30天应至少签到若干次，若几乎无报文且当前离线视为离线异常
 	if packetCount == 0 && !dev.OnlineStatus {
 		f.OfflineCount = 3

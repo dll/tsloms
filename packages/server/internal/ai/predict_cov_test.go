@@ -58,9 +58,9 @@ func TestBuildDeviceFacts_OnlineSomePackets(t *testing.T) {
 	if !f.Online {
 		t.Error("应在线")
 	}
-	// packet_logs 以 received_at 存储，BuildDeviceFacts 按 created_at 查询计数（历史遗留：列名不符→count=0→OfflineCount=5）
-	if f.OfflineCount <= 0 {
-		t.Errorf("OfflineCount 应>0, got %d", f.OfflineCount)
+	// 2 条报文(received_at) → 修复列名后 packetCount=2 → OfflineCount=(30-2)/6=4
+	if f.OfflineCount != 4 {
+		t.Errorf("OfflineCount 期望 4(2条报文), got %d", f.OfflineCount)
 	}
 	if !f.HasMediaAnomaly {
 		t.Error("应有未关闭反馈异常")
