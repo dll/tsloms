@@ -1,6 +1,25 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { MODULE_BY_KEY, CORE_MODULE_KEYS, type EnabledModules } from '@/modules'
 
+// 将「核心恒启」模块的子路由同步注册为 Layout 的 children。
+// 核心模块恒启，必须从一开始就存在，否则 catch-all /:pathMatch(.*)*
+// 的 redirect: '/dashboard' 会因 /dashboard 未注册而再次命中 catch-all，
+// 形成无限重定向 → pushWithRedirect 自递归 → Maximum call stack size exceeded。
+function buildCoreChildren(): RouteRecordRaw[] {
+  const children: RouteRecordRaw[] = []
+  for (const key of CORE_MODULE_KEYS) {
+    for (const r of MODULE_BY_KEY[key].routes) {
+      children.push({
+        path: r.path.replace(/^\//, ''),
+        name: r.name,
+        component: r.component,
+        meta: { title: r.title, module: key },
+      })
+    }
+  }
+  return children
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -15,9 +34,9 @@ const router = createRouter({
       component: () => import('@/views/layout/index.vue'),
       redirect: '/dashboard',
       meta: { requiresAuth: true },
-      children: [],
+      children: buildCoreChildren(),
     },
-    // 未知路由重定向到仪表盘
+    // 未知路由重定向到仪表盘（核心路由已同步注册，/dashboard 必然存在，可安全重定向）
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
   ],
 })
@@ -30,8 +49,9 @@ let registered = false
 
 /**
  * 根据已启模块动态注册子路由（模块化/插件化）
- *  - 核心模块恒启；可选模块仅当出现在 enabledKeys 中才注册
+ *  - 核心模块恒启（创建 router 时已同步注册）；可选模块仅当出现在 enabledKeys 中才注册
  *  - 未启用模块的路由不注册 → 无法直接访问（前端兜底，后端另有 RequireModule 拦截）
+ *  - 幂等：可安全重复调用（每次都会基于核心路由重建 children）
  */
 export function registerModuleRoutes(enabledKeys: EnabledModules) {
   const set = new Set(enabledKeys)
@@ -41,8 +61,8 @@ export function registerModuleRoutes(enabledKeys: EnabledModules) {
     if (MODULE_BY_KEY[k]) active.push(k)
   })
 
-  const layout = router.options.routes[layoutRouteIndex]
-  const children: RouteRecordRaw[] = []
+  // 始终以核心路由为基底，再叠加可选模块，避免丢掉同步注册的核心路由
+  const children = buildCoreChildren()
   for (const key of active) {
     for (const r of MODULE_BY_KEY[key].routes) {
       children.push({
@@ -53,6 +73,8 @@ export function registerModuleRoutes(enabledKeys: EnabledModules) {
       })
     }
   }
+
+  const layout = router.options.routes[layoutRouteIndex]
   ;(layout as { children: RouteRecordRaw[] }).children = children
   // 幂等替换：先移除旧的、再以同一 name 重新挂载，避免重复匹配
   if (router.hasRoute('Layout')) router.removeRoute('Layout')
