@@ -92,9 +92,9 @@ SAR v6.1 §四 4.1「覆盖率专项」列出的全部低覆盖区域，本轮�
 
 ## 六、遗留与后续（非本次门禁）
 
-- 覆盖率已达标，但建议接入 CI 门禁（`go test -coverprofile` 合并后 ≥80% 拦截）防回归。
-- 前端 Vitest / Node / 浏览器 E2E 在干净 CI 复现（v6.1 §六 第 3 条）。
-- 历史遗留的工程债（部署可重复性/迁移版本化/`packet_logs` 用 `created_at` 查询但列实为 `received_at` 的列名不符）按 `TSLOMS-RP-1.0.md` 阶段推进。
+- ✅ **覆盖率 CI 门禁已接入**（2026-08-16）：新增 `Makefile coverage-check`（`go test ./... -coverpkg=./... -coverprofile` 合并全包，低于阈值退出非零，实测 82.1%）+ `.github/workflows/ci.yml`（push/PR 命中 `packages/server/**` 时跑 gofmt/vet/build/test/覆盖率门禁，`workflow_dispatch` 可手动触发）。
+- 前端 Vitest / Node / 浏览器 E2E 在干净 CI 复现（v6.1 §六 第 3 条），可后续补入同一 workflow。
+- 历史遗留的工程债（部署可重复性/迁移版本化/`packet_logs` 列名——已于 2026-08-16 修复 `BuildDeviceFacts` 误用 `created_at`->`received_at`）按 `TSLOMS-RP-1.0.md` 阶段推进。
 
 ---
 

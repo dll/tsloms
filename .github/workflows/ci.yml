@@ -1,0 +1,52 @@
+name: CI - Go 质量门（含覆盖率门禁 ≥80%）
+
+on:
+  push:
+    paths:
+      - 'packages/server/**'
+  pull_request:
+    paths:
+      - 'packages/server/**'
+  workflow_dispatch:
+
+jobs:
+  quality-gate:
+    name: 覆盖率 ≥80% + gofmt/vet/build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/server/go.mod
+          cache: true
+
+      - name: 安装 Go 依赖（GOPROXY 国内镜像）
+        run: |
+          go env -w GOPROXY="https://goproxy.cn,direct"
+          go mod download
+
+      - name: gofmt 检查（应为 0 文件）
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未格式化:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt: 0 文件需格式化 ✅"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test 全量
+        run: go test ./... -count=1
+
+      - name: 覆盖率门禁（合并全包，低于 80% 失败）
+        run: make coverage-check COV_THRESHOLD=80
