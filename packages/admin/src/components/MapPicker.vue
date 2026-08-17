@@ -36,6 +36,8 @@ import { Search } from '@element-plus/icons-vue'
 import * as Cesium from 'cesium'
 import { getCrossings } from '@/api/warning'      // 复用 crossings 接口
 import { getAreasTree } from '@/api/warning'       // 复用 areas 接口
+import { getAllDevices } from '@/api/map'          // 复用设备（含路口名）
+import GaodeImageryProvider from '@/views/map/GaodeImagery.js'
 
 const props = defineProps<{ modelValue: boolean; title?: string; initialLat?: number | null; initialLng?: number | null }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'pick', lat: number, lng: number): void }>()
@@ -65,7 +67,8 @@ function initMap() {
 
   if (!viewer) {
     viewer = new Cesium.Viewer(el, {
-      imageryProvider: new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }),
+      // 默认高德路网瓦片（中国网络可用，与 CesiumMap 一致）；OSM 作备选
+      imageryProvider: new (GaodeImageryProvider as any)(),
       baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
       navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
       infoBox: false, selectionIndicator: false,
@@ -111,25 +114,35 @@ function applyCoord() {
   if (isFinite(lng) && isFinite(lat)) flyTo(lng, lat)
 }
 
-// 地名搜索：匹配 路口(crossings) 与 区划(areas) 名称/道路
+// 地名搜索：匹配 路口(crossings)、设备(路口名)、区划(areas/道路) 名称
 async function searchPlace() {
   searchResults.value = []
   const k = kw.value.trim().toLowerCase()
+  // 若输入的是坐标“经度,纬度”，直接定位
+  const coordMatch = kw.value.match(/^\s*(-?\d+(\.\d+)?)\s*[,，\s]+\s*(-?\d+(\.\d+)?)\s*$/)
+  if (coordMatch) {
+    const lng = parseFloat(coordMatch[1]), lat = parseFloat(coordMatch[3])
+    if (isFinite(lng) && isFinite(lat)) { flyTo(lng, lat); return }
+  }
   try {
-    const [cr, ar] = await Promise.all([getCrossings({ page_size: 200 }), getAreasTree()])
-    const flat = (list: any[], out: { id: number; name: string; lat: number; lng: number }[]) => {
-      if (!list) return out
-      for (const it of list) {
-        if (k === '' || String(it.name || '').toLowerCase().includes(k) || String(it.full_name || '').toLowerCase().includes(k)) {
-          if (it.lat != null && it.lng != null) out.push({ id: it.id, name: it.full_name || it.name, lat: Number(it.lat), lng: Number(it.lng) })
-        }
-        flat(it.children, out)
-      }
-      return out
+    const [cr, ar, dev] = await Promise.all([getCrossings({ page_size: 500 }), getAreasTree(), getAllDevices(1000)])
+    const out: { id: number; name: string; lat: number; lng: number }[] = []
+    const add = (name: string, lat: any, lng: any, id = out.length) => {
+      if (lat == null || lng == null) return
+      if (k !== '' && !String(name || '').toLowerCase().includes(k)) return
+      out.push({ id, name: String(name || ''), lat: Number(lat), lng: Number(lng) })
     }
-    const crossings = (cr.data?.list || []).map((c: any) => ({ id: c.id, name: c.name, lat: c.lat, lng: c.lng }))
-    const areas = flat((ar.data?.tree || ar.data?.list || []), [])
-    searchResults.value = [...crossings, ...areas].filter((x) => x.lat != null && x.lng != null).slice(0, 30)
+    // 设备（含路口名/坐标）
+    ;(dev.data?.list || []).forEach((d: any) => add(d.intersection || ('设备#' + d.hw_id), d.lat, d.lng))
+    // 路口
+    ;(cr.data?.list || []).forEach((c: any) => add(c.name, c.lat, c.lng))
+    // 区划（树）
+    const flat = (list: any[]) => {
+      if (!list) return
+      list.forEach((it: any) => { add(it.full_name || it.name, it.lat, it.lng); flat(it.children) })
+    }
+    flat(ar.data?.tree || ar.data?.list || [])
+    searchResults.value = out.slice(0, 40)
   } catch {
     searchResults.value = []
   }

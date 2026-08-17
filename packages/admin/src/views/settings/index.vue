@@ -29,7 +29,9 @@
           <template #header><span>地图中心点（地图大屏以当前用户为中心定位）</span></template>
           <el-form label-width="100px" style="max-width: 500px">
             <el-form-item label="经度">
-              <el-input v-model="centerForm.lng" placeholder="如 121.4737" />
+              <el-input v-model="centerForm.lng" placeholder="如 121.4737">
+                <template #append><el-button @click="openCenterPick">地图选点</el-button></template>
+              </el-input>
             </el-form-item>
             <el-form-item label="纬度">
               <el-input v-model="centerForm.lat" placeholder="如 31.2304" />
@@ -309,6 +311,15 @@
         <el-button type="warning" :loading="resetting" @click="doResetPwd">确认重置</el-button>
       </template>
     </el-dialog>
+
+    <!-- 地图选点（地图中心点） -->
+    <MapPicker
+      v-model="centerPick"
+      title="地图中心点"
+      :initial-lat="centerForm.lat ? Number(centerForm.lat) : null"
+      :initial-lng="centerForm.lng ? Number(centerForm.lng) : null"
+      @pick="onCenterPick"
+    />
   </div>
 </template>
 
@@ -316,6 +327,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
+import MapPicker from '@/components/MapPicker.vue'
 import { updateMyPhone } from '@/api/auth'
 import { getUsers, createUser, updateUser, resetUserPassword, deleteUser, type UserItem } from '@/api/user'
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment, type DepartmentItem } from '@/api/department'
@@ -355,6 +367,14 @@ async function handleSave() {
 
 // ---- 地图中心点（当前用户管辖区域） ----
 const centerForm = reactive({ lat: '', lng: '' })
+
+// 地图中心点 → 地图选点
+const centerPick = ref(false)
+function openCenterPick() { centerPick.value = true }
+function onCenterPick(lat: number, lng: number) {
+  centerForm.lat = String(lat)
+  centerForm.lng = String(lng)
+}
 const centerSaving = ref(false)
 const hasCenter = ref(false)
 async function loadCenter() {
