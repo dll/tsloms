@@ -131,11 +131,16 @@ func StartTrial(c *gin.Context) {
 		badRequest(c, "未知模块")
 		return
 	}
-	m := ls.GetModule(req.Module)
+	mm := ls.DecodeModules()
+	m := mm[req.Module]
+	if m == nil {
+		m = &model.ModuleLicenseState{}
+		mm[req.Module] = m
+	}
 	if m.ActivatedAt == nil {
 		m.ActivatedAt = &now
 	}
-	ls.EncodeModules(ls.DecodeModules())
+	ls.EncodeModules(mm)
 	if err := model.SaveLicenseState(model.DB, ls); err != nil {
 		serverError(c, err)
 		return
@@ -193,7 +198,12 @@ func UnlockLicense(c *gin.Context) {
 		badRequest(c, "未知模块")
 		return
 	}
-	m := ls.GetModule(req.Module)
+	mm := ls.DecodeModules()
+	m := mm[req.Module]
+	if m == nil {
+		m = &model.ModuleLicenseState{}
+		mm[req.Module] = m
+	}
 	if req.Code != "" {
 		valid, verr := license.VerifyUnlockCode(req.Code, req.Module, now)
 		if verr != nil || !valid {
@@ -209,7 +219,7 @@ func UnlockLicense(c *gin.Context) {
 		m.UnlockExpiry = nil
 	}
 	m.Unlocked = true
-	ls.EncodeModules(ls.DecodeModules())
+	ls.EncodeModules(mm)
 	if err := model.SaveLicenseState(model.DB, ls); err != nil {
 		serverError(c, err)
 		return
