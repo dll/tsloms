@@ -36,15 +36,29 @@ func TestEffectivePermissions(t *testing.T) {
 	DB.Create(&operator)
 	DB.Create(&viewer)
 
-	// admin 应拥有全部权限
+	// admin 应拥有全部权限【除 module:manage】（系统管理员降级：不能设模块）
 	ap, err := EffectivePermissions(admin.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range AllPermissions {
+		if p.Code == "module:manage" {
+			continue // 硬约束：仅超级管理员可持有
+		}
 		if !ap[p.Code] {
 			t.Fatalf("admin 缺少权限 %s", p.Code)
 		}
+	}
+	if ap["module:manage"] {
+		t.Fatal("admin 不应具备 module:manage（已降级）")
+	}
+
+	// 超级管理员应含 module:manage
+	sa := User{Username: "rbac_super", PasswordHash: "x", Role: RoleSuperAdmin}
+	DB.Create(&sa)
+	sp, _ := EffectivePermissions(sa.ID)
+	if !sp["module:manage"] {
+		t.Fatal("super_admin 应具备 module:manage")
 	}
 
 	// operator 应有业务写权限，无用户/角色管理，无 AI 配置

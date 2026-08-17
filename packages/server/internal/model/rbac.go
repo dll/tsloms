@@ -223,8 +223,13 @@ func EffectivePermissions(userID uint) (map[string]bool, error) {
 		return nil, err
 	}
 	switch user.Role {
-	case BuiltinRoleAdmin:
+	case BuiltinRoleSuperAdmin:
 		for _, c := range allPermCodes() {
+			set[c] = true
+		}
+	case BuiltinRoleAdmin:
+		// 系统管理员：全部权限，但【不含模块设置】（降级：只能维护系统运行）
+		for _, c := range withoutPerms(allPermCodes(), "module:manage") {
 			set[c] = true
 		}
 	default:
@@ -272,7 +277,18 @@ func EffectivePermissions(userID uint) (map[string]bool, error) {
 		}
 	}
 
+	// 3) 硬约束：模块设置(module:manage)仅超级管理员可拥有——
+	//    无论角色默认/显式授权/覆写，非 super_admin 一律剔除（保证系统管理员降级不可被绕过）
+	ensureModuleManageRestricted(user, set)
+
 	return set, nil
+}
+
+// ensureModuleManageRestricted 强制模块设置权仅限超级管理员：非 super_admin 用户即使被显式授权也不可持有 module:manage。
+func ensureModuleManageRestricted(user User, set map[string]bool) {
+	if user.Role != BuiltinRoleSuperAdmin {
+		delete(set, "module:manage")
+	}
 }
 
 // EffectivePermissionCodes 返回有效权限编码切片（排序稳定）
