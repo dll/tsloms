@@ -55,6 +55,7 @@ import {
   Van,
   TrendCharts,
   Aim,
+  Connection,
 } from '@element-plus/icons-vue'
 
 /**
@@ -72,6 +73,10 @@ const coreModules: ModuleDef[] = [
   {
     key: 'intersection', title: '路口管理', icon: Location, path: '/intersection', core: true,
     routes: [{ path: '/intersection', name: 'Intersection', component: () => import('@/views/intersection/index.vue'), title: '路口管理' }],
+  },
+  {
+    key: 'access', title: '检测器接入', icon: Connection, path: '/access', core: true,
+    routes: [{ path: '/access', name: 'Access', component: () => import('@/views/access/index.vue'), title: '检测器接入（真实硬件/CSV/Mock）' }],
   },
   {
     key: 'map', title: '地图大屏', icon: MapLocation, path: '/map', core: true,

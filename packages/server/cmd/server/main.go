@@ -70,14 +70,19 @@ func main() {
 
 	// 初始化 MQTT 客户端并连接 Broker
 	mqttClient = mqtt.NewMQTTClient()
+	// 注册全局 MQTT 客户端（供检测器接入状态上报使用）
+	handler.SetMQTTClient(mqttClient)
+	// 注册消息处理器（供 Mock 模拟/CSV 回放复用真实研判链路）
+	mqttHandlerGlobal := mqtt.NewHandler(mqttClient)
+	mqtt.RegisterActiveHandler(mqttHandlerGlobal)
+	mqtt.SetSimTopic(cfg.MQTTTopicPrefix, "0", "0")
 	if err := mqttClient.Connect(cfg.MQTTBroker, cfg.MQTTUsername, cfg.MQTTPassword, cfg.MQTTClientID); err != nil {
 		log.Printf("MQTT 连接失败（继续启动）: %v", err)
 	} else {
 		// 订阅设备上行 Topic：{topicPrefix}/+/+/+/U
 		// + 为 MQTT 单层通配符，匹配任意网络号/站点号/硬件ID
 		topic := cfg.MQTTTopicPrefix + "/+/+/+/U"
-		mqttHandler := mqtt.NewHandler(mqttClient)
-		if err := mqttClient.Subscribe(topic, mqttHandler.HandleMessage); err != nil {
+		if err := mqttClient.Subscribe(topic, mqttHandlerGlobal.HandleMessage); err != nil {
 			log.Printf("MQTT 订阅失败: %v", err)
 		}
 	}
@@ -217,6 +222,10 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/map/road-data", handler.GetRoadMapData)
 			// 高德 POI 地名搜索代理（走服务器端 AMAP_WEB_KEY；未配置时前端降级本地搜索）
 			auth.GET("/proxy/amap/place", handler.AmapPlaceSearch)
+			// 检测器接入（真实硬件 / CSV 导入 / Mock 模拟）：状态 + Mock 发送 + CSV 回放
+			auth.GET("/access/status", handler.DetectorAccessStatus)
+			auth.POST("/access/mock/send", handler.MockSend)
+			auth.POST("/access/csv/import", handler.CSVImport)
 
 			// ---- P1 自动巡检（独立命名空间 /patrol/*） ----
 			auth.GET("/patrol/tasks", handler.ListPatrolTasks)
