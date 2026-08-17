@@ -89,6 +89,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&WarningRule{},
 		&Area{},
 		&Crossing{},
+		// ---- 第二轮新需求（P1）新增表：自动巡检 ----
+		&PatrolTask{},
+		&PatrolRecord{},
 	); err != nil {
 		return err
 	}

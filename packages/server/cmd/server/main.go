@@ -210,6 +210,17 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/map/crossing-data", handler.GetCrossingMapData)
 			auth.GET("/map/road-data", handler.GetRoadMapData)
 
+			// ---- P1 自动巡检（独立命名空间 /patrol/*） ----
+			auth.GET("/patrol/tasks", handler.ListPatrolTasks)
+			auth.POST("/patrol/tasks", middleware.RequirePerm("patrol:manage"), handler.CreatePatrolTask)
+			auth.GET("/patrol/tasks/:id", handler.GetPatrolTask)
+			auth.PUT("/patrol/tasks/:id", middleware.RequirePerm("patrol:manage"), handler.UpdatePatrolTask)
+			auth.DELETE("/patrol/tasks/:id", middleware.RequirePerm("patrol:manage"), handler.DeletePatrolTask)
+			auth.POST("/patrol/tasks/:id/run", middleware.RequirePerm("patrol:run"), handler.RunPatrolTask)
+			auth.GET("/patrol/records", handler.ListPatrolRecords)
+			auth.GET("/patrol/ranking", handler.GetPatrolRanking)
+			auth.POST("/patrol/selfcheck", middleware.RequirePerm("patrol:selfcheck"), handler.PostPatrolSelfCheck)
+
 			// ---- P0-3 预警管理（新增独立命名空间） ----
 			auth.GET("/warnings", handler.ListWarnings)
 			auth.GET("/warnings/export", middleware.RequirePerm("warning:manage"), handler.ExportWarnings)

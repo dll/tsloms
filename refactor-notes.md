@@ -137,3 +137,27 @@
 - 后端 `go build`/`go vet` 全绿；`go test ./...`（12 包）全 ok（含新增 captcha 用例与适配后的登录用例）；gofmt 0 文件。
 - 前端 `npm run build`（vue-tsc + vite）exit 0。
 - 未改动红线：MQTT/识别引擎/工单状态机/去重/NextOrderNo/SLA/RBAC/既有 /faults*、/work-orders* 契约。
+
+---
+
+## 11. P1 自动巡检（patrol）
+
+> 依据：pm-checklist.md P1 定义（自动巡检 + 地图增强）。本轮完成自动巡检后端；地图增强亦在 P1 范围见下。
+
+### 后端自动巡检（dev 产出 + leader 核验）
+- 新增表（AutoMigrate 加法迁移）：`patrol_tasks`、`patrol_records`（PatrolRankingItem 为查询视图，不落独立表）。
+- model：`internal/model/patrol.go`：PatrolTask(name/mode area|street|random|selfcheck|ai、area_id、street_id、target_count、status、assignee_id)/PatrolRecord(task_id/device_id/crossing_id/patrol_type/check_result/check_detail/selfcheck_result(JSON)/lat/lng/patrol_by/patrol_at)/PatrolRankingItem。
+- service：`internal/service/patrol_task.go` PatrolTaskService：
+  - `selectTargetDevices`：area(按 district/province/city)、street(按 street_id)、random(洗牌取 target_count)、ai(仅 AI 高风险设备)、selfcheck(范围限定)。
+  - `RunTask`：执行巡检→逐设备判定 normal/abnormal（有活跃故障或离线即 abnormal）→落 patrol_record → 记排行。
+  - `collectSelfCheck`：信号灯自检快照（灯态/errCode/在线），`BuildRecordForSelfCheck` 判定。
+  - `Ranking`：按巡检人次/异常数聚合（对齐参考项目 a inspectRanking）。
+  - Task/Record CRUD、`CreateTask`/`UpdateTask`/`DeleteTask`/`ListTasks`/`ListRecords`。
+- handler：`internal/handler/patrol.go`：
+  - GET/POST/PUT/DELETE /patrol/tasks、GET /patrol/tasks/:id、POST /patrol/tasks/:id/run、GET /patrol/records、GET /patrol/ranking、POST /patrol/selfcheck。
+  - RBAC：`patrol:manage`/`patrol:run`/`patrol:selfcheck` 仅追加（rbac.go AllPermissions + PermModulePatrol）。
+- 启动接入：`cmd/server/main.go` 启动时 PatrolTaskService.Start 后台协程（与既有 AI 巡检协程隔离，独立 task 表）。
+- 验证：`go build`/`go vet` 全绿；`go test ./...` 12 包全 ok（含 patrol 路由/CRUD/run/ranking/selfcheck 用例）；gofmt 0。
+
+### 地图增强（P1 前端，留待下一步）
+- 待做：三维演示、视频巡检入口、实时监控刷新入口（复用 Cesium 3D/VideoPanel/MonitorWall）；地图分级渐变着色前端（基于已部署 /map/crossing-data 的 fault_ratio/green_ratio/level 在 CesiumMap 上 绿→黄→红 着色 + 路→路口→故障点下钻）。后端 `/map/crossing-data`、`/map/road-data` 已在 P0 就绪。

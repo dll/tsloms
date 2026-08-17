@@ -92,6 +92,8 @@ const (
 	PermModuleWarning  = "warning"
 	PermModuleCrossing = "crossing"
 	PermModuleArea     = "area"
+	// P1 自动巡检新权限模块（只增不删既有权限码）
+	PermModulePatrol = "patrol"
 )
 
 // AllPermissions 全量功能权限点字典（种子数据）
@@ -148,6 +150,10 @@ var AllPermissions = []Permission{
 	// ---- P0-4 路口/区划 ----
 	{Code: "crossing:manage", Name: "路口-新建/编辑/删除", Module: PermModuleCrossing, Sort: 31},
 	{Code: "area:manage", Name: "区划-配置", Module: PermModuleArea, Sort: 32},
+	// ---- P1 自动巡检 ----
+	{Code: "patrol:manage", Name: "巡检-任务/记录管理", Module: PermModulePatrol, Sort: 33},
+	{Code: "patrol:run", Name: "巡检-执行/自检", Module: PermModulePatrol, Sort: 34},
+	{Code: "patrol:selfcheck", Name: "巡检-信号灯自检", Module: PermModulePatrol, Sort: 35},
 }
 
 // 内置角色的默认权限集合（按权限编码）
@@ -161,6 +167,7 @@ var BuiltinRolePerms = map[string][]string{
 		"fault:update", "fault:dispatch", "fault:review",
 		"workorder:create", "workorder:update", "workorder:assign",
 		"warning:manage", "warning:rule", "crossing:manage",
+		"patrol:manage", "patrol:run", "patrol:selfcheck",
 		"media:upload",
 		"firmware:manage",
 		"inventory:manage",
