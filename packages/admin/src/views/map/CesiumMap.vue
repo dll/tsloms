@@ -36,6 +36,7 @@
       <div class="tb-actions">
         <el-button size="small" @click="togglePanel">{{ panelOpen ? '收起设备' : '设备列表' }}</el-button>
         <el-button size="small" @click="flyToAll">全览</el-button>
+        <el-button size="small" :type="realtime ? 'danger' : 'default'" @click="toggleRealtime">实时</el-button>
       </div>
     </div>
 
@@ -228,11 +229,20 @@ function initCesium() {
   switchBaseLayer()
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(104.0, 30.0, 3000000) })
   applySceneMode()
-  // 点击设备点位
+  // 点击设备点位 / 路口(分级)点位
   const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
   handler.setInputAction((evt: any) => {
     const picked = viewer?.scene.pick(evt.position)
-    if (picked && picked.id && (picked.id as any).id && String((picked.id as any).id).startsWith('dev-')) {
+    if (!picked || !(picked.id as any)?.id) return
+    const id = String((picked.id as any).id)
+    // 路口(分级)点位 → 下钻聚焦该路口并高亮其设备
+    if (id.startsWith('cross-grad-')) {
+      const data = (picked.id as any).properties?.data?.getValue()
+      if (data) drillCrossing(data)
+      return
+    }
+    // 设备点位
+    if (id.startsWith('dev-')) {
       const props = (picked.id as any).properties
       const hw = props && props.hw_id !== undefined ? props.hw_id.getValue() : undefined
       const dev = devices.value.find((d) => d.hw_id === hw)
@@ -363,6 +373,46 @@ function openInfo(d: any) {
   focusDevice(d)
 }
 function closeInfo() { selDev.value = null }
+
+// 路口下钻：聚焦该路口，并突出显示其关联设备（按 intersection 名称匹配；无则按聚合设备定位）
+function drillCrossing(x: any) {
+  if (!viewer || x.lat == null || x.lng == null) return
+  // 按路口名匹配设备
+  const match = devices.value.filter((d) => d.intersection && String(d.intersection) === String(x.name))
+  if (match.length > 0) {
+    // 聚焦到这些设备的聚合范围
+    const m = match.filter((d) => d.lat != null && d.lng != null)
+    if (m.length > 0 && viewer) {
+      const rect = Cesium.Rectangle.fromCartesianArray(m.map((d) => Cesium.Cartesian3.fromDegrees(d.lng, d.lat)))
+      viewer.camera.flyTo({ destination: rect, duration: 0.9 })
+    }
+    ElMessage.success(`路口「${x.name}」共 ${match.length} 台设备（${match.filter((d) => d.online_status).length} 在线）`)
+    return
+  }
+  // 无命名匹配：直接飞至路口中心并缩放到路口级（1500m）
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(x.lng, x.lat, 1500),
+    orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
+    duration: 0.9,
+  })
+  ElMessage.info(`路口「${x.name}」故障比例 ${Math.round((x.fault_ratio || 0) * 100)}%（下钻到最近型号灯）`)
+}
+
+// 实时监控：定时刷新设备/故障/路口分级着色
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+const refreshInterval = ref(30) // 秒
+const realtime = ref(false)
+
+function toggleRealtime() {
+  realtime.value = !realtime.value
+  if (realtime.value) {
+    refreshTimer = setInterval(() => { load() }, refreshInterval.value * 1000)
+    ElMessage.success(`实时监控已开启（每 ${refreshInterval.value}s 刷新）`)
+  } else {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+    ElMessage.info('实时监控已关闭')
+  }
+}
 
 function focusDevice(d: any) {
   if (!viewer || d.lat == null || d.lng == null) return
@@ -581,6 +631,7 @@ onMounted(async () => {
   setTimeout(resizeHandler, 800)
 })
 onUnmounted(() => {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
   window.removeEventListener('resize', resizeHandler)
   window.removeEventListener('keydown', onKeydown)
   bus.off('map:focus', handleMapFocus)
