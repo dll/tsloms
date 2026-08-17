@@ -54,7 +54,8 @@
 
     <el-tabs v-model="tab" type="border-card">
       <!-- Tab 1: 真实硬件接入 -->
-      <el-tab-pane label="一、真实硬件接入" name="real">
+      <el-tab-pane name="real">
+        <template #label><span class="tab-label"><el-icon><Connection /></el-icon>真实硬件接入</span></template>
         <el-alert type="info" :closable="false" title="设备端按协议上报到 MQTT Broker，后台自动订阅并识别设备" style="margin-bottom:12px" />
         <el-descriptions :column="2" border>
           <el-descriptions-item label="接入方式">MQTT Broker（真实检测器）</el-descriptions-item>
@@ -78,7 +79,8 @@
       </el-tab-pane>
 
       <!-- Tab 2: CSV 数据导入 -->
-      <el-tab-pane label="二、CSV 数据导入" name="csv">
+      <el-tab-pane name="csv">
+        <template #label><span class="tab-label"><el-icon><Upload /></el-icon>CSV 数据导入</span></template>
         <div class="block-title">按 CSV 批量回放（每行构造一条协议帧，走真实研判链路）</div>
         <el-input
           v-model="csvText"
@@ -101,7 +103,8 @@
       </el-tab-pane>
 
       <!-- Tab 3: Mock 数据模拟 -->
-      <el-tab-pane label="三、Mock 数据模拟" name="mock">
+      <el-tab-pane name="mock">
+        <template #label><span class="tab-label"><el-icon><Aim /></el-icon>Mock 数据模拟</span></template>
         <div class="block-title">构造一条合法协议帧并投递（无需硬件 / 无需 Broker 在线）</div>
         <el-form :inline="true" :model="mock" label-width="90px">
           <el-form-item label="硬件ID" required>
@@ -235,11 +238,12 @@ onMounted(() => { loadStatus(); loadDevice() })
 .ov-item.ok .ov-icon { color: #67C23A; }
 .ov-item.warn .ov-icon { color: #E6A23C; }
 .ov-icon { font-size: 18px; color: #409EFF; }
-.ov-label { margin: 0; font-size: 12px; color: #909399; }
-.ov-val { margin: 2px 0 0; font-size: 18px; font-weight: 600; color: #303133; }
-.ov-val.small { font-size: 14px; }
-.ov-sub { margin: 2px 0 0; font-size: 12px; color: #909399; line-height: 1.4; }
-.block-title { margin: 12px 0 8px; font-weight: 600; }
+.ov-label { margin: 0; font-size: 13px; color: #909399; }
+.ov-val { margin: 2px 0 0; font-size: 16px; color: #303133; }
+.ov-val.small { font-size: 13px; }
+.ov-sub { margin: 2px 0 0; font-size: 13px; color: #909399; line-height: 1.4; }
+.block-title { margin: 12px 0 8px; color: #303133; }
 .csv-msg { margin-left: 8px; }
 .mock-result { margin-bottom: 12px; }
+.tab-label { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
 </style>
