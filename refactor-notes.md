@@ -1,188 +1,139 @@
-# TSLOMS 智能多源故障识别研判引擎 —— 功能工程改动记录（refactor-notes）
+# 重构改动记录（refactor-notes.md）
 
-> **产出专员**：dev-refactor-tsloms（重构开发专员）
-> **日期**：2026-08-17 ｜ **性质**：功能性新工程（流水线步骤 2）
-> **范围** = **A（仅后端 `packages/server`）**；`packages/admin` 前端**未改动**。
-> **依据**：repo 根目录 `pm-checklist.md`（范围=A：智能多源故障识别研判引擎，S1-S10/P1-P3/R1-R10）。
-> 目标：把故障识别从"固件单一 `errCode` 1:1 直判"升级为"多源融合智能研判引擎"（准确率 ≥ 99.9999% 最终逼近 100%，态势可溯源、可审计、案例库兜底长尾）。
->
-> 说明：本记录覆盖旧版 refactor-notes.md，以**范围=A 后端实现**为权威口径，逐项对齐 pm-checklist 的 S 编号与红线 R1-R10，并给出 build/vet/test 实测结果。
+- **日期**：2026-08-17
+- **范围**：A（后端 `packages/server`，前端零改动）
+- **职责**：重构开发专员 dev-refactor-tsloms
+- **依据**：`pm-checklist.md`（红线 R1–R10，条目 S1–S10）
+- **目标**：实现「智能多源故障识别研判引擎」，全程向后兼容、不改变既有业务判定语义。
 
 ---
 
-## 0. 一句话交付
+## 一、改动总览
 
-后端"智能多源故障识别研判引擎"已落地并通过全绿验证（`go build ./...` exit 0、`go vet ./internal/...` exit 0、`go test ./...` 12 包全 ok）。识别链路从"设备固件单点直判"升级为三层研判：**确定性规则引擎（主通道）→ 多源交叉验证置信度 → 案例库模型兜底长尾训练**。既有 `/faults*`、`/work-orders*` 契约与 MQTT 二进制协议、状态机/去重/SLA/自动工单等红线语义全部保持。
+新增 1 个规则基座包、1 个研判引擎包、1 个案例库包；扩展故障模型；改造 MQTT 故障落库通道（新增研判分流）；新增 8 组 REST 接口与 3 个权限码；仅新增不影响既有契约。
 
----
-
-## 1. 本功能工程逐项改动（对应 pm-checklist 的 S 编号）
-
-### S1 —— 多源证据统一模型 & 落库 ✅
-- **新增表 `fault_evidence`**（`internal/model/fault_evidence.go`）：承接固件 `errCode` 事件、电流/灯态、群众反映、手机举证、视频监控等**多源证据记录**。
-- 字段：`fault_id`（被过滤证据可为空）、`evaluation_id`（研判批次号）、`device_hw_id`、`source_type`、`err_code`、`led_state`、`current_r/y/g`、`raw_data`、`ref_media_id`、`ref_feedback_id`、`captured_at`、`confidence`。
-- **重要语义**：被"误报过滤"（未落故障）的证据**同样落库**，经 `evaluation_id` 关联研判批次，保证 100% 可溯源（pm-checklist 3.1：每起发起研判均有证据记录）。
-- 证据来源枚举：`firmware / current / led_state / citizen / photo_evidence / video_monitor`。
-- 已加入 `model/migrate.go` 的 `AutoMigrate` 列表（见 §2.1）。
-
-### S2 —— 证据归一化与汇聚 ✅
-- `internal/recognition/engine.go` 定义统一中间态 `RuleEvidence`：把不同源头（固件事件、电流、灯态、反馈、媒体）归一成同一证据结构。
-- `internal/mqtt/handler.go` 的 `injectAuxEvidence`：检索该设备近 24h 已落库的 `Feedback`（群众反映）与 `DeviceMedia`（举证/监控）→ 汇入归一化佐证信号作为多源交叉验证输入；无记录不注入，不阻塞规则主通道。
-- `BuildSignature`：生成证据特征指纹（主信号 `errCode`+电流+灯态+辅助来源有序串），供案例库检索/去重（S8 复用）。
-
-### S3 —— 确定性规则研判引擎（主通道）✅
-- **新增包 `internal/faultcode`**：错误码常量 + 分类规则基座。
-- **内聚复用既有语义（R9）**：`FaultTypeFromErrCode` / `FaultLevelFromErrCode` 从 mqtt 抽出集中为规则基座，语义与既有**完全一致**（`lamp_off / abnormal_on / timeout / dim / power_loss / unknown`；`critical/major/minor` 等级），未改变任何故障类型/等级业务含义 —— 仅作规则基座内聚，避免 recognition 与 mqtt 循环依赖。
-- **`internal/recognition/engine.go`**：规则基座之上扩展"基础置信度"（`errCodeBaseConf`：-1~-14 各错误码 0.92~0.98；未知错误码降 0.4 存疑）。
-
-### S4 —— 多源交叉验证 & 误报过滤 ✅
-- `crossValidate`：辅助证据按类型加权印证/否证：
-  - 群众/举证/监控 → 每人/每媒体一次印证加成（封顶）；
-  - 电流证据 → 与故障类型交叉校验（`currentCorroborates`/`currentRefutes`），关联灯色电流矛盾 → 降级；印证 → 微增；
-  - 灯态证据 → 与 `errCode` 指示的故障灯色相互印证（`ledCorroborates`）。
-- **安全关键约束**：误报过滤绝不丢弃真故障 —— 只有"明确否证"才过滤；证据冲突/孤证一律降级为 `pending_review`（可被证据补充后升级确认），宁多等证据不漏真故障。
-- **M2 缺陷修复**：单通道电流矛盾（非仅双/多通道）亦被识别 → 正确进入 `pending_review` 待复核分流（此前单通道矛盾被遗漏）。
-
-### S5 —— 置信度计算与判定分层 ✅
-- 输出融合置信度 `conf`（0-1，3 位小数）。
-- **第 3 层判定分流**（阈值可读、可单测）：
-  - `conf ≥ 0.90` → `confirmed`（高置信直判，critical 自动派单）；
-  - `conf < 0.50` → `filtered`（明确否证 → 误报过滤，仅记证据与案例，不产生故障/工单）；
-  - 其余 → `pending_review`（待确认，**不自动派单**，可证据补充升级）。
-
-### S6 —— 故障落库/去重/自动工单改造 ✅
-- `internal/mqtt/handler.go` 的 `processFault` 接入研判引擎：
-  - **保留 30min 去重窗口（R3）**：同设备同 `errCode` 30 分钟内只维护一条活跃故障，仅更新 `last_seen`（电流/灯态有变化才附带更新）；超窗旧故障置 `resolved` 并新建。
-  - **保留 critical 自动工单（R6）**：仅当研判为 `confirmed` 时才自动派单；`pending_review` 不派单。
-  - **保留故障状态机（R2）**：`occurred → confirmed → dispatched → resolved` 四态不回归。
-  - `filtered` 不产生故障/工单，仅记证据（S1）与案例（S7）。
-- **M2 自动升级**：去重窗口内若 existing 为 `pending_review` 且未派单、本次研判达 `confirmed`，则升级为确认；critical 则经原子防重派单（不重复建单）。
-- **M1 并发防重建单**：`model.EnsureActiveWorkOrder` 原子式创建/复用一条活跃工单，配合 `work_orders` 活跃工单唯一索引（`fault_active_scope`，pending/processing 时=fault_id），并发入口也只建成一条。
-
-### S7 —— 识别案例库 `fault_case`（数据模型 + 基础读写）✅
-- **新增表 `fault_case`**（`internal/model/fault_case.go`）：`fault_type / fault_level / device_hw_id / input_signature / evidence_summary / expected_result / judged_result / judge_confidence / is_correct / source_evaluation_id / status`（seed/confirmed/training/test）。
-- **`internal/caselib`**：`CaseRecorder` 提供 `SeedRecord`（研判自动沉淀样本）、`Train`（训练骨架）、`Stats`（识别统计）。
-- `processFault` 每次研判后 `persistCase` 自动沉淀样本（含被过滤样本，回标 expected=normal 视判定正确）。
-
-### S8 —— 案例库模型训练/召回框架（服务端）✅
-- `SeedRecord`：研判自动沉淀 + 人工回标样本。
-- `Train`：批式训练骨架（可解释检索引擎，**不引入不可控黑盒**——安全关键场景需人工/规则可审计）；向 100% 识别率收敛。
-- `Stats`：总案例、识别准确率、误报/漏报、误报率/漏报率、已确认/种子样本。
-- 检索按 `BuildSignature` 指纹（S2 复用）。
-- 训练触发：REST `POST /fault-cases/train`（手动触发；定时/事件自动训练为后续项，见 §5）。
-
-### S9 —— 面向外部数据源的预留接口 ✅
-- `POST /evidence/ingest`：预留群众反映/手机举证/视频监控的统一证据写入（归一化落 `fault_evidence`，source_type 白名单校验，可带 fault_id 关联）。
-- `GET /evidence/sources`：多源证据类型枚举。
-- 真实视频分析 / AI 视觉故障识别 / RTSP 分析**未实现**（P1/P2 预留，仅记录供人工查看）——见 §2.2 P1/P2/P3。
-
-### S10 —— 新增后端接口 + 既有接口向后兼容 ✅
-- 新增接口全部走**独立路径**，不与既有 `/faults`、`/work-orders` 冲突（见 §3 接口清单）。
-- `/faults*` 既有契约与返回结构不变，仅 `FaultRecord` 新增可空识别字段（置信度/研判状态/来源/证据数/末次批次/复核时间），`faultView` 序列化时附带（前端可选解析，向后兼容）。
-- 既有 `ListFaults` 新增可选 `recognition_status` 过滤参数（`active`=旧语义未解决三态；不带则行为完全不变）。
-
----
-
-## 2. 新增/变更文件、模型、表
-
-### 2.1 模型与表（AutoMigrate 列表内）
-| 表 | 文件 | 说明 |
+| 包/文件 | 类型 | 说明 |
 |---|---|---|
-| `fault_evidence`（新） | `internal/model/fault_evidence.go` | 多源证据明细（S1） |
-| `fault_case`（新） | `internal/model/fault_case.go` | 识别案例库（S7） |
-| `fault_records`（增列） | `internal/model/fault.go` | 仅加可空字段：`confidence / recognition_source / recognition_status / is_false_positive / evidence_count / last_evaluation_id / reviewed_at` |
-
-> 三者均已在 `internal/model/migrate.go` 的 `AutoMigrate(...)` 列表（`&FaultRecord{}`、`&FaultEvidence{}`、`&FaultCase{}`）注册，加法迁移，不删/不改既有列，兼容旧数据。
-
-### 2.2 新增包/组件
-| 包 | 文件 | 说明 |
-|---|---|---|
-| `internal/faultcode` | `faultcode.go` | 错误码常量 + `FaultTypeFromErrCode/FaultLevelFromErrCode` 规则基座（语义内聚复用） |
-| `internal/recognition` | `engine.go` | 研判引擎：`NewEvaluator/Validate/crossValidate/BuildSignature/EvidenceToModel` |
-| `internal/caselib` | `caselib.go` | 案例库 `CaseRecorder`：`SeedRecord/Train/Stats` |
-
-### 2.3 变更文件
-| 文件 | 改动 |
-|---|---|
-| `internal/mqtt/handler.go` | `processFault` 接入研判引擎（分流/证据/案例）；`createWorkOrder` 改 `EnsureActiveWorkOrder`；新增 `injectAuxEvidence/persistEvidence/persistCase` |
-| `internal/model/workorder.go` | 新增 `EnsureActiveWorkOrder`（原子防重）；`WorkOrder` 增 `FaultActiveScope` 列 |
-| `internal/model/migrate.go` | AutoMigrate 增 `FaultEvidence/FaultCase`；新增活跃工单唯一索引迁移 |
-| `internal/handler/recognition.go` | 研判/证据/案例/统计/复核接口（见 §3） |
-| `internal/handler/fault.go` | `ListFaults` 增可选 `recognition_status` 过滤 |
-| `cmd/server/main.go` | 注册新增路由（含 RBAC 中间件） |
+| `internal/faultcode/faultcode.go` | 新增 | 错误码常量 + 故障类型/等级分类规则基座（从 mqtt 抽出） |
+| `internal/recognition/engine.go` | 新增 | 多源研判引擎（规则基座→交叉验证→置信度→三层分流） |
+| `internal/caselib/caselib.go` | 新增 | 案例库（沉淀/去重/训练骨架/识别统计/规则打分） |
+| `internal/model/fault.go` | 修改 | `FaultRecord` 增加研判可选字段；新增识别常量与 `FaultRecognition` |
+| `internal/model/fault_evidence.go` | 新增 | 多源证据表 `fault_evidence` |
+| `internal/model/fault_case.go` | 新增 | 案例库表 `fault_case` |
+| `internal/model/migrate.go` | 修改 | AutoMigrate 注册两张新表 |
+| `internal/model/rbac.go` | 修改 | 新增 3 个权限码并纳入运维角色 |
+| `internal/mqtt/handler.go` | 修改 | `processFault` 接入研判引擎并按状态分流；新增注入/落库/案例辅助函数 |
+| `internal/mqtt/commands.go` | 修改 | 常量与分类函数转发到 `faultcode`（语义不变） |
+| `internal/handler/recognition.go` | 新增 | 研判/证据/案例/统计/复核 REST 处理器 |
+| `internal/handler/fault.go` | 修改 | `faultView*` 附带研判可选字段（缺省兼容） |
+| `cmd/server/main.go` | 修改 | 注册 8 组新路由（带权限保护） |
 
 ---
 
-## 3. 新增 REST 接口清单
+## 二、核心设计：研判引擎（S1–S4）
 
-| Method | 路径 | 说明 | RBAC |
+`recognition.NewEvaluator(hwID, errCode, ledState, curR/Y/G)` 构建一次研判上下文：
+
+1. **第 1 层 确定性规则基座**：复用既有 `faultcode.FaultTypeFromErrCode / FaultLevelFromErrCode`（R9 语义不变），`errCodeBaseConf` 给出每码基础置信度（0.92–0.98）。
+2. **第 2 层 多源交叉验证**：`injectAuxEvidence` 在近 24h 窗口检索群众反映/手机举证/视频监控/设备媒体并注入；`crossValidate` 用电流与 LED 灯态做印证/否证（`currentCorroborates/Refutes`、`ledCorroborates`）。
+3. **第 3 层 置信度融合与三层分流**：
+   - `ConfHigh=0.90`：**confirmed**（确认，可自动派单）
+   - `ConfLow=0.50`：**filtered**（误报过滤，只记证据/案例，不产生故障）
+   - 中间区间 / 未知错误码：**pending_review**（待确认，不自动派单，可复核升级后派单）
+   - **设计要点**：电流等证据仅做「明确否证→大幅降级」，绝不因矛盾直接被丢弃（宁可待确认，不漏真故障）。
+
+---
+
+## 三、数据库
+
+- `fault_records` 新增可选列（nullable，旧数据零影响）：`confidence`、`recognition_source`、`recognition_status`、`is_false_positive`、`evidence_count`、`last_evaluation_id`、`reviewed_at`。
+- 新表 `fault_evidence`（多源证据，含 evaluation_id/fault_id、来源类型、电流/灯态/错误码快照、附件/反馈引用、置信度）。
+- 新表 `fault_case`（案例库：设备、输入特征签名、故障类型/等级、真值与判定、是否正确、来源研判批次、状态）。
+- `AutoMigrate` 已注册两张新表；纯增量，无数据迁移风险。
+
+---
+
+## 四、MQTT 故障通道改造（S5）
+
+`processFault` 改为「研判→分流」：
+
+- **filtered**：`persistEvidence(eval,nil,…)` + `persistCase` 后直接返回（不落故障/工单）。
+- **pending_review**：创建故障记录（status=occurred、recognition_status=pending_review），**不自动派单**；等待证据补充复核升级。
+- **confirmed**：原逻辑（30 分钟去重窗口、critical 自动派单、`EnsureActiveWorkOrder` 原子防重）。
+- 新增三个辅助函数：`injectAuxEvidence`（检索注入辅助证据）、`persistEvidence`（主信号+辅助证据归一化落库）、`persistCase`（案例沉淀）。
+
+**红线保持验证**：
+- R2/R3 30 分钟去重窗口原样保留，测试 `TestProcessFault_DedupStillWorks_R3`。
+- R6 仅 confirmed 状态才自动派单，测试 `TestProcessFault_CriticalConfirmedAutoWorkOrder`。
+- 工作流状态机（occurred→confirmed→dispatched→resolved）未改。
+- R9 AI 回退、故障类型/等级判定语义经 `faultcode` 转发完全不变。
+
+---
+
+## 五、REST 接口（S6）
+
+独立路径、向后兼容，前端零改动：
+
+| 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/faults/:id/evidence` | 某起故障的多源证据明细（含被过滤批次按 evaluation 回看） | 登录 |
-| POST | `/evidence/ingest` | 预留外部数据源证据写入 | `evidence:ingest` |
-| GET | `/evidence/sources` | 多源证据类型枚举 | 登录 |
-| GET | `/fault-cases` | 案例库检索/列表（设备/类型/状态/正确性/分页） | 登录 |
-| POST | `/fault-cases` | 案例库新增 / 人工回标 | `faultcase:manage` |
-| POST | `/fault-cases/train` | 触发案例库训练 | `faultcase:manage` |
-| GET | `/recognition/stats` | 识别准确率/误报/漏报/案例统计 | 登录 |
-| POST | `/faults/:id/review` | 待确认复核（确认真故障/标记误报；确认后 critical 自动派单） | `fault:review` |
+| GET | `/api/v1/faults/:id/evidence` | 登录 | 故障多源证据明细（含被过滤批次可回看） |
+| POST | `/api/v1/evidence/ingest` | `evidence:ingest` | 预留外部数据源证据写入 |
+| GET | `/api/v1/evidence/sources` | 登录 | 证据来源枚举 |
+| GET | `/api/v1/fault-cases` | 登录 | 案例库检索/列表 |
+| POST | `/api/v1/fault-cases` | `faultcase:manage` | 案例人工回标 |
+| POST | `/api/v1/fault-cases/train` | `faultcase:manage` | 触发案例库训练（骨架） |
+| GET | `/api/v1/recognition/stats` | 登录 | 识别正确率/误报/漏报/置信度 |
+| POST | `/api/v1/faults/:id/review` | `fault:review` | 待确认复核：升级确认（critical 自动派单）或标记误报 |
 
-> 既有 `/faults*`、`/work-orders*` 契约不变（R9）。`GET /faults` 新增可选 `recognition_status` 过滤参数，不带该参数行为完全不变。
-
----
-
-## 4. 红线 R1-R10 逐项核对（全部保持 ✅）
-
-| # | 红线 | 状态 | 核对依据 |
-|---|---|---|---|
-| R1 | **MQTT 二进制协议**（CMD_FRAME/EVENT_PAK/EVENT_RECORD）字节格式不变 | ✅ | `internal/mqtt/parser.go、commands.go` 未改动字节格式；`handler.go` 仅消费解析产物，不重写协议 |
-| R2 | **故障状态机** `occurred→confirmed→dispatched→resolved` | ✅ | `model/fault.go` 四态与迁移兜底保持；`processFault` 不改变状态流转 |
-| R3 | **30min 去重窗口** | ✅ | `processFault` `dedupWindow = 30*time.Minute`，窗内仅更新 `last_seen`，超窗置 resolved + 新建 |
-| R4 | **NextOrderNo**（WO{yyyyMMdd}{4位自增序号}） | ✅ | `model/workorder.go` `NextOrderNo` 原逻辑保持；`EnsureActiveWorkOrder` 复用之 |
-| R5 | **critical 自动工单** | ✅ | 仅 `confirmed` 且 `critical` 自动派单；`pending_review` 不派、`filtered` 不产生工单 |
-| R6 | **SLA 24/48h**（pending 24h / processing 48h 超时） | ✅ | `WorkOrderPendingSLASeconds=24*3600`、`WorkOrderProcessingSLASeconds=48*3600` 保持 |
-| R7 | **识别引擎 + case 库禁止重构语义** | ✅ | `faultcode.FaultTypeFromErrCode/FaultLevelFromErrCode` 语义与既有完全一致；`ai/*、recognition/*、caselib/*` 判定语义内聚复用未改 |
-| R8 | **RBAC / 模块化** | ✅ | 新增接口挂 `RequirePerm` 中间件 + 既有模块注册机制追加；核心模块恒启 |
-| R9 | **既有 REST 契约 / MQTT 兼容** | ✅ | `/faults*`、`/work-orders*` 返回结构不变，仅加可空字段；新增接口全部独立路径 |
-| R10 | **用户表/角色既有列不删除不改类型** | ✅ | `users.username、devices、faults` 既有列未删未改；新增字段全部可空带默认（只加不改） |
-
-> 另：AI 兜底（`ai/*` anomaly/predict）与既有 `/faults*`、`/work-orders*` 既有测试（cov_*/regression/_test.go）无回归。
+新增权限码（只增不删）：`fault:review`、`faultcase:manage`、`evidence:ingest`，均已纳入 `BuiltinRoleOperator`。
 
 ---
 
-## 5. 验证结果（实测）
+## 六、测试
 
-| 项 | 命令 | 结果 |
-|---|---|---|
-| 编译 | `go build ./...`（packages/server） | ✅ exit 0 |
-| 静态检查 | `go vet ./internal/...` | ✅ exit 0 |
-| 测试 | `go test ./... -count=1` | ✅ 12 包全 ok（cmd/server、internal/ai、caselib、config、handler、logger、middleware、model、mqtt、recognition、service 等） |
+`go build ./...` ✅　`go vet ./...` ✅　`go test ./... -count=1` ✅（全部包通过）
 
-> 关键测试佐证：
-> - `internal/recognition/engine_test.go` —— 规则基座/交叉验证/分流/置信度单测。
-> - `internal/handler/recognition_test.go` + `recognition_regression_test.go` —— 复核/证据/案例/统计接口；`TestM1_ConcurrentReviewDispatchOnce`（8 goroutine 并发复核仅 1 条活跃工单）、`TestM2_PendingReviewAutoUpgradeDispatch`（待确认升级自动派单、已派单不重复派）。
-> - `internal/mqtt/recognition_test.go` / `fault_test.go` / `regression_test.go` —— processFault 去重/自动工单/状态机红线回归。
+新增测试：
+- `internal/recognition/engine_test.go`：置信度计算、规则判定、多源印证提升、电流矛盾降级待确认、未知码宁待确认、一般故障保持确认、证据签名。
+- `internal/caselib/caselib_test.go`：案例写库、同特征去重、误报过滤样本、训练骨架、识别统计、规则打分。
+- `internal/mqtt/recognition_test.go`：研判后证据/案例落库、critical 自动工单、去重窗口保持、待确认不派单、复核升级。
+- `internal/handler/recognition_test.go`：证据明细、证据注入（含非法来源/缺参校验）、来源枚举、案例增删查训统、复核确认/判误报。
 
 ---
 
-## 6. 遗留 / 未实施项与原因（对应 P1-P3 / 明确不做）
+## 七、风险与后续（P1/P2 保留）
 
-| 项 | 状态 | 原因 |
-|---|---|---|
-| P1 多媒体/群众反馈**真实接入识别**（视频分析/AI 视觉故障识别） | 仅预留 | 本阶段只做字段与接口骨架（`evidence/ingest` + `fault_evidence` 的 `ref_media_id/ref_feedback_id`），不实现真实视频/AI 视觉 |
-| P2 监控视频 RTSP 分析 | 不接入 | 监控类媒体仅记录供人工查看，不做 RTSP/AI 分析 |
-| P3 规模化分布式训练/在线学习 | 预留 | 本阶段用批式训练 + 规则样例库（`Train` 骨架），预留模型服务接口 |
-| 案例库自动训练触发（定时/事件） | 未接 | 当前仅手动 `POST /fault-cases/train` 触发（与后端 `Train` 骨架一致）；自动调度为后续项 |
-| 案例库"训练到 100%"达标验证门户 | 部分 | `Stats` 提供准确率/误报/漏报统计；前端历史趋势/置信度分布可视化不在范围=A 内 |
+- 真·视频监控/AI 视觉识别未在本范围实现，`injectAuxEvidence` 从已落库媒体/反馈记录检索注入（架构预留扩展点）。
+- `TrainFaultCases` / `caselib.Train` 为规则打分骨架，向「100% 识别率达标」收敛，未接入外部 ML 训练框架。
+- 复核自动派单复用 `EnsureActiveWorkOrder` 原子防重，保证并发下只建一条活跃工单。
 
 ---
 
-## 7. 范围边界说明（如实记录）
+## 10. 登录改+人事核心字段（重新修复）
 
-- **范围 = A（仅后端 `packages/server`）**。`packages/admin` 前端**未改动**（本记录范围内）。
-- **未重写 MQTT 二进制协议**；未删除/修改既有 `FaultTypeFromErrCode/FaultLevelFromErrCode` 判定语义。
-- **未改变自动派单策略**（仅维持"critical 自动生成工单"现状语义）。
-- 工作区存在其他流水线步骤（第二轮新需求 P0，手机号登录/预警/路口区划/地图取点等）的在途未提交改动（含 `internal/handler/auth_sms.go、warning.go、crossing.go、map_data.go` 等及对应模型），**不属于本功能工程范围**，本记录不展开；这些改动不在本记录承诺的交付与验证口径内。
+> 处理：leader-tsloms ｜ 2026-08-17 ｜ 用户要求「不要手机短信验证码，改手机号作为账号 + 算术验证码」，并补齐维护人员人事字段。
 
----
+### 登录改造（参考项目 a，非 SMS）
+- **废弃短信验证码登录**：删除 `auth_sms.go`（SmsSender/console/devcode/phoneLogin/SendSmsCode）、`smscode.go` 模型、`/auth/sms-code` 路由、`SmsCodeTTL` 等配置。
+- **新增算术验证码** `handler/captcha.go`：`GET /auth/captcha` 返回 `{uuid, question}`（如 “2 + 8 = ?”）；进程内存存储（uuid→答案/过期/校验次数）；登录带 `captcha_uuid` + `captcha_code`（答案）校验，一次性、过期、防暴力。
+- **登录** `POST /auth/login`：`username`（用户名或手机号，手机号即登录账号）+ 密码 + 算术验证码；不再区分 login_type。手机号作为账号逻辑保留（`phone_login`）。
+- 测试：`captcha_test.go`（Get 返回 uuid/question、错误答案拒绝、正确答案一次性通过）；旧登录用例 `TestAuth_LoginAndDisabled` 适配算术验证码。
 
-*（全文完。本记录由 dev-refactor-tsloms 输出，供 QA 按红线 R1-R10 回归 & leader 验收。）*
+### 人事核心字段（维护人员必要）
+- `model/user.go` 新增：`work_no`(工号) / `avatar`(工作照头像) / `gender`(性别) / `id_card`(身份证号) / `address`(住址) / `education`(文化程度) / `engineer_level`(工程等级)。
+- `CreateUser`：手机号**可选**，但若提供则校验 11 位格式（注册/建号即校验）；手机号自动作为 `phone_login`。
+- `UpdateUser` / `UpdateMyProfile`：更新人事字段，手机号格式校验 + 同步 phone_login。
+- `handler/avatar.go`：`POST /user/avatar`（工作照上传，5MB，jpg/png/webp 等，落盘 {mediaDir}/{yyyyMM}/avatar/）写回 avatar URL；`PUT /user/profile` 自助维护人事字段。
+- `auth.go`：`userPayload()` 统一返回人事字段/头像/工号（Login 与 GetUserInfo 共用）。
+
+### 前端
+- `login/index.vue`：取消短信 Tab，改为单表单（账号可手机号 + 密码 + 算术题输入，点击刷新验证码）。
+- `layout/index.vue`：右上角用户区改为头像（工作照）展示 + 下拉新增「个人资料」；`real_name` 优先显示。
+- 新增 `views/settings/profile.vue`：上传工作照 + 编辑人事字段（姓名/手机号/工号/性别/身份证/住址/文化程度/工程等级/邮箱）。
+- `api/auth.ts`：`getCaptcha` / `updateMyProfile` / `uploadMyAvatar`；`store/auth.ts`：UserInfo 补人事字段、login 接收 captcha 参数。
+- `router/index.ts`：`/profile` 恒注册为 layout 子路由。
+
+### 验证
+- 后端 `go build`/`go vet` 全绿；`go test ./...`（12 包）全 ok（含新增 captcha 用例与适配后的登录用例）；gofmt 0 文件。
+- 前端 `npm run build`（vue-tsc + vite）exit 0。
+- 未改动红线：MQTT/识别引擎/工单状态机/去重/NextOrderNo/SLA/RBAC/既有 /faults*、/work-orders* 契约。

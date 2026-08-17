@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -268,6 +270,14 @@ func TestTileProxy_Validation(t *testing.T) {
 
 // ==================== 登录 Auth ====================
 
+// captchaLoginBody 直接调用 generateCaptcha 生成一条算术题，构造可提交给 /auth/login 的请求体 JSON。
+// 用于旧登录用例适配“算术验证码”登录改造（避免在测试引擎上注册冲突路由）。
+func captchaLoginBody(t *testing.T, r *gin.Engine, username, password string) string {
+	_ = r // 无需路由；直接生成
+	uuid, _, ans := generateCaptcha()
+	return fmt.Sprintf(`{"username":%q,"password":%q,"captcha_uuid":%q,"captcha_code":%q}`, username, password, uuid, strconv.Itoa(ans))
+}
+
 func TestAuth_LoginFlows(t *testing.T) {
 	r := covSetup(t)
 	rg := r.Group("/api/v1")
@@ -291,19 +301,19 @@ func TestAuth_LoginAndDisabled(t *testing.T) {
 	// 创建带 bcrypt 密码的用户
 	pwd, _ := bcrypt.GenerateFromPassword([]byte("Test@12345"), bcrypt.MinCost)
 	model.DB.Create(&model.User{Username: "l1", PasswordHash: string(pwd), Role: "operator", Status: ""})
-	// 正确密码
-	code, body := doReq(t, r, "POST", "/api/v1/auth/login", `{"username":"l1","password":"Test@12345"}`)
+	// 正确密码 + 算术验证码
+	code, body := doReq(t, r, "POST", "/api/v1/auth/login", captchaLoginBody(t, r, "l1", "Test@12345"))
 	if code != http.StatusOK || body["code"].(float64) != 0 {
 		t.Errorf("正确密码登录失败 code=%d body=%v", code, body)
 	}
-	// 错误密码
-	code, _ = doReq(t, r, "POST", "/api/v1/auth/login", `{"username":"l1","password":"wrong"}`)
+	// 错误密码（仍需先过关验证码）
+	code, _ = doReq(t, r, "POST", "/api/v1/auth/login", captchaLoginBody(t, r, "l1", "wrong"))
 	if code != http.StatusUnauthorized {
 		t.Errorf("错误密码应 401, got %d", code)
 	}
 	// 停用用户
 	model.DB.Model(&model.User{}).Where("username = ?", "l1").Update("status", "disabled")
-	code, _ = doReq(t, r, "POST", "/api/v1/auth/login", `{"username":"l1","password":"Test@12345"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/auth/login", captchaLoginBody(t, r, "l1", "Test@12345"))
 	if code != http.StatusUnauthorized {
 		t.Errorf("停用用户应 401, got %d", code)
 	}

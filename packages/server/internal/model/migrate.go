@@ -84,12 +84,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&UserPermission{},
 		&Notification{},
 		&NotificationRead{},
-		// ---- 第二轮新需求（P0）新增表：预警/区划/路口/验证码 ----
+		// ---- 第二轮新需求（P0）新增表：预警/区划/路口 ----
 		&Warning{},
 		&WarningRule{},
 		&Area{},
 		&Crossing{},
-		&SmsCode{},
 	); err != nil {
 		return err
 	}

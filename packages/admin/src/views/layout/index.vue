@@ -101,12 +101,14 @@
           </el-badge>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
-              <el-icon><User /></el-icon>
-              <span class="username">{{ authStore.user?.username || '用户' }}</span>
+              <el-avatar v-if="authStore.user?.avatar" :size="28" :src="authStore.user.avatar" class="user-avatar" />
+              <el-icon v-else><User /></el-icon>
+              <span class="username">{{ authStore.user?.real_name || authStore.user?.username || '用户' }}</span>
               <el-icon><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
                 <el-dropdown-item command="settings">系统设置</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -217,6 +219,8 @@ async function handleCommand(command: string) {
     }
   } else if (command === 'settings') {
     router.push('/settings')
+  } else if (command === 'profile') {
+    router.push('/profile')
   }
 }
 

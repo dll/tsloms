@@ -17,6 +17,13 @@ function buildCoreChildren(): RouteRecordRaw[] {
       })
     }
   }
+  // 个人资料（右上角头像下拉入口，恒注册）
+  children.push({
+    path: 'profile',
+    name: 'Profile',
+    component: () => import('@/views/settings/profile.vue'),
+    meta: { title: '个人资料', module: 'profile' },
+  })
   return children
 }
 

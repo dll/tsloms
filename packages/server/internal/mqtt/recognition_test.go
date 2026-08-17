@@ -161,3 +161,45 @@ func TestM2_PendingReviewAutoUpgradeDispatch(t *testing.T) {
 		t.Errorf("已派单故障二次上报不应重复派单, 实际 %d", woCount)
 	}
 }
+
+// TestM2_NoFalseDowngradeOfConfirmedGuard M2 反向守护：已 confirmed/已派单的故障，
+// 后续即使上报矛盾证据使单次 judge 低置信（pending_review），也绝不被自动降级回来或重复派单。
+func TestM2_NoFalseDowngradeOfConfirmedGuard(t *testing.T) {
+	h := newTestHandler(t)
+
+	// 预置一条已确认并已派单的 critical 故障
+	now := time.Now()
+	conf := 0.98
+	f := model.FaultRecord{
+		DeviceHwID: 7003, ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
+		Status: model.FaultStatusConfirmed, FirstSeen: now, LastSeen: now,
+		Confidence: &conf, RecognitionStatus: model.RecognitionConfirmed,
+	}
+	model.DB.Create(&f)
+	// 模拟已派单（fault_work_order_id 非空）
+	wo := model.WorkOrder{OrderNo: "WO_M2G_1", FaultID: f.ID, DeviceHwID: f.DeviceHwID, Status: model.WorkOrderStatusPending, FaultActiveScope: nil}
+	model.DB.Create(&wo)
+	wid := wo.ID
+	model.DB.Model(&model.FaultRecord{}).Where("id = ?", f.ID).Update("work_order_id", wid)
+
+	// 后续上报带矛盾电流的低置信信号（使 judge 为 pending_review，绝不触发自动派单/降级）
+	rec := createFaultRec(7003, LEDErrROFF)
+	rec.CurrentR = 500 // 高电流矛盾（对 lamp_off 置 pending_review）
+	h.processFault(rec)
+
+	// existing 维持 confirmed，不被降级
+	var ff model.FaultRecord
+	model.DB.First(&ff, f.ID)
+	if ff.RecognitionStatus != model.RecognitionConfirmed {
+		t.Errorf("已 confirmed 故障不应被低置信上报降级, got %s", ff.RecognitionStatus)
+	}
+	if ff.WorkOrderID == nil || *ff.WorkOrderID != wid {
+		t.Errorf("已派单故障不应改变 work_order_id, got %v", ff.WorkOrderID)
+	}
+	// 活跃工单仍为 1
+	var woCount int64
+	model.DB.Model(&model.WorkOrder{}).Where("fault_id = ?", f.ID).Count(&woCount)
+	if woCount != 1 {
+		t.Errorf("已派单故障不应重复派单, 实际 %d", woCount)
+	}
+}

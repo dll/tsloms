@@ -1,15 +1,31 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { login as loginApi, loginByPhone, getUserInfo } from '@/api/auth'
+import { login as loginApi, getUserInfo } from '@/api/auth'
 import { getMyPermissions } from '@/api/rbac'
 import { getEnabledModules } from '@/api/module'
 
 // 用户信息接口
+// 含登录账号 + 人事核心字段（工作照/工号/性别/身份证/住址/文化程度/工程等级）
 export interface UserInfo {
   id: number
   username: string
   role: string
-  phone: string
+  real_name?: string
+  phone?: string
+  phone_login?: string
+  phone_verified?: boolean
+  email?: string
+  department_id?: number | null
+  status?: string
+  center_lat?: number | null
+  center_lng?: number | null
+  work_no?: string
+  avatar?: string
+  gender?: string
+  id_card?: string
+  address?: string
+  education?: string
+  engineer_level?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -21,15 +37,9 @@ export const useAuthStore = defineStore('auth', () => {
   // 当前实例已启模块 key 集合（模块化/插件化；核心恒启 + 已购可选）
   const enabledModules = ref<string[]>([])
 
-  // 登录：username+password 通道
-  async function login(username: string, password: string) {
-    const res = await loginApi({ username, password })
-    await applyLogin(res)
-  }
-
-  // 登录：手机号+验证码通道（P0）
-  async function loginWithPhone(phone: string, code: string) {
-    const res = await loginByPhone(phone, code)
+  // 登录：账号(可手机号) + 密码（登录接口内含算术验证码校验，由调用方先取 captcha）
+  async function login(loginPayload: { username: string; password: string; captcha_uuid: string; captcha_code: string }) {
+    const res = await loginApi(loginPayload)
     await applyLogin(res)
   }
 
@@ -92,5 +102,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('token')
   }
 
-  return { token, user, permissions, enabledModules, login, loginWithPhone, loadPermissions, loadModules, fetchUserInfo, logout, hasPerm, hasModule }
+  return { token, user, permissions, enabledModules, login, loadPermissions, loadModules, fetchUserInfo, logout, hasPerm, hasModule }
 })

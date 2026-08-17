@@ -162,7 +162,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		// 公开接口（无需登录）
 		api.POST("/auth/login", handler.Login)
-		api.POST("/auth/sms-code", handler.SendSmsCode)
+		api.GET("/auth/captcha", handler.GetCaptcha)
 		api.GET("/health", handler.Health)
 		// 地图瓦片代理（无鉴权，供 Cesium 图片加载使用）
 		api.GET("/proxy/baidu", handler.BaiduTileProxy)
@@ -179,6 +179,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/user/info", handler.GetUserInfo)
 			auth.PUT("/user/phone", handler.UpdateMyPhone)
 			auth.PUT("/user/center", handler.UpdateMyCenter)
+			auth.PUT("/user/profile", handler.UpdateMyProfile)
+			auth.POST("/user/avatar", handler.UploadMyAvatar)
 
 			// 设备管理（查看：所有角色，修改：管理员/运维）
 			auth.GET("/devices", handler.ListDevices)

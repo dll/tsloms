@@ -1,20 +1,26 @@
 import request from '@/utils/request'
 import type { ApiResponse } from '@/utils/request'
 
-// 登录接口
-// 双通道（P0）：username+password 或 phone+sms_code，后端多态兼容
-export function login(data: { username?: string; password?: string; phone?: string; code?: string }): Promise<ApiResponse> {
+// 登录接口：username(可手机号) + password + 算术验证码(captcha_uuid/captcha_code)
+export function login(data: { username: string; password: string; captcha_uuid: string; captcha_code: string }): Promise<ApiResponse> {
   return request.post('/auth/login', data) as unknown as Promise<ApiResponse>
 }
 
-// 发送手机号登录验证码（P0：可插拔通道，开发环境 Console/测试码）
-export function sendSmsCode(phone: string): Promise<ApiResponse> {
-  return request.post('/auth/sms-code', { phone }) as unknown as Promise<ApiResponse>
+// 获取算术验证码（参考项目 a 的图形验证码简化版：GET /auth/captcha 返回 uuid + 算式题目，如 "2 + 8 = ?"）
+export function getCaptcha(): Promise<ApiResponse> {
+  return request.get('/auth/captcha') as unknown as Promise<ApiResponse>
 }
 
-// 手机号 + 验证码登录
-export function loginByPhone(phone: string, code: string): Promise<ApiResponse> {
-  return request.post('/auth/login', { phone, code }) as unknown as Promise<ApiResponse>
+// 更新当前用户个人资料（人事字段/手机号等）
+export function updateMyProfile(data: Record<string, unknown>): Promise<ApiResponse> {
+  return request.put('/user/profile', data) as unknown as Promise<ApiResponse>
+}
+
+// 上传工作照/头像（multipart，字段名 file）
+export function uploadMyAvatar(formData: FormData): Promise<ApiResponse> {
+  return request.post('/user/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }) as unknown as Promise<ApiResponse>
 }
 
 // 获取当前用户信息

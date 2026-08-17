@@ -9,6 +9,7 @@ import (
 // User 用户表
 // role: admin-管理员 operator-运维人员 viewer-查看人员
 // status: enabled-启用 disabled-停用（停用后不可登录）
+// 人事核心字段（信号灯维护人员必要）：工号/工作照头像/性别/身份证号/住址/文化程度/工程等级
 type User struct {
 	ID       uint   `json:"id" gorm:"primaryKey"`
 	Username string `json:"username" gorm:"uniqueIndex;size:64;comment:用户名"`
@@ -20,7 +21,7 @@ type User struct {
 	PasswordHash  string     `json:"-" gorm:"size:255;comment:密码哈希(bcrypt)"`
 	Role          string     `json:"role" gorm:"size:16;default:viewer;comment:角色(admin/operator/viewer)"`
 	RealName      string     `json:"real_name" gorm:"size:64;comment:姓名"`
-	Phone         string     `json:"phone" gorm:"size:20;comment:手机号"`
+	Phone         string     `json:"phone" gorm:"size:20;comment:手机号(注册时校验11位格式)"`
 	Email         string     `json:"email" gorm:"size:64;comment:邮箱"`
 	DepartmentID  *uint      `json:"department_id" gorm:"comment:所属部门ID"`
 	Status        string     `json:"status" gorm:"size:16;default:enabled;comment:状态(enabled/disabled)"`
@@ -29,6 +30,14 @@ type User struct {
 	CenterLng     *float64   `json:"center_lng" gorm:"comment:地图中心经度(该用户管辖区域)"`
 	Remark        string     `json:"remark" gorm:"size:255;comment:备注"`
 	CreatedAt     time.Time  `json:"created_at"`
+	// ---- 人事核心字段（第二轮补充）----
+	WorkNo        string `json:"work_no" gorm:"size:64;index;comment:工号(组织单位编号)"`
+	Avatar        string `json:"avatar" gorm:"size:255;comment:工作照/头像(上传图片URL)"`
+	Gender        string `json:"gender" gorm:"size:8;comment:性别(male/female)"`
+	IDCard        string `json:"id_card" gorm:"size:32;index;comment:身份证号"`
+	Address       string `json:"address" gorm:"size:255;comment:住址"`
+	Education     string `json:"education" gorm:"size:32;comment:文化程度"`
+	EngineerLevel string `json:"engineer_level" gorm:"size:32;comment:工程等级(岗位/技能等级)"`
 }
 
 // TableName 指定表名

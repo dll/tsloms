@@ -115,13 +115,20 @@ func validatePasswordStrength(pw string) string {
 // CreateUser 创建用户（管理员）
 func CreateUser(c *gin.Context) {
 	var req struct {
-		Username     string `json:"username" binding:"required"`
-		Password     string `json:"password" binding:"required"`
-		Role         string `json:"role" binding:"required"`
-		RealName     string `json:"real_name"`
-		Phone        string `json:"phone"`
-		Email        string `json:"email"`
-		DepartmentID *uint  `json:"department_id"`
+		Username      string `json:"username" binding:"required"`
+		Password      string `json:"password" binding:"required"`
+		Role          string `json:"role" binding:"required"`
+		RealName      string `json:"real_name"`
+		Phone         string `json:"phone"`
+		Email         string `json:"email"`
+		DepartmentID  *uint  `json:"department_id"`
+		WorkNo        string `json:"work_no"`
+		Avatar        string `json:"avatar"`
+		Gender        string `json:"gender"`
+		IDCard        string `json:"id_card"`
+		Address       string `json:"address"`
+		Education     string `json:"education"`
+		EngineerLevel string `json:"engineer_level"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误（用户名/密码必填）")
@@ -133,6 +140,12 @@ func CreateUser(c *gin.Context) {
 	}
 	if !validRole(req.Role) {
 		badRequest(c, "无效的角色")
+		return
+	}
+	// 手机号：若提供则校验格式（11 位大陆手机号）；不强制必填（兼容旧账号/测试）
+	phone := strings.TrimSpace(req.Phone)
+	if phone != "" && !validPhoneFormat(phone) {
+		badRequest(c, "手机号格式不正确（需 11 位大陆手机号）")
 		return
 	}
 
@@ -153,14 +166,21 @@ func CreateUser(c *gin.Context) {
 	}
 
 	user := model.User{
-		Username:     strings.TrimSpace(req.Username),
-		PasswordHash: model.HashPassword(req.Password),
-		Role:         req.Role,
-		RealName:     strings.TrimSpace(req.RealName),
-		Phone:        strings.TrimSpace(req.Phone),
-		Email:        strings.TrimSpace(req.Email),
-		DepartmentID: req.DepartmentID,
-		Status:       model.UserStatusEnabled,
+		Username:      strings.TrimSpace(req.Username),
+		PasswordHash:  model.HashPassword(req.Password),
+		Role:          req.Role,
+		RealName:      strings.TrimSpace(req.RealName),
+		Phone:         phone,
+		Email:         strings.TrimSpace(req.Email),
+		DepartmentID:  req.DepartmentID,
+		Status:        model.UserStatusEnabled,
+		WorkNo:        strings.TrimSpace(req.WorkNo),
+		Avatar:        strings.TrimSpace(req.Avatar),
+		Gender:        strings.TrimSpace(req.Gender),
+		IDCard:        strings.TrimSpace(req.IDCard),
+		Address:       strings.TrimSpace(req.Address),
+		Education:     strings.TrimSpace(req.Education),
+		EngineerLevel: strings.TrimSpace(req.EngineerLevel),
 	}
 	if err := model.DB.Create(&user).Error; err != nil {
 		serverError(c, err)
@@ -186,12 +206,19 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	var req struct {
-		Role         *string `json:"role"`
-		RealName     *string `json:"real_name"`
-		Phone        *string `json:"phone"`
-		Email        *string `json:"email"`
-		DepartmentID *uint   `json:"department_id"`
-		Status       *string `json:"status"`
+		Role          *string `json:"role"`
+		RealName      *string `json:"real_name"`
+		Phone         *string `json:"phone"`
+		Email         *string `json:"email"`
+		DepartmentID  *uint   `json:"department_id"`
+		Status        *string `json:"status"`
+		WorkNo        *string `json:"work_no"`
+		Avatar        *string `json:"avatar"`
+		Gender        *string `json:"gender"`
+		IDCard        *string `json:"id_card"`
+		Address       *string `json:"address"`
+		Education     *string `json:"education"`
+		EngineerLevel *string `json:"engineer_level"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误")
@@ -206,10 +233,39 @@ func UpdateUser(c *gin.Context) {
 		updates["real_name"] = strings.TrimSpace(*req.RealName)
 	}
 	if req.Phone != nil {
-		updates["phone"] = strings.TrimSpace(*req.Phone)
+		p := strings.TrimSpace(*req.Phone)
+		if p != "" && !validPhoneFormat(p) {
+			badRequest(c, "手机号格式不正确（需 11 位大陆手机号）")
+			return
+		}
+		updates["phone"] = p
+		if p != "" {
+			updates["phone_login"] = p // 手机号即登录账号，同步更新
+		}
 	}
 	if req.Email != nil {
 		updates["email"] = strings.TrimSpace(*req.Email)
+	}
+	if req.WorkNo != nil {
+		updates["work_no"] = strings.TrimSpace(*req.WorkNo)
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = strings.TrimSpace(*req.Avatar)
+	}
+	if req.Gender != nil {
+		updates["gender"] = strings.TrimSpace(*req.Gender)
+	}
+	if req.IDCard != nil {
+		updates["id_card"] = strings.TrimSpace(*req.IDCard)
+	}
+	if req.Address != nil {
+		updates["address"] = strings.TrimSpace(*req.Address)
+	}
+	if req.Education != nil {
+		updates["education"] = strings.TrimSpace(*req.Education)
+	}
+	if req.EngineerLevel != nil {
+		updates["engineer_level"] = strings.TrimSpace(*req.EngineerLevel)
 	}
 	if req.DepartmentID != nil {
 		var dept model.Department
@@ -305,6 +361,22 @@ func DeleteUser(c *gin.Context) {
 // validRole 校验角色合法性
 func validRole(role string) bool {
 	return role == model.RoleAdmin || role == model.RoleOperator || role == model.RoleViewer
+}
+
+// validPhoneFormat 校验大陆手机号格式（11 位，1 开头）
+func validPhoneFormat(phone string) bool {
+	if len(phone) != 11 {
+		return false
+	}
+	if phone[0] != '1' {
+		return false
+	}
+	for i := 0; i < len(phone); i++ {
+		if phone[i] < '0' || phone[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // UpdateMyPhone 修改当前登录用户手机号

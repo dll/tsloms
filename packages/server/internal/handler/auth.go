@@ -10,21 +10,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// LoginRequest 登录请求（多态：login_type=pwd/sms）
-// 向后兼容：旧调用仍可传 {username, password}（等价 username+pwd 分支）。
+// LoginRequest 登录请求
+// 登录方式：username(可手机号) + password + 算术验证码(captcha_uuid/captcha_code)
+// 旧账号（username/password）不受影响，但需额外答对算术题（防暴力）。
 type LoginRequest struct {
-	// 用户名（pwd 分支）；或手机号（sms 分支用 phone 字段）
+	// 登录账号（用户名或手机号）
 	Username string `json:"username"`
 	Password string `json:"password"`
-	// 手机号+验证码（sms 分支）
-	Phone string `json:"phone"`
-	Code  string `json:"code"`
-	// 登录类型：pwd（用户名+密码，默认）/ sms（手机号+验证码）
-	LoginType string `json:"login_type"`
+	// 算术验证码：GET /auth/captcha 获取 uuid 与题目，此处提交答案
+	CaptchaUUID string `json:"captcha_uuid"`
+	CaptchaCode string `json:"captcha_code"`
 }
 
-// Login 登录：手机号+验证码 / 用户名+密码 双通道并存（P0-2）。
-// 旧账号（username/password）不受影响；手机号可作为登录主账号。
+// Login 登录：算术验证码 + 手机号作为登录账号（或用户名）。
 func Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -32,19 +30,18 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 多态：sms 或已提供 phone+code → 手机号验证码分支
-	if req.LoginType == "sms" || (req.Phone != "" && req.Code != "") {
-		phoneLogin(c, trimPhone(req.Phone), req.Code)
-		return
-	}
-
-	// 旧密码分支（login_type 缺省/pwd）：username + password
 	if req.Username == "" || req.Password == "" {
-		badRequest(c, "请输入用户名和密码")
+		badRequest(c, "请输入账号(用户名或手机号)和密码")
 		return
 	}
 
-	// 查找用户（支持手机号登录账号或用户名）
+	// 算术验证码校验（防暴力破解；参考项目 a 用图形验证码，本实现用更轻量的算术题）
+	if !verifyCaptcha(req.CaptchaUUID, req.CaptchaCode) {
+		unauthorized(c, "算术验证码错误或已过期")
+		return
+	}
+
+	// 查找用户（支持手机号作为登录账号或用户名）
 	user := findUserByLogin(req.Username)
 	if user == nil {
 		unauthorized(c, "用户名或密码错误")
@@ -76,19 +73,8 @@ func Login(c *gin.Context) {
 	}
 
 	ok(c, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":             user.ID,
-			"username":       user.Username,
-			"role":           user.Role,
-			"real_name":      user.RealName,
-			"phone":          user.Phone,
-			"phone_login":    user.PhoneLogin,
-			"phone_verified": user.PhoneVerified,
-			"email":          user.Email,
-			"department_id":  user.DepartmentID,
-			"status":         user.Status,
-		},
+		"token":           token,
+		"user":            userPayload(user),
 		"enabled_modules": EnabledModuleList(),
 	})
 
@@ -107,6 +93,49 @@ func issueToken(user *model.User, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+// findUserByLogin 按手机号登录账号或用户名定位用户（旧账号 username 兼容）。
+// 手机号可作为登录账号（参考项目 a：手机号即账号）；用户名账号亦兼容。
+func findUserByLogin(login string) *model.User {
+	if login == "" {
+		return nil
+	}
+	// 优先按手机号登录账号
+	var u model.User
+	if err := model.DB.Where("phone_login = ?", login).First(&u).Error; err == nil {
+		return &u
+	}
+	// 兼容：username 的既有账号
+	if err := model.DB.Where("username = ?", login).First(&u).Error; err == nil {
+		return &u
+	}
+	return nil
+}
+
+// userPayload 构建用户信息（含人事核心字段/头像/工号）
+func userPayload(user *model.User) gin.H {
+	return gin.H{
+		"id":             user.ID,
+		"username":       user.Username,
+		"role":           user.Role,
+		"real_name":      user.RealName,
+		"phone":          user.Phone,
+		"phone_login":    user.PhoneLogin,
+		"phone_verified": user.PhoneVerified,
+		"email":          user.Email,
+		"department_id":  user.DepartmentID,
+		"status":         user.Status,
+		"center_lat":     user.CenterLat,
+		"center_lng":     user.CenterLng,
+		"work_no":        user.WorkNo,
+		"avatar":         user.Avatar,
+		"gender":         user.Gender,
+		"id_card":        user.IDCard,
+		"address":        user.Address,
+		"education":      user.Education,
+		"engineer_level": user.EngineerLevel,
+	}
+}
+
 // GetUserInfo 获取当前登录用户信息
 func GetUserInfo(c *gin.Context) {
 	userID := c.GetUint("user_id")
@@ -118,19 +147,7 @@ func GetUserInfo(c *gin.Context) {
 	}
 
 	ok(c, gin.H{
-		"user": gin.H{
-			"id":             user.ID,
-			"username":       user.Username,
-			"role":           user.Role,
-			"real_name":      user.RealName,
-			"phone":          user.Phone,
-			"phone_login":    user.PhoneLogin,
-			"phone_verified": user.PhoneVerified,
-			"email":          user.Email,
-			"status":         user.Status,
-			"center_lat":     user.CenterLat,
-			"center_lng":     user.CenterLng,
-		},
+		"user":            userPayload(&user),
 		"enabled_modules": EnabledModuleList(),
 	})
 }
