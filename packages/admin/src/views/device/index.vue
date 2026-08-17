@@ -45,6 +45,18 @@
           </template>
         </el-table-column>
         <el-table-column prop="sw_version" label="固件版本" width="110" align="center" />
+        <el-table-column prop="func" label="信号灯功能" width="100" align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.func || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="朝向" width="70" align="center">
+          <template #default="{ row }">{{ row.orientation || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="批次" width="90" align="center" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.batch || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '-' }}</template>
+        </el-table-column>
         <el-table-column label="最后签到" width="170" align="center">
           <template #default="{ row }">{{ row.last_checkin_at || '-' }}</template>
         </el-table-column>
@@ -135,6 +147,28 @@
         </el-form-item>
         <el-form-item label="经度">
           <el-input v-model="editFormDev.lng" placeholder="如：121.4737" />
+        </el-form-item>
+        <!-- 对齐项目 a 的设备字段：信号灯功能/朝向/方向/批次/备注 -->
+        <el-form-item label="信号灯功能">
+          <el-select v-model="editFormDev.func" clearable filterable placeholder="灯组类型（如直行/左转/右转）" style="width:100%">
+            <el-option v-for="f in dictFunc" :key="f" :label="f" :value="f" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="朝向(cx)">
+          <el-select v-model="editFormDev.orientation" clearable placeholder="朝向" style="width:100%">
+            <el-option v-for="d in dictOrient" :key="d" :label="d" :value="d" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="方向(fx)">
+          <el-select v-model="editFormDev.direction" clearable placeholder="方向" style="width:100%">
+            <el-option v-for="d in dictDir" :key="d" :label="d" :value="d" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="批次">
+          <el-input v-model="editFormDev.batch" placeholder="设备批次（选填）" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editFormDev.remark" type="textarea" :rows="2" placeholder="设备备注（选填）" />
         </el-form-item>
         <!-- 设备资料：照片 / 说明书 / 维修手册 -->
         <el-form-item label="设备照片">
@@ -336,7 +370,12 @@ async function saveEdit() {
 // ---- 新增/编辑/删除设备 ----
 const editVisible = ref(false)
 const editId = ref<number | null>(null)
-const editFormDev = reactive({ hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
+const editFormDev = reactive({ hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', func: '', orientation: '', direction: '', batch: '', remark: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
+
+// 对齐项目 a 的字典：信号灯功能 / 朝向(cx) / 方向(fx)
+const dictFunc = ['直行', '左转', '右转', '掉头', '人行横道', '车道信号灯']
+const dictOrient = ['东', '南', '西', '北', '东南', '西南', '东北', '西北']
+const dictDir = ['东', '南', '西', '北', '东南', '西南', '东北', '西北']
 
 // 上传设备资料文件（照片/说明书/维修手册），返回媒体 URL 回填到表单
 async function uploadDevFile(o: any, kind: 'photo' | 'manual' | 'repair') {
@@ -363,7 +402,7 @@ async function uploadDevFile(o: any, kind: 'photo' | 'manual' | 'repair') {
 
 function openCreate() {
   editId.value = null
-  Object.assign(editFormDev, { hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
+  Object.assign(editFormDev, { hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', func: '', orientation: '', direction: '', batch: '', remark: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
   editVisible.value = true
 }
 function openEdit(row: Record<string, any>) {
@@ -372,6 +411,7 @@ function openEdit(row: Record<string, any>) {
     hw_id: String(row.hw_id || ''), intersection: row.intersection || '',
     network_code: row.network_code || 0, station_code: row.station_code || 0,
     lat: row.lat != null ? String(row.lat) : '', lng: row.lng != null ? String(row.lng) : '',
+    func: row.func || '', orientation: row.orientation || '', direction: row.direction || '', batch: row.batch || '', remark: row.remark || '',
     photo: row.photo || '',
     manual_url: row.manual_url || '', manual_name: row.manual_name || '', manual_link: '',
     repair_manual_url: row.repair_manual_url || '', repair_manual_name: row.repair_manual_name || '', repair_manual_link: '',
@@ -386,6 +426,11 @@ async function saveDevice() {
     hw_id: hw, intersection: editFormDev.intersection.trim(),
     network_code: editFormDev.network_code, station_code: editFormDev.station_code,
   }
+  if (editFormDev.func) data.func = editFormDev.func
+  if (editFormDev.orientation) data.orientation = editFormDev.orientation
+  if (editFormDev.direction) data.direction = editFormDev.direction
+  data.batch = editFormDev.batch.trim()
+  data.remark = editFormDev.remark.trim()
   if (editFormDev.photo) data.photo = editFormDev.photo
   // 说明书/维修手册：优先用上传的文档 URL，否则用外部链接
   const manualUrl = editFormDev.manual_url || editFormDev.manual_link.trim()

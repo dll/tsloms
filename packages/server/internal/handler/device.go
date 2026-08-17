@@ -104,6 +104,12 @@ func UpdateDevice(c *gin.Context) {
 		ManualName       *string `json:"manual_name"`
 		RepairManualUrl  *string `json:"repair_manual_url"`
 		RepairManualName *string `json:"repair_manual_name"`
+		// 对齐项目 a：func信号灯功能 / orientation朝向(cx) / direction方向(fx) / batch批次 / remark备注
+		Func        *string `json:"func"`
+		Orientation *string `json:"orientation"`
+		Direction   *string `json:"direction"`
+		Batch       *string `json:"batch"`
+		Remark      *string `json:"remark"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -155,6 +161,22 @@ func UpdateDevice(c *gin.Context) {
 	if req.RepairManualName != nil {
 		updates["repair_manual_name"] = *req.RepairManualName
 	}
+	// 对齐项目 a：func/朝向/方向/批次/备注
+	if req.Func != nil {
+		updates["func"] = *req.Func
+	}
+	if req.Orientation != nil {
+		updates["orientation"] = *req.Orientation
+	}
+	if req.Direction != nil {
+		updates["direction"] = *req.Direction
+	}
+	if req.Batch != nil {
+		updates["batch"] = *req.Batch
+	}
+	if req.Remark != nil {
+		updates["remark"] = *req.Remark
+	}
 
 	if len(updates) > 0 {
 		if err := model.DB.Model(&device).Updates(updates).Error; err != nil {
@@ -188,6 +210,12 @@ func CreateDevice(c *gin.Context) {
 		ManualName       string `json:"manual_name"`
 		RepairManualUrl  string `json:"repair_manual_url"`
 		RepairManualName string `json:"repair_manual_name"`
+		// 对齐项目 a：func/朝向/方向/批次/备注
+		Func        string `json:"func"`
+		Orientation string `json:"orientation"`
+		Direction   string `json:"direction"`
+		Batch       string `json:"batch"`
+		Remark      string `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "硬件ID必填")
@@ -217,6 +245,11 @@ func CreateDevice(c *gin.Context) {
 		ManualName:       req.ManualName,
 		RepairManualUrl:  req.RepairManualUrl,
 		RepairManualName: req.RepairManualName,
+		Func:             req.Func,
+		Orientation:      req.Orientation,
+		Direction:        req.Direction,
+		Batch:            req.Batch,
+		Remark:           req.Remark,
 	}
 	if err := model.DB.Create(&device).Error; err != nil {
 		serverError(c, err)

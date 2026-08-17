@@ -29,13 +29,19 @@ type Device struct {
 	LastCheckinAt *time.Time `json:"last_checkin_at" gorm:"comment:最后签到时间"`
 	InstalledAt   *time.Time `json:"installed_at" gorm:"comment:安装日期"`
 	// 设备资料（照片/说明书/维修手册）：URL 可为外链或内部上传地址（/media/...），Name 为上传原文件名（用于阅读/下载展示）
-	Photo            string    `json:"photo" gorm:"size:500;comment:设备照片URL"`
-	ManualUrl        string    `json:"manual_url" gorm:"size:500;comment:说明书链接(外链或上传)"`
-	ManualName       string    `json:"manual_name" gorm:"size:255;comment:说明书文件名"`
-	RepairManualUrl  string    `json:"repair_manual_url" gorm:"size:500;comment:维修手册链接(外链或上传)"`
-	RepairManualName string    `json:"repair_manual_name" gorm:"size:255;comment:维修手册文件名"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	Photo            string `json:"photo" gorm:"size:500;comment:设备照片URL"`
+	ManualUrl        string `json:"manual_url" gorm:"size:500;comment:说明书链接(外链或上传)"`
+	ManualName       string `json:"manual_name" gorm:"size:255;comment:说明书文件名"`
+	RepairManualUrl  string `json:"repair_manual_url" gorm:"size:500;comment:维修手册链接(外链或上传)"`
+	RepairManualName string `json:"repair_manual_name" gorm:"size:255;comment:维修手册文件名"`
+	// 对齐参考项目 a 的设备字段（a 的 equipment：func信号灯功能 / cx朝向 / fx方向 / batch批次 / remark备注）
+	Func        string    `json:"func" gorm:"size:32;comment:信号灯功能(灯组类型,如直行/左转/右转)"`
+	Orientation string    `json:"orientation" gorm:"size:16;comment:朝向(cx,如南/北/东/西/东南等)"`
+	Direction   string    `json:"direction" gorm:"size:16;comment:方向(fx)"`
+	Batch       string    `json:"batch" gorm:"size:32;comment:批次"`
+	Remark      string    `json:"remark" gorm:"size:255;comment:备注"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名
