@@ -12,101 +12,39 @@
       <el-button size="small" style="margin-left: 8px" :icon="FullScreen" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</el-button>
     </div>
     <el-row :gutter="20" class="stat-row">
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-device">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">设备总数 / 在线</p>
-              <p class="stat-value">
-                {{ overview.devices?.total ?? 0 }}
-                <span class="stat-sub">/ {{ overview.devices?.online ?? 0 }}</span>
-              </p>
+      <!-- 统计卡片：自动滚动/随机出现（可暂停） -->
+      <el-col :span="24">
+        <div class="stat-carousel">
+          <transition name="card-fade" mode="out-in">
+            <div :key="slideKey" class="stat-slide">
+              <div class="stat-slide-grid">
+                <div class="stat-col" v-for="card in visibleCards" :key="card.key">
+                  <el-card shadow="hover" class="stat-card" :class="card.cls">
+                    <div class="stat-content">
+                      <div class="stat-info">
+                        <p class="stat-label">{{ card.label }}</p>
+                        <p class="stat-value">
+                          <span v-html="card.value"></span>
+                          <span v-if="card.extra" v-html="card.extra" class="stat-sub"></span>
+                        </p>
+                        <p v-if="card.desc" class="stat-sub" style="font-size:12px">{{ card.desc }}</p>
+                      </div>
+                      <el-icon :size="40" :color="card.color"><component :is="card.icon" /></el-icon>
+                    </div>
+                  </el-card>
+                </div>
+              </div>
             </div>
-            <el-icon :size="40" color="#409EFF"><Monitor /></el-icon>
+          </transition>
+          <div class="stat-carousel-ctl">
+            <el-button size="small" :icon="VideoPlay" circle @click="toggleCarousel" :title="carouselRunning ? '暂停自动滚动' : '开始自动滚动'" />
+            <el-button size="small" :icon="Refresh" circle @click="shuffleCards" title="随机打乱卡片" />
+            <span class="stat-dots">
+              <span v-for="n in totalSlides" :key="n" class="stat-dot" :class="{ on: (slideIndex % totalSlides) === n - 1 }" @click="goSlide(n - 1)"></span>
+            </span>
           </div>
-        </el-card>
+        </div>
       </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-fault">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">活跃故障</p>
-              <p class="stat-value">{{ overview.faults?.active ?? 0 }}</p>
-            </div>
-            <el-icon :size="40" color="#F56C6C"><Warning /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-today">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">今日新增故障</p>
-              <p class="stat-value">{{ overview.faults?.today ?? 0 }}</p>
-            </div>
-            <el-icon :size="40" color="#E6A23C"><WarningFilled /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-order">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">待处理工单</p>
-              <p class="stat-value">{{ overview.work_orders?.pending ?? 0 }}</p>
-            </div>
-            <el-icon :size="40" color="#67C23A"><Tickets /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-overdue">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">超时工单</p>
-              <p class="stat-value">
-                {{ overview.work_orders?.overdue ?? 0 }}
-                <span v-if="(overview.work_orders?.overdue ?? 0) > 0" class="stat-sub stat-sub-red">需优先处理</span>
-              </p>
-            </div>
-            <el-icon :size="40" color="#F56C6C"><AlarmClock /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 巡检 / 班组 卡片（参考项目 a：首页巡检统计/巡检排行） -->
-    <el-row :gutter="20" class="stat-row-2">
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-patrol">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">巡检记录 / 异常</p>
-              <p class="stat-value">
-                {{ patrolStats.total ?? 0 }}
-                <span class="stat-sub">/ {{ patrolStats.abnormal ?? 0 }}</span>
-              </p>
-              <p class="stat-sub" style="font-size:12px">巡检人次 {{ patrolStats.runs ?? 0 }} · 人员 {{ patrolStats.personRows ?? 0 }}</p>
-            </div>
-            <el-icon :size="40" color="#722ED1"><Aim /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card stat-team">
-          <div class="stat-content">
-            <div class="stat-info">
-              <p class="stat-label">班组 / 维护人员</p>
-              <p class="stat-value">
-                {{ teamStats.departments ?? 0 }}
-                <span class="stat-sub">班组 · {{ teamStats.maintainers ?? 0 }} 维护人员</span>
-              </p>
-            </div>
-            <el-icon :size="40" color="#13C2C2"><OfficeBuilding /></el-icon>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="12" />
     </el-row>
 
     <!-- AI 智慧大屏 -->
@@ -219,9 +157,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { FullScreen } from '@element-plus/icons-vue'
+import { FullScreen, VideoPlay, Refresh } from '@element-plus/icons-vue'
 import { getPatrolRecords, getPatrolRanking } from '@/api/patrol'
 import { getDepartments } from '@/api/department'
 import { getUsers } from '@/api/user'
@@ -284,6 +222,61 @@ async function fetchPatrolTeam() {
     }
     if (users.status === 'fulfilled') teamStats.maintainers = users.value?.data?.total ?? 0
   } catch { /* 忽略 */ }
+}
+
+// ---- 统计卡片：自动滚动 / 随机出现（可暂停）----
+const icMonitor = 'Monitor', icWarning = 'Warning', icWait = 'WarningFilled', icTickets = 'Tickets', icAlarm = 'AlarmClock', icAim = 'Aim', icTeam = 'OfficeBuilding'
+const totalCount = computed(() => overview.devices?.total ?? 0)
+const onlineCountS = computed(() => overview.devices?.online ?? 0)
+// 指标卡片（label / value(html) / extra / desc / color / icon / cls）
+const metricCards = computed(() => [
+  { key: 'dev', cls: 'stat-device', label: '设备总数 / 在线', value: String(totalCount.value), extra: `/ ${onlineCountS.value}`, color: '#409EFF', icon: icMonitor },
+  { key: 'fault', cls: 'stat-fault', label: '活跃故障', value: String(overview.faults?.active ?? 0), color: '#F56C6C', icon: icWarning },
+  { key: 'today', cls: 'stat-today', label: '今日新增故障', value: String(overview.faults?.today ?? 0), color: '#E6A23C', icon: icWait },
+  { key: 'pending', cls: 'stat-order', label: '待处理工单', value: String(overview.work_orders?.pending ?? 0), color: '#67C23A', icon: icTickets },
+  { key: 'overdue', cls: 'stat-overdue', label: '超时工单', value: String(overview.work_orders?.overdue ?? 0), color: '#F56C6C', icon: icAlarm, desc: (overview.work_orders?.overdue ?? 0) > 0 ? '需优先处理' : '' },
+  { key: 'patrol', cls: 'stat-patrol', label: '巡检记录 / 异常', value: String(patrolStats.total ?? 0), extra: `/ ${patrolStats.abnormal ?? 0}`, desc: `巡检人次 ${patrolStats.runs ?? 0} · 人员 ${patrolStats.personRows ?? 0}`, color: '#722ED1', icon: icAim },
+  { key: 'team', cls: 'stat-team', label: '班组 / 维护人员', value: String(teamStats.departments ?? 0), extra: `班组 · ${teamStats.maintainers ?? 0} 维护人员`, color: '#13C2C2', icon: icTeam },
+])
+
+// 轮播：每屏 4 张，顺序滚动；随机模式打乱
+const PER_PAGE = 4
+const slideIndex = ref(0)
+const order = ref<number[]>([])
+const randomMode = ref(false)
+function buildOrder() {
+  const n = metricCards.value.length
+  order.value = Array.from({ length: n }, (_, i) => i)
+  if (randomMode.value) order.value = order.value.sort(() => Math.random() - 0.5)
+}
+const totalSlides = computed(() => Math.max(1, Math.ceil((order.value.length || metricCards.value.length) / PER_PAGE)))
+const slideKey = computed(() => `${slideIndex.value}-${order.value.join(',') || 'def'}`)
+const visibleCards = computed(() => {
+  const arr = order.value.length ? order.value : Array.from({ length: metricCards.value.length }, (_, i) => i)
+  const all = metricCards.value
+  const start = (slideIndex.value % totalSlides.value) * PER_PAGE
+  const idxs: number[] = []
+  for (let k = 0; k < PER_PAGE; k++) idxs.push(arr[start + k])
+  return idxs.filter((i) => i != null && i < all.length).map((i) => all[i])
+})
+function goSlide(n: number) { slideIndex.value = n }
+function shuffleCards() {
+  randomMode.value = !randomMode.value
+  buildOrder(); slideIndex.value = 0
+}
+// 自动滚动定时器
+const carouselRunning = ref(true)
+let carouselTimer: ReturnType<typeof setInterval> | null = null
+function startCarousel() {
+  stopCarousel()
+  carouselTimer = setInterval(() => {
+    slideIndex.value = (slideIndex.value + 1) % totalSlides.value
+  }, 4000)
+}
+function stopCarousel() { if (carouselTimer) { clearInterval(carouselTimer); carouselTimer = null } }
+function toggleCarousel() {
+  carouselRunning.value = !carouselRunning.value
+  ;(carouselRunning.value ? startCarousel : stopCarousel)()
 }
 
 // 图表 DOM 引用
@@ -563,11 +556,14 @@ onMounted(async () => {
   await fetchOverview()
   await fetchAIData()
   await fetchPatrolTeam()
+  buildOrder()
+  startCarousel()
   await refreshAll()
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  stopCarousel()
   window.removeEventListener('resize', handleResize)
   pieChart?.dispose()
   barChart?.dispose()
@@ -593,6 +589,49 @@ onUnmounted(() => {
 }
 .stat-row-2 {
   margin-top: 4px;
+}
+/* 统计卡片轮播（自动滚动/随机出现） */
+.stat-carousel {
+  position: relative;
+}
+.stat-slide {
+  width: 100%;
+}
+.stat-slide-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 1200px) {
+  .stat-slide-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .stat-slide-grid { grid-template-columns: 1fr; }
+}
+.card-fade-enter-active, .card-fade-leave-active { transition: opacity .4s ease, transform .4s ease; }
+.card-fade-enter-from { opacity: 0; transform: translateY(12px); }
+.card-fade-leave-to { opacity: 0; transform: translateY(-12px); }
+.stat-carousel-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.stat-dots {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+.stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dcdfe6;
+  cursor: pointer;
+  transition: background .3s;
+}
+.stat-dot.on {
+  background: #409EFF;
 }
 .toolbar {
   display: flex;
