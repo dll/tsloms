@@ -100,7 +100,7 @@ func UploadDeviceMedia(c *gin.Context) {
 
 	// 校验扩展名
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".mp4": true, ".mov": true, ".webm": true, ".avi": true}
+	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".mp4": true, ".mov": true, ".webm": true, ".avi": true, ".pdf": true, ".doc": true, ".docx": true}
 	if !allowed[ext] {
 		badRequest(c, "不支持的文件类型（jpg/png/gif/mp4/mov/webm/avi）")
 		return
@@ -286,6 +286,8 @@ func categoryOf(ext string) string {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif":
 		return model.MediaPhoto
+	case ".pdf", ".doc", ".docx":
+		return model.MediaDoc
 	default:
 		return model.MediaVideo
 	}
@@ -341,6 +343,7 @@ func mimeAllowed(ext, detected string) bool {
 	}
 	isImg := ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif"
 	isVid := ext == ".mp4" || ext == ".mov" || ext == ".webm" || ext == ".avi"
+	isDoc := ext == ".pdf" || ext == ".doc" || ext == ".docx"
 	if isImg {
 		return strings.HasPrefix(detected, "image/")
 	}
@@ -348,6 +351,13 @@ func mimeAllowed(ext, detected string) bool {
 		// 视频容器较多，宽松放行常见的视频/二进制容器
 		return strings.HasPrefix(detected, "video/") || detected == "application/octet-stream" ||
 			detected == "application/mp4" || detected == "video/mp4"
+	}
+	if isDoc {
+		// PDF / Word：校验文档 magic number；docx 为 zip 容器，宽松放行常见文档/office 类型
+		return detected == "application/pdf" || detected == "application/octet-stream" ||
+			detected == "application/zip" || detected == "application/msword" ||
+			detected == "application/vnd.openxmlformats-officedocument" ||
+			strings.Contains(detected, "officedocument") || detected == "application/x-ole-storage"
 	}
 	return false
 }

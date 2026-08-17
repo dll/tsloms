@@ -136,6 +136,58 @@
         <el-form-item label="经度">
           <el-input v-model="editFormDev.lng" placeholder="如：121.4737" />
         </el-form-item>
+        <!-- 设备资料：照片 / 说明书 / 维修手册 -->
+        <el-form-item label="设备照片">
+          <div class="dev-asset">
+            <el-upload
+              :show-file-list="false"
+              :http-request="(o: any) => uploadDevFile(o, 'photo')"
+              accept=".jpg,.jpeg,.png,.gif"
+            >
+              <el-button :icon="Upload">上传照片</el-button>
+            </el-upload>
+            <div v-if="editFormDev.photo" class="dev-asset-preview">
+              <el-image :src="editFormDev.photo" :preview-src-list="[editFormDev.photo]" fit="cover" style="width:64px;height:48px;border-radius:4px" />
+              <el-button link type="danger" @click="editFormDev.photo=''">移除</el-button>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="说明书">
+          <div class="dev-asset">
+            <el-upload
+              :show-file-list="false"
+              :http-request="(o: any) => uploadDevFile(o, 'manual')"
+              accept=".pdf,.doc,.docx"
+            >
+              <el-button :icon="Upload">上传文件</el-button>
+            </el-upload>
+            <a v-if="editFormDev.manual_url" :href="editFormDev.manual_url" target="_blank" rel="noopener">
+              <el-button link type="primary" :icon="Document">阅读：{{ editFormDev.manual_name || '说明书' }}</el-button>
+            </a>
+            <el-button v-if="editFormDev.manual_name" link type="danger" @click="editFormDev.manual_url='';editFormDev.manual_name=''">移除</el-button>
+            <el-input v-model="editFormDev.manual_link" placeholder="说明书链接(可选)" size="small" style="margin-top:6px" clearable>
+              <template #prefix><el-icon><Link /></el-icon></template>
+            </el-input>
+          </div>
+        </el-form-item>
+        <el-form-item label="维修手册">
+          <div class="dev-asset">
+            <el-upload
+              :show-file-list="false"
+              :http-request="(o: any) => uploadDevFile(o, 'repair')"
+              accept=".pdf,.doc,.docx"
+            >
+              <el-button :icon="Upload">上传文件</el-button>
+            </el-upload>
+            <a v-if="editFormDev.repair_manual_url" :href="editFormDev.repair_manual_url" target="_blank" rel="noopener">
+              <el-button link type="primary" :icon="Document">阅读：{{ editFormDev.repair_manual_name || '维修手册' }}</el-button>
+            </a>
+            <el-button v-if="editFormDev.repair_manual_name" link type="danger" @click="editFormDev.repair_manual_url='';editFormDev.repair_manual_name=''">移除</el-button>
+            <el-input v-model="editFormDev.repair_manual_link" placeholder="维修手册链接(可选)" size="small" style="margin-top:6px" clearable>
+              <template #prefix><el-icon><Link /></el-icon></template>
+            </el-input>
+          </div>
+        </el-form-item>
         <!-- AI 辅助：依据当前录入字段给出填写/配置建议 -->
         <AiCopilot :load-fn="() => loadDeviceAdvice()" :fill-fn="() => {}" />
       </el-form>
@@ -159,8 +211,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Upload, Document, Link } from '@element-plus/icons-vue'
 import { getDevices, updateDevice, createDevice, deleteDevice } from '@/api/device'
+import { uploadDeviceMedia } from '@/api/media'
 import { getDeviceAdvice } from '@/api/copilot'
 import AiCopilot from '@/components/AiCopilot.vue'
 import MapPicker from '@/components/MapPicker.vue'
@@ -283,11 +336,34 @@ async function saveEdit() {
 // ---- 新增/编辑/删除设备 ----
 const editVisible = ref(false)
 const editId = ref<number | null>(null)
-const editFormDev = reactive({ hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '' })
+const editFormDev = reactive({ hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
+
+// 上传设备资料文件（照片/说明书/维修手册），返回媒体 URL 回填到表单
+async function uploadDevFile(o: any, kind: 'photo' | 'manual' | 'repair') {
+  const fd = new FormData()
+  fd.append('device_hw_id', editFormDev.hw_id || '0')
+  fd.append('media_type', 'evidence')
+  fd.append('intersection', editFormDev.intersection)
+  fd.append('title', kind === 'photo' ? '设备照片' : kind === 'manual' ? '说明书' : '维修手册')
+  fd.append('file', o.file)
+  try {
+    const res: any = await uploadDeviceMedia(fd)
+    const url = res?.data?.url || res?.data?.URL || ''
+    if (!url) { ElMessage.error('上传失败'); o.onError?.(); return }
+    if (kind === 'photo') editFormDev.photo = url
+    else if (kind === 'manual') { editFormDev.manual_url = url; editFormDev.manual_name = o.file.name }
+    else { editFormDev.repair_manual_url = url; editFormDev.repair_manual_name = o.file.name }
+    ElMessage.success('上传成功')
+    o.onSuccess?.(res)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '上传失败')
+    o.onError?.(e)
+  }
+}
 
 function openCreate() {
   editId.value = null
-  Object.assign(editFormDev, { hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '' })
+  Object.assign(editFormDev, { hw_id: '', intersection: '', network_code: 0, station_code: 0, lat: '', lng: '', photo: '', manual_url: '', manual_name: '', manual_link: '', repair_manual_url: '', repair_manual_name: '', repair_manual_link: '' })
   editVisible.value = true
 }
 function openEdit(row: Record<string, any>) {
@@ -296,6 +372,9 @@ function openEdit(row: Record<string, any>) {
     hw_id: String(row.hw_id || ''), intersection: row.intersection || '',
     network_code: row.network_code || 0, station_code: row.station_code || 0,
     lat: row.lat != null ? String(row.lat) : '', lng: row.lng != null ? String(row.lng) : '',
+    photo: row.photo || '',
+    manual_url: row.manual_url || '', manual_name: row.manual_name || '', manual_link: '',
+    repair_manual_url: row.repair_manual_url || '', repair_manual_name: row.repair_manual_name || '', repair_manual_link: '',
   })
   editVisible.value = true
 }
@@ -307,6 +386,12 @@ async function saveDevice() {
     hw_id: hw, intersection: editFormDev.intersection.trim(),
     network_code: editFormDev.network_code, station_code: editFormDev.station_code,
   }
+  if (editFormDev.photo) data.photo = editFormDev.photo
+  // 说明书/维修手册：优先用上传的文档 URL，否则用外部链接
+  const manualUrl = editFormDev.manual_url || editFormDev.manual_link.trim()
+  if (manualUrl) { data.manual_url = manualUrl; if (editFormDev.manual_name) data.manual_name = editFormDev.manual_name }
+  const repairUrl = editFormDev.repair_manual_url || editFormDev.repair_manual_link.trim()
+  if (repairUrl) { data.repair_manual_url = repairUrl; if (editFormDev.repair_manual_name) data.repair_manual_name = editFormDev.repair_manual_name }
   if (editFormDev.lat.trim() !== '') { const v = parseFloat(editFormDev.lat); if (!isNaN(v)) data.lat = v }
   if (editFormDev.lng.trim() !== '') { const v = parseFloat(editFormDev.lng); if (!isNaN(v)) data.lng = v }
   try {
@@ -370,5 +455,17 @@ onMounted(() => {
   margin-left: 12px;
   font-size: 12px;
   color: #909399;
+}
+.dev-asset {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.dev-asset-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

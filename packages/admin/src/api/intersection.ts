@@ -1,6 +1,11 @@
 import request from '@/utils/request'
 import type { ApiResponse } from '@/utils/request'
 
+// 新增路口（写入 crossings 表，地图大屏以该路口为节点显示）
+export function createCrossing(data: { name: string; lat?: number; lng?: number; road_name?: string }): Promise<ApiResponse> {
+  return request.post('/crossings', data) as unknown as Promise<ApiResponse>
+}
+
 // 路口维度设备统计
 export interface IntersectionItem {
   intersection: string

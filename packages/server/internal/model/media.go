@@ -41,6 +41,7 @@ const (
 	MediaTimelapse    = "timelapse"  // 时间视频（监控自动截取片段）
 	MediaPhoto        = "photo"      // 图片
 	MediaVideo        = "video"      // 视频
+	MediaDoc          = "doc"        // 文档（说明书/手册 pdf/doc/docx）
 	MediaSourceUpload = "upload"     // 手机上传
 	MediaSourceRTSP   = "rtsp"       // RTSP 实况
 	MediaSourceURL    = "url"        // 云存储 URL

@@ -98,6 +98,12 @@ func UpdateDevice(c *gin.Context) {
 		CommunityID *uint  `json:"community_id"`
 		RoadID      *uint  `json:"road_id"`
 		RoadName    string `json:"road_name"`
+		// 设备资料（照片/说明书/维修手册）
+		Photo            *string `json:"photo"`
+		ManualUrl        *string `json:"manual_url"`
+		ManualName       *string `json:"manual_name"`
+		RepairManualUrl  *string `json:"repair_manual_url"`
+		RepairManualName *string `json:"repair_manual_name"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -133,6 +139,22 @@ func UpdateDevice(c *gin.Context) {
 	if req.IsWatched != nil {
 		updates["is_watched"] = *req.IsWatched
 	}
+	// 设备资料（照片/说明书/维修手册；指针值可为空字符串以清除）
+	if req.Photo != nil {
+		updates["photo"] = *req.Photo
+	}
+	if req.ManualUrl != nil {
+		updates["manual_url"] = *req.ManualUrl
+	}
+	if req.ManualName != nil {
+		updates["manual_name"] = *req.ManualName
+	}
+	if req.RepairManualUrl != nil {
+		updates["repair_manual_url"] = *req.RepairManualUrl
+	}
+	if req.RepairManualName != nil {
+		updates["repair_manual_name"] = *req.RepairManualName
+	}
 
 	if len(updates) > 0 {
 		if err := model.DB.Model(&device).Updates(updates).Error; err != nil {
@@ -160,6 +182,12 @@ func CreateDevice(c *gin.Context) {
 		CommunityID *uint  `json:"community_id"`
 		RoadID      *uint  `json:"road_id"`
 		RoadName    string `json:"road_name"`
+		// 设备资料（照片/说明书/维修手册）
+		Photo            string `json:"photo"`
+		ManualUrl        string `json:"manual_url"`
+		ManualName       string `json:"manual_name"`
+		RepairManualUrl  string `json:"repair_manual_url"`
+		RepairManualName string `json:"repair_manual_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "硬件ID必填")
@@ -173,17 +201,22 @@ func CreateDevice(c *gin.Context) {
 		return
 	}
 	device := model.Device{
-		HwID:         req.HwID,
-		Intersection: req.Intersection,
-		NetworkCode:  req.NetworkCode,
-		StationCode:  req.StationCode,
-		Lat:          req.Lat,
-		Lng:          req.Lng,
-		CrossingID:   req.CrossingID,
-		StreetID:     req.StreetID,
-		CommunityID:  req.CommunityID,
-		RoadID:       req.RoadID,
-		RoadName:     req.RoadName,
+		HwID:             req.HwID,
+		Intersection:     req.Intersection,
+		NetworkCode:      req.NetworkCode,
+		StationCode:      req.StationCode,
+		Lat:              req.Lat,
+		Lng:              req.Lng,
+		CrossingID:       req.CrossingID,
+		StreetID:         req.StreetID,
+		CommunityID:      req.CommunityID,
+		RoadID:           req.RoadID,
+		RoadName:         req.RoadName,
+		Photo:            req.Photo,
+		ManualUrl:        req.ManualUrl,
+		ManualName:       req.ManualName,
+		RepairManualUrl:  req.RepairManualUrl,
+		RepairManualName: req.RepairManualName,
 	}
 	if err := model.DB.Create(&device).Error; err != nil {
 		serverError(c, err)

@@ -333,6 +333,14 @@ function plotCrossings() {
         outlineColor: Cesium.Color.fromCssColorString(color).withAlpha(0.9),
         height: 0,
       },
+      // 路口信号灯：固定像素大小（参考项目 a 的路口 Marker），任意缩放级别下大小一致
+      billboard: {
+        image: getSignalIcon({ online: true, size: 42 }),
+        width: 42,
+        height: 46,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
       properties: { kind: 'crossing', data: x } as any,
     })
     // 点击路口 → 聚焦该路口（下钻到路口层）

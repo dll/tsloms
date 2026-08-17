@@ -6,6 +6,7 @@
           <span>路口管理（{{ total }} 个路口）</span>
           <div class="header-actions">
             <el-input v-model="keyword" placeholder="搜索路口名称" clearable style="width: 200px" @input="applyFilter" />
+            <el-button v-if="canEdit" type="success" :icon="Plus" @click="openCreateCrossing">新增路口</el-button>
             <el-button type="primary" @click="goMap">地图大屏</el-button>
             <span v-if="!canEdit" class="readonly-tip">只读（查看人员）</span>
           </div>
@@ -77,6 +78,30 @@
       </template>
     </el-dialog>
 
+    <!-- 新增路口弹窗：名称 + 地图选点定位，保存后进入地图大屏显示 -->
+    <el-dialog v-model="createVisible" title="新增路口" width="460px" @opened="openCreatePick">
+      <el-form :model="createForm" label-width="90px">
+        <el-form-item label="路口名称" required>
+          <el-input v-model="createForm.name" placeholder="如：人民路口" />
+        </el-form-item>
+        <el-form-item label="纬度" required>
+          <el-input v-model="createForm.lat" placeholder="如：31.2304">
+            <template #append><el-button @click="openCreatePick">地图选点</el-button></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="经度" required>
+          <el-input v-model="createForm.lng" placeholder="如：121.4737" />
+        </el-form-item>
+        <el-form-item>
+          <span class="readonly-tip">保存后路口将出现在地图大屏，可在该路口下添加设备。</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="busy" @click="saveCreateCrossing">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 地图选点（路口坐标） -->
     <MapPicker
       v-model="locPick"
@@ -85,6 +110,14 @@
       :initial-lng="locPickInit.lng"
       @pick="onLocPick"
     />
+    <!-- 地图选点（新增路口） -->
+    <MapPicker
+      v-model="createPick"
+      title="路口位置"
+      :initial-lat="createPickInit.lat"
+      :initial-lng="createPickInit.lng"
+      @pick="onCreatePick"
+    />
   </div>
 </template>
 
@@ -92,7 +125,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getIntersections, renameIntersection, setIntersectionLocation, clearIntersection, type IntersectionItem } from '@/api/intersection'
+import { Plus } from '@element-plus/icons-vue'
+import { getIntersections, renameIntersection, setIntersectionLocation, clearIntersection, createCrossing, type IntersectionItem } from '@/api/intersection'
 import MapPicker from '@/components/MapPicker.vue'
 import { useAuthStore } from '@/store/auth'
 import { emitMapFocus } from '@/utils/eventBus'
@@ -156,6 +190,39 @@ function openLocPick() {
 function onLocPick(lat: number, lng: number) {
   locForm.lat = String(lat)
   locForm.lng = String(lng)
+}
+
+// ---- 新增路口 ----------------
+const createVisible = ref(false)
+const createForm = reactive({ name: '', lat: '', lng: '' })
+const createPick = ref(false)
+const createPickInit = reactive({ lat: 0 as number | null, lng: 0 as number | null })
+function openCreateCrossing() {
+  Object.assign(createForm, { name: '', lat: '', lng: '' })
+  createVisible.value = true
+}
+function openCreatePick() {
+  createPickInit.lat = createForm.lat ? Number(createForm.lat) : null
+  createPickInit.lng = createForm.lng ? Number(createForm.lng) : null
+  createPick.value = true
+}
+function onCreatePick(lat: number, lng: number) {
+  createForm.lat = String(lat)
+  createForm.lng = String(lng)
+}
+async function saveCreateCrossing() {
+  const name = createForm.name.trim()
+  if (!name) { ElMessage.warning('请输入路口名称'); return }
+  const lat = parseFloat(createForm.lat); const lng = parseFloat(createForm.lng)
+  if (isNaN(lat) || lat < -90 || lat > 90) { ElMessage.warning('请通过「地图选点」选择有效纬度'); return }
+  if (isNaN(lng) || lng < -180 || lng > 180) { ElMessage.warning('请通过「地图选点」选择有效经度'); return }
+  busy.value = true
+  try {
+    await createCrossing({ name, lat, lng })
+    ElMessage.success('路口已新增')
+    createVisible.value = false
+    load()
+  } catch { /* 后端提示 */ } finally { busy.value = false }
 }
 function openSetLocation(row: IntersectionItem) { target.value = row; locForm.lat = ''; locForm.lng = ''; locVisible.value = true }
 async function saveLocation() {

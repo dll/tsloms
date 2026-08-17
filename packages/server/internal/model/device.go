@@ -28,8 +28,14 @@ type Device struct {
 	IsWatched     bool       `json:"is_watched" gorm:"default:false;comment:是否关注(锁定/可能故障)"`
 	LastCheckinAt *time.Time `json:"last_checkin_at" gorm:"comment:最后签到时间"`
 	InstalledAt   *time.Time `json:"installed_at" gorm:"comment:安装日期"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// 设备资料（照片/说明书/维修手册）：URL 可为外链或内部上传地址（/media/...），Name 为上传原文件名（用于阅读/下载展示）
+	Photo            string    `json:"photo" gorm:"size:500;comment:设备照片URL"`
+	ManualUrl        string    `json:"manual_url" gorm:"size:500;comment:说明书链接(外链或上传)"`
+	ManualName       string    `json:"manual_name" gorm:"size:255;comment:说明书文件名"`
+	RepairManualUrl  string    `json:"repair_manual_url" gorm:"size:500;comment:维修手册链接(外链或上传)"`
+	RepairManualName string    `json:"repair_manual_name" gorm:"size:255;comment:维修手册文件名"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名

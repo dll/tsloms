@@ -78,8 +78,15 @@ func TestDevice_CRUD(t *testing.T) {
 		t.Errorf("详情不存在应 404, got %d", code)
 	}
 	// 更新
-	code, _ = doReq(t, r, "PUT", "/api/v1/devices/"+uid(did), `{"intersection":"新路口","installed_at":"2026-01-01","lat":31.5,"lng":121.6,"is_watched":true}`)
-	mustOK(t, code, map[string]interface{}{"code": float64(0)}, "更新设备")
+	code, _ = doReq(t, r, "PUT", "/api/v1/devices/"+uid(did), `{"intersection":"新路口","installed_at":"2026-01-01","lat":31.5,"lng":121.6,"is_watched":true,"photo":"/media/202601/dev.jpg","manual_url":"/media/202601/manual.pdf","manual_name":"说明书.pdf","repair_manual_url":"/m/repair.docx","repair_manual_name":"维修手册.docx"}`)
+	mustOK(t, code, map[string]interface{}{"code": float64(0)}, "更新设备(含资料)")
+	// 校验资料字段持久化
+	code, body = doReq(t, r, "GET", "/api/v1/devices/"+uid(did), "")
+	mustOK(t, code, body, "设备详情(资料)")
+	dv := body["data"].(map[string]interface{})["device"].(map[string]interface{})
+	if dv["photo"] != "/media/202601/dev.jpg" || dv["manual_name"] != "说明书.pdf" || dv["repair_manual_url"] != "/m/repair.docx" {
+		t.Errorf("设备资料字段未正确持久化: %v", dv)
+	}
 	// 更新不存在
 	code, _ = doReq(t, r, "PUT", "/api/v1/devices/99999", `{"intersection":"x"}`)
 	if code != http.StatusNotFound {
