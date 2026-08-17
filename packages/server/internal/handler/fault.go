@@ -432,12 +432,14 @@ func DispatchFault(c *gin.Context) {
 	err = model.DB.Where("fault_id = ? AND status IN ?", fault.ID,
 		[]string{model.WorkOrderStatusPending, model.WorkOrderStatusProcessing}).First(&wo).Error
 	if err != nil {
+		scope := fault.ID
 		wo = model.WorkOrder{
-			OrderNo:    model.NextOrderNo(model.DB),
-			FaultID:    fault.ID,
-			DeviceHwID: fault.DeviceHwID,
-			Status:     model.WorkOrderStatusProcessing,
-			AssigneeID: &req.AssigneeID,
+			OrderNo:          model.NextOrderNo(model.DB),
+			FaultID:          fault.ID,
+			DeviceHwID:       fault.DeviceHwID,
+			Status:           model.WorkOrderStatusProcessing,
+			AssigneeID:       &req.AssigneeID,
+			FaultActiveScope: &scope, // 活跃工单占据 fault 唯一索引位（M1，与自动派单一致）
 		}
 		if err := model.DB.Create(&wo).Error; err != nil {
 			serverError(c, err)
