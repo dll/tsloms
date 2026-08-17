@@ -49,7 +49,9 @@
       <el-form :model="locForm" label-width="90px">
         <el-form-item label="路口名称"><el-input :value="target?.intersection" disabled /></el-form-item>
         <el-form-item label="纬度" required>
-          <el-input v-model="locForm.lat" placeholder="如：31.2304" />
+          <el-input v-model="locForm.lat" placeholder="如：31.2304">
+            <template #append><el-button @click="openLocPick">地图选点</el-button></template>
+          </el-input>
         </el-form-item>
         <el-form-item label="经度" required>
           <el-input v-model="locForm.lng" placeholder="如：121.4737" />
@@ -74,6 +76,15 @@
         <el-button type="primary" :loading="busy" @click="saveRename">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 地图选点（路口坐标） -->
+    <MapPicker
+      v-model="locPick"
+      title="路口坐标"
+      :initial-lat="locPickInit.lat"
+      :initial-lng="locPickInit.lng"
+      @pick="onLocPick"
+    />
   </div>
 </template>
 
@@ -82,6 +93,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getIntersections, renameIntersection, setIntersectionLocation, clearIntersection, type IntersectionItem } from '@/api/intersection'
+import MapPicker from '@/components/MapPicker.vue'
 import { useAuthStore } from '@/store/auth'
 import { emitMapFocus } from '@/utils/eventBus'
 
@@ -132,6 +144,19 @@ const target = ref<IntersectionItem | null>(null)
 // 设置坐标
 const locVisible = ref(false)
 const locForm = reactive({ lat: '', lng: '' })
+
+// 地图选点（路口坐标）
+const locPick = ref(false)
+const locPickInit = reactive({ lat: 0 as number | null, lng: 0 as number | null })
+function openLocPick() {
+  locPickInit.lat = locForm.lat ? Number(locForm.lat) : null
+  locPickInit.lng = locForm.lng ? Number(locForm.lng) : null
+  locPick.value = true
+}
+function onLocPick(lat: number, lng: number) {
+  locForm.lat = String(lat)
+  locForm.lng = String(lng)
+}
 function openSetLocation(row: IntersectionItem) { target.value = row; locForm.lat = ''; locForm.lng = ''; locVisible.value = true }
 async function saveLocation() {
   if (!target.value) return

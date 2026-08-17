@@ -98,7 +98,9 @@
           <el-input v-model="editForm.intersection" placeholder="如：人民路口" />
         </el-form-item>
         <el-form-item label="纬度">
-          <el-input v-model="editForm.lat" placeholder="如：31.2304" />
+          <el-input v-model="editForm.lat" placeholder="如：31.2304">
+            <template #append><el-button @click="openPick('edit')">地图选点</el-button></template>
+          </el-input>
         </el-form-item>
         <el-form-item label="经度">
           <el-input v-model="editForm.lng" placeholder="如：121.4737" />
@@ -127,7 +129,9 @@
           <el-input-number v-model="editFormDev.station_code" :min="0" :max="65534" style="width:100%" />
         </el-form-item>
         <el-form-item label="纬度">
-          <el-input v-model="editFormDev.lat" placeholder="如：31.2304" />
+          <el-input v-model="editFormDev.lat" placeholder="如：31.2304">
+            <template #append><el-button @click="openPick('dev')">地图选点</el-button></template>
+          </el-input>
         </el-form-item>
         <el-form-item label="经度">
           <el-input v-model="editFormDev.lng" placeholder="如：121.4737" />
@@ -140,6 +144,15 @@
         <el-button type="primary" :loading="saving" @click="saveDevice">{{ editId ? '保存' : '新增' }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 地图选点（通用组件）：地图窗口搜索/拖动/滚轮/点击定位，确定回填经纬度 -->
+    <MapPicker
+      v-model="pickVisible"
+      title="设备坐标"
+      :initial-lat="pickInitial.lat"
+      :initial-lng="pickInitial.lng"
+      @pick="onPick"
+    />
   </div>
 </template>
 
@@ -150,6 +163,7 @@ import { Search, Refresh, Plus } from '@element-plus/icons-vue'
 import { getDevices, updateDevice, createDevice, deleteDevice } from '@/api/device'
 import { getDeviceAdvice } from '@/api/copilot'
 import AiCopilot from '@/components/AiCopilot.vue'
+import MapPicker from '@/components/MapPicker.vue'
 import { useAuthStore } from '@/store/auth'
 
 // 登录角色（用于按钮权限控制）
@@ -181,6 +195,22 @@ const currentDevice = ref<Record<string, any> | null>(null)
 // 坐标/路口编辑
 const saving = ref(false)
 const editForm = reactive({ intersection: '', lat: '', lng: '' })
+
+// 地图选点状态
+const pickVisible = ref(false)
+const pickTarget = ref<'edit' | 'dev'>('edit')
+const pickInitial = reactive({ lat: 0 as number | null, lng: 0 as number | null })
+function openPick(target: 'edit' | 'dev') {
+  pickTarget.value = target
+  const f = target === 'edit' ? editForm : editFormDev
+  pickInitial.lat = f.lat ? Number(f.lat) : null
+  pickInitial.lng = f.lng ? Number(f.lng) : null
+  pickVisible.value = true
+}
+function onPick(lat: number, lng: number) {
+  if (pickTarget.value === 'edit') { editForm.lat = String(lat); editForm.lng = String(lng) }
+  else { editFormDev.lat = String(lat); editFormDev.lng = String(lng) }
+}
 
 // 获取设备列表
 async function fetchData() {
