@@ -54,6 +54,7 @@ import {
   Money,
   Van,
   TrendCharts,
+  Aim,
 } from '@element-plus/icons-vue'
 
 /**
@@ -151,6 +152,10 @@ const optionalModules: ModuleDef[] = [
       { path: '/ai/lifecycle', name: 'AILifecycle', component: () => import('@/views/ai/Lifecycle.vue'), title: '生命周期' },
       { path: '/ai/config', name: 'AIConfig', component: () => import('@/views/ai/Config.vue'), title: '额度设置', perm: 'ai:config' },
     ],
+  },
+  {
+    key: 'patrol', title: '自动巡检', icon: Aim, path: '/patrol', core: false,
+    routes: [{ path: '/patrol', name: 'Patrol', component: () => import('@/views/patrol/index.vue'), title: '自动巡检', perm: 'patrol:manage' }],
   },
 ]
 
