@@ -6,9 +6,18 @@ import "time"
 // 记录信号灯监控设备的台账信息，hw_id 为出厂唯一硬件 ID
 // 路口维度：intersection 为路口名称，lat/lng 为设备经纬度（用于地图打点）
 type Device struct {
-	ID            uint       `json:"id" gorm:"primaryKey"`
-	HwID          uint32     `json:"hw_id" gorm:"uniqueIndex;comment:设备硬件ID(出厂唯一)"`
-	Intersection  string     `json:"intersection" gorm:"size:128;index;comment:路口位置描述"`
+	ID           uint   `json:"id" gorm:"primaryKey"`
+	HwID         uint32 `json:"hw_id" gorm:"uniqueIndex;comment:设备硬件ID(出厂唯一)"`
+	Intersection string `json:"intersection" gorm:"size:128;index;comment:路口位置描述"`
+	// P0-4 路口/行政区划挂接：均可空，只增不删，未挂接线旧设备不受影响
+	CrossingID    *uint      `json:"crossing_id" gorm:"index;comment:所属路口ID(crossings.id,可空)"`
+	ProvinceID    *uint      `json:"province_id" gorm:"comment:省ID"`
+	CityID        *uint      `json:"city_id" gorm:"comment:市ID"`
+	DistrictID    *uint      `json:"district_id" gorm:"comment:区县ID"`
+	StreetID      *uint      `json:"street_id" gorm:"comment:街道ID"`
+	CommunityID   *uint      `json:"community_id" gorm:"comment:社区ID"`
+	RoadID        *uint      `json:"road_id" gorm:"comment:道路ID"`
+	RoadName      string     `json:"road_name" gorm:"size:128;comment:道路名称(冗余)"`
 	Lat           *float64   `json:"lat" gorm:"comment:纬度"`
 	Lng           *float64   `json:"lng" gorm:"comment:经度"`
 	NetworkCode   int        `json:"network_code" gorm:"comment:网络号"`

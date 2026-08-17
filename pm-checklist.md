@@ -1,298 +1,291 @@
-# TSLOMS 智能多源故障识别研判引擎 —— 需求核对清单（pm-checklist）
+# TSLOMS —— 第二轮新需求核对清单（pm-checklist）
 
-> 产出专员：pm-tsloms（只读核对，禁止改码）｜ 日期：2026-08-17
-> 范围 = **A（仅后端 `packages/server`，前端 `packages/admin` 不动）**
-> 性质：**功能性新工程**——把故障识别从"固件单一 errCode 1:1 直判"升级为"多源融合智能研判引擎"。
-> 说明：本文件为需求核对产物，仅诊断现状与界定范围，**未修改任何源码/文件**。
-
----
-
-## 〇、本次工程一句话需求（用户原话要点）
-
-> 重构系统核心故障管理：**固件 → 信号灯数据 → 协议判断 → 故障识别/可视化/预警/判断 → 派工单 → 维修**。
-> 核心目标：**从数据中自动识别故障，准确率 ≥ 99.9999%（最终趋近 100%）**。
-> 辅助手段：群众反映、手机举证、视频监控 —— 本次阶段**仅预留数据模型与接口，不要求真实接入**。
-> 要求：建立识别案例库、训练模型达到 100% 识别率。
+> 产出专员：**pm-tsloms**（只读核对，禁止修改任何源码/文件）
+> 日期：2026-08-17 ｜ 性质：**第二轮新需求**规模核对 + 「参考项目 a」深度对比
+> 说明：本文件仅做需求核对、现状诊断、差距对比、范围划分、数据/接口设计与优先级排序。**未改动任何代码与文件。**
+> 旧版（第一轮：智能多源故障识别研判引擎）已另存为 `pm-checklist-a.md` 保留。
 
 ---
 
-## 一、现状诊断 vs 目标差距
+## 〇、本轮新需求一句话（用户原话要点，逐条覆盖核对）
 
-### 1.1 现状（已核实的代码事实）
+1. **登录认证体系改造**：手机号为用户账号，登录验证码。
+2. **预警管理**：设置、级别、显示、预警等。
+3. **路口属性**：行政区划（街道、社区、道路）。
+4. **路灯位置地图拾取经纬度**（地图上点击/搜索定位取经纬度落库）。
+5. **地图增强**：缩放级别；路口、信号灯图标；预警；故障分级着色——全部正常→整个道路/路口绿；全部红灯→道路/路口红（停电/线路造成）；红绿中间状态按故障比例（故障/全部 或 绿灯/全部）渐变「由绿→变黄→渐变到红」；从路→路口→具体故障点（红色）；可缩放定位、三维演示、视频巡检、实时监控。
+6. **自动巡检**：空间区域、街道排查、随机抽检、AI 硬件数据、信号灯自检。
+7. **合并指令**：「a 项目的数据结构和实现，吸取全部，特别是预警、地图、自检，完善 tsloms 本项目。」
 
-**故障识别链路（单一数据源、单点直判）：**
-- 协议解析：`internal/mqtt/parser.go`（CMD_FRAME/EVENT_PAK/EVENT_RECORD 二进制解析）+ `internal/mqtt/commands.go`。
-- 判定函数：`FaultTypeFromErrCode` / `FaultLevelFromErrCode`（commands.go）——**errCode 到类型/等级的 1:1 switch 直判**。
-- 处理入口：`internal/mqtt/handler.go` 的 `processFault(rec)`：
-  - 同一设备同一 `errCode` 在 **30 分钟去重窗口**内只维护一条活跃故障，仅更新 `last_seen`/电流/灯态；
-  - 超窗把旧故障置 `resolved`，新建故障；
-  - `faultLevel == "critical"` 时自动调 `createWorkOrder` 生成工单（状态 `pending`），并把故障置 `confirmed`、回写 `work_order_id`。
-- 故障状态机：`occurred → confirmed → dispatched → resolved`（model/fault.go 四态）。
-
-**现状特征：**
-- **单一数据源**：只信固件 `errCode`（事件记录里的单字节错误码）。
-- **单点直判**：不做多源交叉验证、无置信度、无误报过滤、无持久化"证据"回溯。
-- **已具备但未融合的外部数据载体**：`DeviceMedia`（evidence/monitoring/timelapse 三类，已含手机举证、监控来源）、`Feedback`（群众反映，可关联设备/工单）——但**当前不参与故障识别**。
-
-### 1.2 现状短板（目标差距 GAP）
-
-| # | 现状 | 目标 | 差距 |
-|---|---|---|---|
-| G1 | errCode 单点直判，判定即可信 | 多源融合 + 证据交叉验证 + 置信度 | 缺多源汇聚、置信度、误报过滤 |
-| G2 | 判定结果不可审计（无证据明细落库） | 每次研判可溯源多源证据 | 缺 `fault_evidence` 证据表 |
-| G3 | 无识别案例沉淀 | 建立识别案例库、训练模型达 100% | 缺 `fault_case` 案例库及样本回流闭环 |
-| G4 | 规则硬编码在 switch，无法迭代 | 确定性规则引擎为主 + 案例库模型兜底长尾 | 缺研判引擎分层架构 |
-| G5 | 群众/举证/监控未接入识别 | 预留数据模型与接口（本阶段不强接） | DeviceMedia/Feedback 已有载体，需补判定对接点 |
-
-### 1.3 关键结论：为什么 99.9999% 必须走确定性系统路径（非纯黑盒模型）
-
-> 已在第四节详析，结论先行：**对安全关键交通信号故障，99.9999%（6 个 9）准确率不可能由任何纯统计/黑盒模型在可验证性上单点满足；必须"确定性规则引擎为主、多源交叉验证提可信、案例库模型兜底长尾"三层组合，并用真实案例巡检 + 样本回流训练到 100% 识别率。**
+> 结论：本轮核心增量 = **①手机号+验证码登录**、**②预警管理（设置/级别/显示/记录）**、**③路口行政区划（涉街/社/路）**、**④设备/路口经纬度地图拾取**、**⑤地图分级渐变着色（路→路口→故障点）+三维/视频/实时**、**⑥自动巡检（空间区域/街道/随机抽检/AI硬件/信号灯自检）**。以上均以「充分吸收参考项目 a 的数据结构与实现」为基础。
 
 ---
 
-## 二、功能范围界定（范围=A，仅后端）
+## 一、参考项目 a 深度分析结论
 
-### 2.1 本次必须实现（核心交付）
+### 1.1 项目 a 定位与技术栈
+- **系统**：交通信号灯检测后台运维系统（RuoYi 框架风格，Spring Boot + Vue2 + Element UI + 高德 AMap + ECharts），前后端分离，接口前缀 `/prod-api`，JWT(HS512)+Cookie。
+- **业务闭环**：`信号灯设备 → MQTT 上报 → 后端研判引擎（红灯全灭/超时/同亮/缺亮/断电等）→ 预警记录 signal_warning → 忽略/转工单 → 维修工单`。
+- 用户账号即**手机号**（`userName = 13955832695`，phonenumber 同号）。
 
-| 编号 | 能力 | 说明 |
-|---|---|---|
-| S1 | 多源证据统一模型 & 落库 | 新增 `fault_evidence`（见第五节），承接固件 errCode 事件、电流/灯态、群众反映、手机举证、视频监控等**多源证据记录** |
-| S2 | 证据归一化与汇聚 | 把不同源头的原始信号归一成统一"证据"，按 设备+灯组+时间窗 聚合 |
-| S3 | 确定性规则研判引擎（主通道） | 保留并内聚现有 errCode→type/level 的 `FaultTypeFromErrCode/FaultLevelFromErrCode` 作为**规则基座**，扩展为带**置信度**的规则库 |
-| S4 | 多源交叉验证 & 误报过滤 | 固件信号为主，其它证据（举证/反馈/电流异常/视频报警）交叉印证；低置信/矛盾证据降级/过滤，不误报 |
-| S5 | 置信度计算与判定分层 | 每起发起研判输出置信度，低置信进"待确认"不自动派单；高置信直判 |
-| S6 | 故障落库/去重/自动工单改造 | 在保留 30min 去重、critical 自动工单、状态机的前提下，接入新研判结果（含置信度/证据来源/是否误报过滤） |
-| S7 | 识别案例库 `fault_case`（数据模型+基础读写） | 沉淀判定样本（输入证据+结论+结果），供长尾学习（见第五节） |
-| S8 | 案例库模型训练/召回框架（服务端） | 训练到 100% 识别率的调度与 API 骨架：样本回流、模型训练触发、案例检索命中（暂用可解释检索引擎，不引入不可控黑盒） |
-| S9 | 面向外部数据源的预留接口 | 群众反映/手机举证/视频监控的**写入与查询接口骨架**（可落库，真实视频分析不实现，见 2.3） |
-| S10 | 新增后端接口 + 既有接口向后兼容 | 新增研判/证据/案例接口；`/faults*` 既有契约保持不变（见第六节） |
-
-### 2.2 本阶段"仅预留、不实现实质"
-
-| 编号 | 预留项 | 程度 |
-|---|---|---|
-| P1 | 多媒体/群众反馈**真实接入识别** | 只预留 `DeviceMedia`/`Feedback` 关联到 `fault_evidence` 的字段与接口；不做视频分析/AI 视觉故障识别 |
-| P2 | 监控视频 RTSP 分析 | 不接入；监控类媒体仅记录，供人工查看 |
-| P3 | 规模化分布式训练/在线学习 | 预留模型服务接口；本阶段用批式训练 + 规则样例库即可 |
-
-### 2.3 明确不做（本期红线外）
-
-- **不做前端改动**（范围=A：`packages/admin` 不动，接口需向后兼容而非改前端）。
-- **不重写 MQTT 二进制协议**（CMD_FRAME/EVENT_RECORD 设备契约不可变）。
-- **不删除/不修改** 现有 `FaultTypeFromErrCode/FaultLevelFromErrCode` 的既有判定语义（作为规则基座内聚复用，不改变业务含义）。
-- **不引入不可解释的黑盒模型作为唯一判定**（安全关键场景，需人工/规则可审计）。
-- **不做自动派单策略变更**（仅维持"critical 自动生成工单"现状语义）。
-
----
-
-## 三、核心指标与判定分层设计建议
-
-### 3.1 目标指标
-
-| 指标 | 目标 | 度量方式 |
-|---|---|---|
-| 故障识别准确率 | ≥ 99.9999%（最终逼近 100%） | 判定正确样本 / 判定样本总数（以案例库回标为真值） |
-| 误报率 | 趋近 0 | 误报样本 / 非故障样本 |
-| 漏报率 | 趋近 0 | 漏报真实故障 / 真实故障总数 |
-| 案例库识别率 | 100%（模型训练达标） | 训练后对案例库样本的识别命中 |
-| 研判可追溯 | 100% | 每起发起研判（含被过滤的）均有 `fault_evidence` 证据记录 |
-
-### 3.2 判定分层设计（建议）
-
+### 1.2 核心业务模型（表结构与关系）
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ 第 0 层：多源证据采集/归一化（fault_evidence 落库）          │
-│   固件errCode事件 | 电流/灯态 | 群众反映 | 手机举证 | 视频监控│
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 第 1 层：确定性规则引擎（主通道，可解释/可审计/可单测）       │
-│   ·基础：FaultTypeFromErrCode / FaultLevelFromErrCode（内聚）│
-│   ·规则：errCode × 灯态 × 电流阈值 × 持续时长 × 同型重复      │
-│   ·输出：候选故障 + 基础置信度                                 │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 第 2 层：多源交叉验证 & 置信度融合（防误报提可信）            │
-│   ·固件为主信号，其它证据加权印证/否证                        │
-│   ·矛盾证据 → 降级/挂起待确认；孤证 → 低置信                  │
-│   ·输出：融合置信度 conf                                    │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 第 3 层：判定与分流                                           │
-│   conf≥T_high：确认故障 → 落库/去重/自动工单（critical）      │
-│   T_low≤conf<T_high：待确认（入列，可人工复核）→ 不自动派单   │
-│   conf<T_low 或明确否证：误报过滤，仅记证据日志不产生工单     │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 第 4 层：案例库 fault_case + 模型训练/召回（长尾/100%目标）    │
-│   ·判定结论 + 结果回标 → 沉淀为案例                            │
-│   ·模型/检索引擎学习案例 → 使 long-tail 型误判收敛            │
-│   ·真实案例巡检脚本：持续以样本回流方式提升到 100%            │
-└─────────────────────────────────────────────────────────────┘
+Tenant(tenantId) 1─N Dept(deptId) 1─N User(userId)   ← RuoYi 标准
+Area(areaId)     1─N Crossing(pointId) 1─N Equipment(uuid)
+Crossing/Equipment 1─N Warning ；1─N WarningConfig
+Dictionary(sys_dict_type + sys_dict_data) 驱动所有枚举
 ```
 
-### 3.3 为什么 99.9999% 必须走确定性系统性路径（核心论证）
-
-1. **可审计与可解释是安全关键红线**。交通信号故障涉公共安全，任何识别结果需能被人工、规则、监管复验——纯黑盒模型无法给出"为什么判这个故障"，无法满足审计与事故追责需求。
-2. **99.9999%（6 个 9）超出黑盒可证明精度**。黑盒模型（含深度学习）准确率受训练分布、对抗样本、泛化误差限制，无法在数学/验证层面声明"错误率 < 百万分之一"；而确定规则引擎对 `errCode`/`电流`/`灯态` 的可判定组合可做到**可复现、可穷举、可单测固化**。
-3. **低成本 + 主源决定性强**。固件 `errCode` + 电流 + 灯态这些字段本身就是设备主动上报的**强判定信号**，与故障一一强相关，纯规则即可达到极高准确率且零推理成本；黑盒用于此是其精度冗余且不可验证。
-4. **黑盒的正确位置是"长尾兜底 + 多源辅助"**。对规则无法覆盖的模糊/多因互扰/新形态故障，用案例库检索 + 可解释模型**补充判断**，而非替代规则主通道。
-5. **"训练到 100%"在此处含义需锚定**：**在已沉淀的识别案例库上，让模型+规则组合达到 100% 命中（0 漏 0 误）**——通过样本回流闭环（判定→回标→再训练→再验证）逼近，而非声称对无限未知样本也 100%。这是可实现且能验证的目标表述。
-
-> **结论**：以**确定性规则引擎为判定主通道**，**多源交叉验证提升可信度与抗误报**，**案例库模型兜底长尾并持续蒸馏收敛**，三结合是安全关键场景下达成"6 个 9"且保可审计的唯一现实路径。
-
----
-
-## 四、红线清单（不得破坏的既有行为——继承上次流水线固化红线）
-
-以下为**行为级硬约束**，任何重构/新工程都不得使其回归：
-
-||红线|现有锚点（代码）|不得破坏的语义|
-|---|---|---|---|
-|R1|工单状态机|`model.WorkOrder`：pending→processing→completed/rejected|状态流转、`OrderNo` 唯一、`closed_at` 闭环语义不可变|
-|R2|故障状态机|`fault_records`：occurred→confirmed→dispatched→resolved|四态流转及 operator/owner/repairer 字段语义不可变|
-|R3|30 分钟去重窗口|`processFault`（handler.go）：同设备同 errCode 30min 内不新增|去重窗口锚点与"超窗旧置 resolved、新建"逻辑保持|
-|R4|工单序号 `NextOrderNo`|model/workorder.go：`WO{yyyyMMdd}{4位自增}`|当日序号连续唯一，竞态安全语义保持|
-|R5|SLA 24/48h|`WorkOrderPendingSLASeconds=24h` / `ProcessingSLASeconds=48h`|超时判定阈值与 `WorkOrderOverdueHours` 语义不变|
-|R6|严重故障自动工单|`processFault`/`createWorkOrder`：critical→自动生成 pending|critical 才自动工单、置 confirmed、回写 work_order_id 语义保持|
-|R7|AI 兜底|`internal/ai`（diagnostic/decision/engine/anomaly 等）规则降级路径|兜底与现有 AI 能力不因引入新引擎而退化/绕过|
-|R8|RBAC / 鉴权|`middleware/rbac.go` + 权限码 `fault:update/dispatch/delete`、`workorder:*`|权限模型、角色、内置角色授权不动；新接口必须守鉴权|
-|R9|既有 REST 契约|`/faults*`、`/work-orders*` 返回结构（`faultView`/`workOrderView`）|接口路径、参数、返回字段**向后兼容**（前端不动）|
-|R10|MQTT 二进制协议|parser.go CMD_FRAME/EVENT_PAK/EVENT_RECORD 布局|设备通信契约不可改，仅新增解读，不改字节格式|
-
-> 新增能力（置信度/证据/案例）**只做加法**：对现有 `/fault*` 响应增加可选字段（带缺省），不删不改既有字段；加表不加"寄居"改表语义。
-
----
-
-## 五、数据模型变更建议
-
-### 5.1 新增表
-
-**(1) `fault_evidence`（多源证据表）——每起研判的证据来源明细**
-
-| 字段 | 类型/说明 | 与现有关系 |
+**① 路口表 signal_crossing**
+| 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | PK | — |
-| `fault_id` | *FK→fault_records.id*（可空：被误报过滤的未落故障也可留证据，加 `evaluation_id` 关联研判批次） | 关联 FaultRecord |
-| `evaluation_id` | 研判批次号（一次研判一组证据同批次） | 关联 FaultRecord |
-| `device_hw_id` | 设备硬件ID（关联 Device.HwID） | 关联 Device |
-| `source_type` | 证据来源：`firmware/current/led_state/citizen/photo_evidence/video_monitor` | 枚举 |
-| `err_code` | 固件错误码（firmware 类证据带） | 关联 ErrCode 常量 |
-| `led_state` / `current_r/y/g` | 电流/灯态原始值（firmware 类） | 关联 EventRecord |
-| `raw_data` | 原始报文/JSON/图片URL/文本（text） | 可关联 PacketLog.device_hw_id 或 DeviceMedia.url |
-| `ref_media_id` | *FK→device_media.id*（举证/监控证据关联媒体） | 关联 DeviceMedia |
-| `ref_feedback_id` | *FK→feedbacks.id*（群众反映证据） | 关联 Feedback |
-| `captured_at` | 证据发生时间 | 时间窗聚合依据 |
-| `confidence` | 该证据对判定的贡献度 0-1 | — |
-| `created_at` | — | — |
+| id | bigint | 主键（48…） |
+| pointId | varchar | 点位编码（point202404260413） |
+| pointName | varchar | 路口名（长江中路与宿州路） |
+| type | varchar | 路口类型（signal_cross_type：1直角/2卡口/3~8多路口） |
+| longitude/latitude | varchar | 经纬度（GCJ-02 高德系） |
+| areaId/areaName | varchar | 行政区划（340103/庐阳区） |
+| status | varchar | 路口状态（1维护中/2监测中/3离线/4异常/5黄闪） |
+| equipments | array | 关联设备（详情接口返回，1:N） |
 
->(建议)索引：`(device_hw_id, captured_at)`、`(fault_id)`、`(source_type)`。
+**② 设备表 signal_equipment**：`id(UUID)、uuid(信号机地址码，如 1114004B/LA82533848)、areaId/areaName、pointId/pointName、batch(灯组1~8)、func(功能 1机动车/2倒计时机动…6闪光警告)、fx(方向 左转/直行/右转)、cx(朝向 由西向东…)、lon/lat、installDate、hearts(心跳数)、requestTime(最近上报)、versionValue(固件版本值，OTA)、lineStatus(1在线)、extraData(JSON 实时状态)、configUrl`。
 
-**(2) `fault_case`（识别案例库表）——训练及 100% 识别率达标的数据基础**
-
-| 字段 | 类型/说明 |
+**③ 预警表 signal_warning**（关键）
+| 字段 | 说明 |
 |---|---|
-| `id` | PK |
-| `fault_type` / `fault_level` | 标准类型/等级（对齐现有故障分类） |
-| `device_hw_id` | 关联设备 |
-| `input_signature` | 输入证据指纹（特征向量/组合签名，text/JSON，用于检索召回） |
-| `evidence_summary` | 证据摘要（text） |
-| `expected_result` | 回标真值：真实故障类型/等级 |
-| `judged_result` | 引擎原始判定（用于对比学习） |
-| `is_correct` | 引擎判定是否与真值一致（true/false） |
-| `source_evaluation_id` | 来源研判批次（可回溯） |
-| `status` | `seed/confirmed/training/test` |
-| `created_at` / `updated_at` | — |
+| id | UUID 主键 |
+| pointId/pointName | 关联路口 |
+| equipmentUuid | 关联设备 |
+| content | **告警内容码**（signal_equipment_warning 字典：-1红全灭/-2黄全灭/-3绿全灭/-4红黄同亮/-5红绿同亮/-6黄绿同亮/-7红黄绿同亮/-8红超时/-9黄超时/-10绿超时/-11红缺亮/-12黄缺亮/-13绿缺亮/-14断电/0正常） |
+| func | 信号灯功能方向（东向西直行/北侧左转） |
+| dealState | 处理状态（1未处理/2已处理） |
+| status | 工单状态（1未转/2已转） |
+| contentLabel | 告警文案冗余字段 |
+| createTime | 告警时间 |
 
->(建议)唯一约束：`(input_signature, device_hw_id)` 防重复样本；`(fault_type)` 索引便于按类训练。
+> 实测 60,160 条 → 预警流水存储量级大，建议按时间/租户分区索引。
 
-### 5.2 现有表字段变更建议（全部可空/带缺省，兼容）
+**④ 预警配置表 signal_warning_config**：`pointId(pointName)(all=全部)、equipmentUuid(设备)(all=全部)、content(忽略的告警码)、effectiveType(0永久/时间范围)、startTime/endTime、status(1生效)`。→ 用于**自动忽略**规则。
 
-| 表 | 字段 | 说明 |
-|---|---|---|
-| `fault_records` | `+ confidence` *float*（识别置信度，可空） | 兼容：缺省 null，不影响旧记录 |
-| `fault_records` | `+ recognition_source` *string*（判定来源：rule/multi-source/case） | 可空 |
-| `fault_records` | `+ is_false_positive` *bool 或 *int8*（是否被后续判定为误报） | 可空 |
-| `fault_records` | `+ evidence_count` / `last_evaluation_id`（可选，便于详情带证据） | 可空 |
+**⑤ 行政区 areas**：`id(区划码340102)、name、parentId(340100合肥)、areaType(3区县)、fullName(安徽省合肥市瑶海区)`。覆盖合肥市 15 区县。
+> 说明：a 的行政区止于「区县」一级；**街道/社区/道路**为 TSLOMS 新增点，需在 a 的 areas 结构上扩级。
 
-> 原则：**对既有表只加可空列，不删/不改/不重排既有列**，保证 AutoMigrate 与旧数据兼容、前端 `fault.ts` 解析不破。
+**⑥ 设备实时状态（extraData JSON）**：`siteState、lightState(辅灯 0红/1黄/2绿/-1未知)、upType、upTime、errorMsg(0=正常/-1=故障码)、greenSec/yellowSec/redSec(各灯剩余秒，动画用)、inter(前端倒计时)`. ← **地图灯色/故障判断的数据来源**。
 
-### 5.3 与现有表的关系图
+### 1.3 地图与预警可视化实现思路（a 前端 mapScreen chunk 还原）
+- 技术：高德 AMap；`zoom=14, center=[117.227234,31.820595], zooms=[7,20]`；viewMode 2D，pitch=10。
+- **路口 Marker 图标随 `status` 映射**：`statusImgMap: {1:绿图标, 2:图标, 3/4:图标, 5:图标}`（红灯异常/黄闪/离线用不同图标）。
+- 点击 Marker → 拉 `crossing/{id}` 详情 → 弹出 infoView：`行政区域/路口名称/路口状态(dict-tag)/路口类型` + 两个 Tab「设备列表(含在线状态)」+「预警列表(告警内容+处理状态+工单状态+时间)」。
+- **灯色动画**（showRed/Green/YellowOpacity）：根据 `extraVO.lightState` 与 redSec/yellowSec/greenSec 每秒倒计时切换亮灯，`func=6(闪光警告)`、`lineStatus=2(离线)` 置灰度/半透明。
+- 位置搜索：`AMap.PlaceSearch`（全国）→ 结果列表 → `setZoomAndCenter(16,[lng,lat])` 定位。
+- 请求数据源：`/signal/crossingMap/getMapData`（全部路口坐标 + status，一次拉全量，轻量）。
 
+### 1.4 巡检逻辑（a 的路由全集 + 统计接口还原）
+- **外场巡检**：`/inspect/out/plan`（外场巡检计划）、`/inspect/out/result`（外场巡检结果）。
+- **内场巡检**：机房/旋转/分控中心/公安网硬件/公安网软件 五类，各有 result 页。
+- **巡检排行**：`/statistics/home/inspectRanking`（胡伟 29 次、崔建伟 8 次…）、故障排行 `/faultRanking`。
+- 首页统计：`/statistics/home/baseData`（设备数/故障数/巡检数）、`/sevenData`（近 7 日趋势）。
+- **本账号可见具体巡检业务实现细节较少**（该账号仅 SIGNAL_ADMIN 角色，未看到「空间区域/街道排查/随机抽检/AI 硬件/信号灯自检」页面源码），但这部分需求本质是 TSLOMS 的 **自检（自动巡检）能力增强**，a 的「内场/外场巡检 + 排行」可作为基础参照。
+
+### 1.5 可吸收/借鉴到 TSLOMS 的合理之处（List）
+1. **预警码字典体系**（-1~-14 + 0/all）：一套**稳定、可翻译、可作为过滤器**的告警内容编码，直接与识别引擎 errCode 对应。← 高价值
+2. **预警 - 转工单 - 忽略闭环**：预警记录 dealState/status 双状态机 + flowWorkOrder 转单 + 单条/批量忽略 + 导出。TSLOMS 目前 fault→workorder 方向相反但可对齐。
+3. **预警配置（忽略规则）**：按路口/设备/告警码/生效时段 配置自动忽略。TSLOMS **完全没有**，需新增。
+4. **路口与设备多级模型**：pointId + equipment(uuid) 的 1:N，且设备带相位(func/fx/cx)、区域、经纬度、灯态实时数据(extraData JSON)。TSLOMS device 目前只有 intersection 名称字符串 + lat/lng + 状态，**缺相位/灯态/区域**维度。
+5. **地图全量轻接口 `/crossingMap/getMapData`**：返回所有路口坐标+状态一次到位，前端本地按 status 映射图标，避免逐设备轮询。TSLOMS 地图目前打点是逐 device。
+6. **行政区划树（areas）**：通用区划表 + 字典驱动，可扩展街道/社区/道路子级。
+7. **统一响应/租户隔离/软删除 + 字典系统**：TSLOMS 已有弱化版，可作为规范化参考。（不强求全盘对齐）
+
+---
+
+## 二、TSLOMS 现状 vs 目标差距对照表（逐需求点）
+
+| # | 需求点 | TSLOMS 现状 | 目标（本需求） | 差距判定 |
+|---|---|---|---|---|
+| 1 | 手机号=账号 + 验证码登录 | `username/password` + JWT；`User.Phone` 已有字段但仅资料用；前端 `store/auth.ts useAuthStore.login(username,password)` | 手机号作为登录账号；短信/图形验证码登录；向后兼容旧账号 | **大改（P0）**：认证流程 + 登录视图 + token 语义 |
+| 2 | 预警管理（设置/级别/显示/预警） | 有 `fault.ts`/FaultRecord 生命周期（occurred→resolved）+ 识别引擎；**无独立"预警(设置/级别/显示)"模块**，无忽略规则 | 新增：预警配置(signal_warning_config 式忽略规则)、预警记录列表/级别/显示、转工单、忽略、导出 | **新增（P0）** |
+| 3 | 路口行政区划（街道/社区/道路） | 无（device.intersection 仅名称字符串；无 area 概念） | 路口/设备带 行政区→街道→社区→道路 层级 | **新增（P0，数据模型）** |
+| 4 | 路灯位置地图拾取经纬度 | 有 `SetIntersectionLocation`（传 lat/lng），**无地图点击选取 UI** | 地图上点击/搜索定位取点回填经纬度落库（路口/设备） | **新增（P1）**，后端接口基本可复用 |
+| 5 | 地图分级/渐变着色 | Cesium 打点：per-device 图标(在线/离线/故障/锁定)，有 2D/3D/底图切层、信号灯/故障/锁定图层、全览 | 路口/道路级渐进着色：全绿→按故障比例(故障/全部 或 绿灯/全部)渐变 绿→黄→红；全部红=停电/线路；点入 路口→具体故障点(红)；三维演示/视频巡检/实时监控 | **大改（P0）**：a 只到 status 图标，**比例渐变为 TSLOMS 专属增强** |
+| 6 | 自动巡检（区域/街道/随机抽检/AI硬件/信号灯自检） | 有 `PatrolService`（AI 日报+异常 alert，每日 8:00，后台协程）+ offline 检查 + workorder escalate；**无"空间区域/街道排查/随机抽检/信号灯自检"任务编排** | 新增：巡检任务（区域/街道/随机抽检）、自检采集、巡检记录/排行 | **新增（P1）** |
+| 7 | 三维演示/视频巡检/实时监控 | 有 Cesium 3D(SceneMode)、底图、`VideoPanel.vue`(信息亭/视频)、`MonitorWall.vue`(监控墙)、实时 MQTT 状态 | 地图内嵌三维演示、视频巡检入口、实时监控刷新 | **增强（P2）**，复用现有组件为主 |
+
+### 关键差距定性
+- **认证**：不是"表单+校验"级改动，而是**登录语义与账号体系**变更——`username` 语义改为手机号，或新增独立 `phone_login` 通道。红线：不得破坏现有 users 表既有账号与 dispatch/workorder 的 owner 关联。
+- **预警 vs 故障**：现状 FaultRecord 是"故障识别-派单"链路产物；需求的"预警"更接近 a 的 `signal_warning`（设备上报异常→预警记录→忽略/转单）。**二者应并存**（故障=已确认需处置；预警=前置/轻量通知），需明确边界，防止重复建单。
+- **地图**：现状是**设备级**点图；需求是**路口/道路级聚合语义**（路→路口→故障点的分级下钻 + 故障比例绿黄红渐变）。需在聚合层新增"路口状态聚合计算"，Cesium 打点逻辑要重构为「道路/路口聚合 + 下钻」。
+
+---
+
+## 三、功能范围界定（本次实现 / 复用现有 / 明确不做）
+
+### P0 —— 本次必须实现（最小可用闭环）
+1. 认证：手机号登录（手机号=登录账号，优先）+ 验证码（短信或本地图形验证码/一次性 code，至少提供一个可落地方式）+ **保留 username/password 向后兼容**。
+2. 预警管理：
+   - 预警记录表 + 列表查询（路口/设备/级别/告警内容/处理状态/时间过滤）+ 详情；
+   - 预警级别（级别字典）；
+   - **预警配置（忽略规则）**：按路口/设备/告警类型/生效时段 → 自动忽略或降级；
+   - 预警→转工单、单条/批量忽略、导出。
+3. 路口行政区划数据模型（区→街道→社区→道路）+ 路口/设备挂接区划字段。
+4. 地图分级渐变着色（第一版）：
+   - 路口状态聚合 = f(该路口全部设备灯态/故障码比例)；
+   - 全部正常→绿；全部红/断电→红；中间按 **故障/全部 或 绿灯/全部** 比例 绿→黄→红 渐变；
+   - 道路级聚合（由路口聚合再上卷）→ 整条路一段一色；
+   - 下钻：道路→路口→具体故障设备点（红）。
+5. 位置地图拾取经纬度：地图点击/搜索取点回填到 新增路口/编辑路口/编辑设备 表单，落库。
+
+### P1 —— 建议本次（随 P0 收尾后补充）
+6. 自动巡检模块：
+   - 巡检任务（空间区域/街道/随机抽检 三种模式）；
+   - 信号灯自检数据采集与判定（对接 extraData/灯态/识别引擎）；
+   - AI 硬件数据接入（复用 ai 包 anomaly/predict 能力）；
+   - 巡检记录 + 巡检排行（参考 a `/inspectRanking`）。
+7. 地图三维演示 + 视频巡检入口 + 实时监控刷新（复用 Cesium 3D、VideoPanel、MonitorWall，把入口并到地图 tab）。
+
+### P2 —— 可后续（本轮明确不做）
+8. a 项目全量功能迁移（如内场五类巡检、仓库物资、绩效、项目维护审计、未结算物资、交通工程同步等）——**不在本轮**。
+9. 多租户(tenantId)/软删除(delFlag)全盘规范化——视需要，TSLOMS 已弱化可暂不引入。
+10. 高德 PlaceSearch 全国地点搜索的完整 UI 增强（首版地图拾取以点击取点为核心，搜索定位可后置）。
+11. 预警短信/App 推送通道（本轮仅落库+站内通知，不接真实短信网关）。
+
+---
+
+## 四、数据模型建议（新增/变更，命名与关系）
+
+> 命名沿用 a 风格 + TSLOMS 现有 snake_case。全部**只做加法**，不为既有表破坏兼容。
+
+### 4.1 用户认证相关
+- **变更 `users`（User）**：
+  - `username`：现有账号（保留，历史兼容）；新增 **`phone_login`（uniqueIndex, size:20）** 作为手机号登录主键，或直接规定 `username=手机号`（推荐后者以对齐 a，但需迁移数据）。**建议：新增 `PhoneVerified bool`、`PhoneToken` 一次性验证码/过期时间（或独立表，见下）。**
+- **新增 `email_sms_codes`（短信/一次性验证码表）**：`phone(size:20)、code(size:8)、biz(auth/other)、expires_at、used(bool)、created_at`。首版可用于本地模拟短信。
+
+### 4.2 行政区划（街道/社区/道路）
+- **新增 `areas`（复用 a 结构 + 扩展子级）**：`id(size:32 区划码/ID)、name、parent_id、area_type(省/市/区县/街道/社区/道路/路口)、full_name、area_sort、sn`。挂 `users`(管辖中心)可选。
+- **变更 `devices`（Device）**：新增 `area_id、street_id、community_id、road_name(size:64)`；已有 `intersection`(路口名)、`lat/lng`。
+- **新增 `crossings`（路口表，独立建模）**——现状路口仅由 handler 聚合 devices 得出（无表）。建议**新增路口表**，否则"道路级聚合/路口属性/区划"难以稳定承载：
+  - `id、point_no(点位编码)、name、type(路口类型字典)、area_id、street_id、community_id、road_name、lat、lng、status(聚合状态，落库缓存)、remark、created_at、updated_at`。
+  - 与 `devices` 关系：`devices.crossing_id → crossings.id`（一对多）。
+
+### 4.3 预警相关（核心新增）
+- **新增 `warnings`（预警记录表，对齐 a signal_warning）**：
+  - `id(UUID 或 bigint)、device_id、crossing_id、equipment_uuid(冗余设备码)、warning_code(int，-14~-1 对齐 errCode 字典)、warning_label、level(级别 spring 城市/轻量分级)、func(相位/功能方向)、deal_state(1未处理/2已处理)、work_order_id(可空，转单后关联)、status(1未转/2已转)、source(识别引擎/MQTT/自检/手动)、occurred_at、resolved_at、create_time`。
+  - 索引：`(crossing_id, deal_state)`、`(warning_code)`、`(occurred_at desc)`。
+- **新增 `warning_rules`（预警配置/忽略规则，对齐 a signal_warning_config）**：
+  - `id、crossing_id(可空=all)、device_id(可空=all)、warning_code(可空=all)、level(可空)、effective_type(0永久/1时段)、start_time、end_time、action(ignore 忽略/downgrade 降级)、enabled(bool)、remark、created_at`。
+- **字典新增**：`warning_level`(级别)、`warning_deal_state`、复用识别引擎 `errCode`(-1~-14) 作 `warning_code` 翻译来源。
+
+### 4.4 巡检相关（新增）
+- **新增 `patrol_tasks`**：`id、name、mode(area 空间区域/street 街道/random 随机抽检/selfcheck 信号灯自检/ai 硬件)、area_id、street_id、time_window、target_count、status(planned/running/done)、assignee_id、created_at`。
+- **新增 `patrol_records`**：`id、task_id、device_id、crossing_id、patrol_type、check_result(normal/abnormal)、check_detail、selfcheck_result(JSON 灯态/自检码)、evidences(JSON)、patrol_by(巡检人)、patrol_at、lat、lng`。
+- **新增 `patrol_ranking`（或查询视图）**：聚合巡检人次/异常数（对齐 a inspectRanking）。
+
+### 4.5 地图分级聚合
+- **路口状态聚合**计算可**实时查询**（不落库）或**缓存于 crossings.status**。建议首版实时聚合（路口设备数少），在 `crossings` 预留 `status`、`fault_ratio`、`green_ratio` 冗余字段便于列表/地图一次拉取（对齐 a `/getMapData` 轻量全量接口）。
+
+### 4.6 关系总览
 ```
-fault_records 1─┐
-   ▲            └─< 1..N ── fault_evidence
-   │                            │           └─> device_media (举证/监控)
-   │                            └─> feedbacks   (群众反映)
-   │
-   ├─<生成── work_orders（critical 自动工单，语义不变）
-   └─>参与── 案例沉淀 ──> fault_case（回标/训练/100%达标）
+User 1─N PatrolTask 1─N PatrolRecord
+Area(省→市→区→街道→社区→道路) 1─N Crossing 1─N Device
+Crossing/Device 1─N Warning ；（Warning 可 1─1 WorkOrder）
+Crossing/Device 1─N WarningRule（忽略规则）
+User 1─1 VerifiedPhone（或 users.phone_login）
 ```
 
 ---
 
-## 六、接口设计建议
+## 五、接口设计建议（新增/变更 REST，向后兼容策略）
 
-### 6.1 既有接口（不变，向后兼容）
+### 5.1 认证
+- 变更 `POST /auth/login`：请求体扩展为 `{login: 手机号|用户名, password?, code?, login_type: pwd|sms}`。
+  - 兼容：`login_type=pwd` 时按现有 username/password 逻辑（`login` 兼容 username 与 phone_login）；
+  - 新增 `login_type=sms`：`{phone, code}` 校验 `sms_codes` 表。
+- 新增 `POST /auth/sms-code`（或 `/auth/code`）：请求下发（首版本地日志模拟）。
+- 新增 `POST /auth/verify-phone`、`PUT /user/phone-verified`（绑定/校验）。
+- **兼容策略**：旧 token/旧登录路径保持可用；`GetUserInfo` 返回体新增 `phone_login`、`phone_verified` 字段，前端做**可选**解析（不破坏现有 store）。
+- 前端 `api/auth.ts` / `store/auth.ts`：login 改为多态入参；旧调用(login(username,password))保留可走 pwd 分支。
 
-- `GET /faults`、`GET /faults/:id`、`PUT /faults/:id`、`DELETE /faults/:id`、`POST /faults/:id/dispatch` —— **路径、参数、返回结构保持原样**；仅允许对响应**新增可选字段**（如 `confidence`/`evidence`），带缺省值，前端无需改动。
-- `GET /work-orders*` 系列同样保持不变。
+### 5.2 预警
+- 新增 `GET /warnings`（分页 + 过滤：crossing/device/level/code/deal_state/status/时间范围）——对齐 a `/signal/warning/list`。
+- 新增 `POST /warnings/{id}/ignore`、`POST /warnings/batch-ignore`、`GET /warnings/export`。
+- 新增 `POST /warnings/{id}/to-workorder`（转工单，body 带 remark，创建 WorkOrder 并回填 work_order_id、status=已转）——复用现有 `workorder.go` 创建逻辑。
+- 新增 `GET/POST/PUT/DELETE /warning-rules`（预警配置/忽略规则 CRUD）——对齐 a `/warning/config/*`。
 
-### 6.2 新增接口建议（范围=A）
+### 5.3 路口 / 区划
+- 新增 `GET/POST/PUT/DELETE /crossings`（路口 CRUD，含经纬度、区划、type）——对象化，取代 handler 内聚合。
+- 新增 `GET /areas/tree?level=`（区→街道→社区→道路 树）。
+- 变更 `PUT /devices/{id}`：支持更新 `crossing_id、area_id/street_id/community_id/road_name、lat/lng`（地图拾取回填）。
+- 复用/扩展现有 `PUT /intersections/location` 或由 `/crossings/{id}/location` 承载经纬度拾取。
 
-| 方法/路径 | 权限 | 用途 |
-|---|---|---|
-| `GET /faults/:id/evidence` | 登录可读 | 拉取某起故障的多源证据明细（fault_evidence） |
-| `POST /evidence/ingest` | `media:upload` 或新权限 | **预留**外部数据源（举证/反馈/监控）证据写入（内部归一化落 fault_evidence） |
-| `GET /evidence/sources` | 登录可读 | 多源证据类型/来源枚举（供前端下拉，前端本阶段可不用） |
-| `POST /fault-cases` | 管理员/运维 | 案例库新增/人工回标样本（可选，也可仅由引擎自动沉淀） |
-| `GET /fault-cases` | 登录可读 | 案例库检索/列表（供长尾排查与训练状态） |
-| `POST /fault-cases/train` | 管理员 | 触发案例库模型/检索引擎训练到 100% 达标 |
-| `GET /recognition/stats` | 登录可读 | 识别准确率/误报/漏报/置信度分布统计（验证 99.9999% 进展） |
+### 5.4 地图
+- 新增 `GET /map/crossing-data`（全量：路口 id/name/lat/lng/status/fault_ratio/green_ratio/level 一次到位）——对齐 a `/crossingMap/getMapData`，轻量，供 Cesium 聚合着色。
+- 可新增 `GET /map/road-data`（道路级聚合）若实现"道路一段一色"。
+- 复用现有 `GET /devices`（全量带经纬度，供下钻到设备点）。
 
-### 6.3 向后兼容策略
+### 5.5 自动巡检
+- 新增 `GET/POST /patrol/tasks`、`POST /patrol/tasks/{id}/run`（触发）、`GET /patrol/records`、`GET /patrol/ranking`、`POST /patrol/selfcheck`（信号灯自检手动触发一组设备）。
+- 后台协程可复用 `PatrolService` 骨架扩展任务调度。
 
-- 所有**新增接口**走独立路径，不占 `/faults/:id` 既有方法（避免与 PUT/DELETE 语义冲突）。
-- 现有 `faultView`/`workOrderView` 的返回**只增可选字段**，缺失或 null 时前端照常渲染。
-- 新权限建议走既有 RBAC `fault:update` 或新增 `fault:review` 等码，需在 `rbac.go` `AllPermissions` 追加并赋予内置角色——**只增不删既有权限码**。
-
----
-
-## 七、实施步骤建议与风险
-
-### 7.1 建议步骤（dev 参考，本清单不代具实施）
-
-1. **模型层先行**：新建 `model/fault_evidence.go`、`model/fault_case.go`，加入 `AutoMigrate`；对 `fault_records` 加可空列。跑 `AutoMigrate` 迁移验证旧数据兼容。
-2. **证据归一化服务**：抽取 `internal/recognition`（或 `internal/faultengine`）新包，实现证据采集/归一化/汇聚，承接现 `processFault` 里的多源输入（先固件 errCode 为主，接入 DeviceMedia/Feedback 载体）。
-3. **规则引擎内聚**：把现有 `FaultTypeFromErrCode/FaultLevelFromErrCode` 内聚为规则基座，扩展出置信度打分 + 多源交叉验证 + 误报过滤器。
-4. **研判接入故障链路**：改造 `processFault`/`createWorkOrder`——在保留 R3/R4/R6 红线前提下，把判定结果(conf/来源/是否误报)写入 fault_records + fault_evidence；低置信进"待确认"不自动派单。
-5. **案例库训练/召回**：`fault_case` 样本回流 + 训练/检索引擎 + 巡检脚本，向 100% 达标推进。
-6. **预留接口 + 兼容**：新增第六节接口；`/faults*` 仅加可选字段。
-7. **QA 回归 + Reviewer 评审**：完整覆盖 R1–R10 红线回归。
-
-### 7.2 风险与对策
-
-| 风险 | 等级 | 对策 |
-|---|---|---|
-| 误报过滤不当导致**漏报**真故障（安全场景严重） | 高 | 误报过滤仅作用于"明确否证"的高置信场景；孤证/弱证降级为"待确认"而非删除；`.is_false_positive` 可回审 |
-| 99.9999% 被误读为对未知样本也保证 | 高 | 文档锚定定义（见 3.3 第 5 点）：在已回标案例库上 0 漏 0 误，样本回流持续收敛；避免承诺不可验证精度 |
-| 新增表/列影响既有 AutoMigrate 与前端 | 中 | 只增可空列/新表；前端不动，`/faults*` 返回只加可选字段并带缺省 |
-| `internal/ai` 既有 AI 兜底被新引擎影响 | 中 | 新引擎独立包，不修改 ai 包既有判定路径（R7）；可复用诊断上下文但不动其逻辑 |
-| 多源数据量/性能 | 中 | 证据表按 `(device_hw_id, captured_at)` 索引；汇聚按时间窗批处理，避免热路径逐条写 |
-| 训练数据冷启动不足 | 低-中 | 以现有真实故障 + 固件规则组合生成 seed 案例，先保规则主通道准确率，案例库渐进 |
-| Windows 本机聚合覆盖率/工具链限制 | 低 | 同上次流水线：在干净 CI 复核 `go test ./...` 与覆盖率门槛 |
-
-### 7.3 验收标准（建议）
-
-- `go build ./...` / `go vet ./...` 通过；`go test ./...` 全绿。
-- 红线 R1–R10 逐一回归无退化。
-- 新引擎单测覆盖：去重、critical 自动工单、低置信不派单、**误报过滤不漏真故障**、案例回标/训练链路。
-- 既有 `/faults*` 接口契约向后兼容（前端 fault.ts 不变即可用）。
-- 识别准确率/误报/漏报指标有 `recognition/stats` 可观测，并朝 99.9999% 收敛路径清晰。
+### 5.6 红线：向后兼容
+- **所有新增接口独立命名空间**（如 `/warnings`、`/crossings`、`/patrol/*`、`/auth/sms-code`），不与现有 `/faults`、`/devices`、`/auth/login` 冲突。
+- 认证变更只**增加** `login_type` 分支与可选返回字段，不删改 `login` 语义与 token 结构。
+- 现有前端 fault.ts 解析**保持不变**；新增预警走独立页面。
 
 ---
 
-*本清单由 pm-tsloms（只读）产出，未修改任何代码。仅供 dev/qa/reviewer 作为功能范围与红线依据。*
+## 六、红线清单（不得破坏既有行为）
+
+1. **MQTT 链路**：设备心跳/状态上报/解析（`mqtt/client.go、parser.go、handler.go`）与识别（`recognition/engine.go`）**不动逻辑**；自检/预警仅**消费其产物**。
+2. **识别引擎 + case 库**：`ai/*`、`recognition/*`、`caselib/*` 已稳定且含大量测试，**禁止重构语义**；预警/自检只读取 `warning_code/errCode`。
+3. **工单（WorkOrder）**：现有工单创建/派单/升级（`workorder.go`、`workorder_escalate.go`）不动；新增"预警转工单"走同一创建函数或最小扩展，保证 owner/repairer/dispatch 关联不破坏。
+4. **RBAC / 模块化**：模块注册（`registerModuleRoutes`、`RequireModule`、enabledModules）不破坏；新增页面若加路由，按现有模块注册机制追加，并确认核心模块恒启。
+5. **用户表/角色**：`users.username`、`devices`、`faults` 既有列**不删除不不可变**；新增字段全部可空带默认（只加不改）。
+6. **地图 Cesium 初始化/底图（Baidu/Gaode/OSM）**：切层与 2D/3D 逻辑保留，聚合着色以此为底座扩展，不改 Viewer 初始化与底图加载。
+7. **部署**（`deploy/`）：新增环境变量（如验证码过期、模拟短信开关、巡检任务窗口）均需默认值；服务启动不因缺配置报错。
+8. **既有测试**：本核对未改码；实施后必须保证现有 cov_* / regression / _test.go 全绿。
+9. 禁止并行铺开：按 P0→P1 顺序串行，每步可回滚。
+
+---
+
+## 七、实施步骤、风险与优先级，及「最小可用路线」
+
+### 7.1 推荐实施顺序（串行，可交付闭环）
+1. **[P0-1] 数据模型先行**：新增 `warnings / warning_rules / crossings / areas / sms_codes / patrol_tasks / patrol_records` 表（migrate.go 加法迁移），`users` 加 `phone_login/phone_verified`。可与功能解耦先行落地。
+2. **[P0-2] 认证改造**：`POST /auth/login` 多态 + `POST /auth/sms-code`；后端测通手机号+验证码与旧 password 双通道。
+3. **[P0-3] 预警管理**：预警记录列表/详情 + 忽略/批量忽略 + 转工单 + 导出 + **预警配置（忽略规则）CRUD**。
+4. **[P0-4] 路口/区划**：路口表对象化 CRUD + 区划树接口 + device 挂接区划。
+5. **[P0-5] 地图分级着色**：`/map/crossing-data` 基于 P0-4 + 设备灯态算 `fault_ratio/green_ratio` → Cesium 路口/道路按比例 绿→黄→红 渐变，支持 道路→路口→故障点 下钻。
+6. **[P0-6] 位置地图拾取**：路口/设备表单内嵌地图点击取点（复用 CesiumMap 交互），回填 lat/lng。
+7. **[P1-7] 自动巡检**：PatrolService 扩展任务（区域/街道/随机抽检/信号灯自检/AI 硬件），巡检记录 + 排行。
+8. **[P1-8] 地图三维/视频/实时增强**：三维演示入口 + VideoPanel/MonitorWall 接入 + 实时监控刷新。
+9. **[P2——不做]** a 全量非核心模块迁移。
+
+### 7.2 风险清单
+| 风险 | 等级 | 缓解 |
+|---|---|---|
+| 认证改造破坏既有登录/工单指派人关联 | 高 | 保留 username/password 分支，phone_login 只做加法 |
+| 预警与故障生命周期重叠致重复建单 | 高 | 明确边界：故障=识别确认已派单；预警=轻量记录+忽略规则；互斥来源字段 |
+| 地图聚合算法/比例定义分歧（故障/全部 vs 绿灯/全部） | 中 | 需求已允许两种口径，做成可配常数；默认"故障/全部" |
+| 路口无表、现由 handler 聚合 device，重构影响接口 | 中 | 新增 crossings 表并做**数据回填**，接口保持兼容（新增而非改动老聚合） |
+| 短信验证码无真实网关 | 中 | 环境变量开关：真实网关 / 本地模拟（日志输出 code），保证可演示 |
+| 巡检任务与现有 AI 日报协程并发冲突 | 低 | 独立调度器/独立 task 表，不抢 PatrolService 已有协程 |
+| 大表 warnings 性能（a 有 6 万+） | 中 | 分页+索引+必要的时间分区 |
+
+### 7.3 优先级汇总
+| 优先级 | 内容 |
+|---|---|
+| **P0 必须** | 手机号+验证码登录（双通道兼容）；预警管理（记录/级别/忽略规则/转工单/导出）；路口行政区划数据模型；地图分级绿黄红渐变+下钻；位置地图拾取 |
+| **P1 建议** | 自动巡检（区域/街道/随机/自检/AI硬件+排行）；三维/视频/实时监控进地图 |
+| **P2 后续** | a 全量模块迁移、多租户/软删除规范化、短信/App 真实推送、PlaceSearch 完整搜索 |
+
+### 7.4 最小可用路线（避免一次性铺太开）
+> **建议最小闭环 = 仅完成 P0 的 4 件事**即可端到端验收：
+> ① 手机号 + 验证码登录（含旧密码兼容）
+> ② 预警记录 + 预警忽略规则 + 转工单（打通 故障/预警 → 工单）
+> ③ 路口表 + 区划（区/街/社区/路）+ 路口/设备经纬度地图拾取
+> ④ 地图按"故障/全部"比例对路口/道路 绿→黄→红 渐变 + 道路→路口→故障点 下钻
+>
+> 自动巡检、三维/视频/实时 归入 P1 二期；a 其余做 P2 取舍。先跑通 ①② 打通数据→预警→工单主链，再上地图聚合与巡检，避免大而全导致无法验收。
+
+---
+
+*（全文完。本核对清单由 pm-tsloms 输出，供 dev-refactor 工程师按 P0→P1 实施，QA 按红线做回归。）*

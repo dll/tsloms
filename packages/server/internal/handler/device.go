@@ -92,6 +92,12 @@ func UpdateDevice(c *gin.Context) {
 		Lat          *float64 `json:"lat"`
 		Lng          *float64 `json:"lng"`
 		IsWatched    *bool    `json:"is_watched"`
+		// P0-4 路口/区划挂接（可空）
+		CrossingID  *uint  `json:"crossing_id"`
+		StreetID    *uint  `json:"street_id"`
+		CommunityID *uint  `json:"community_id"`
+		RoadID      *uint  `json:"road_id"`
+		RoadName    string `json:"road_name"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,6 +106,8 @@ func UpdateDevice(c *gin.Context) {
 	}
 
 	updates := map[string]interface{}{}
+	// 区划/路口挂接（只增不删；空指针表示不修改，传 0 指针可置空见下方）
+	applyDeviceArea(updates, req.CrossingID, req.StreetID, req.CommunityID, req.RoadID, req.RoadName)
 	if req.Intersection != "" {
 		updates["intersection"] = req.Intersection
 	}
@@ -146,6 +154,12 @@ func CreateDevice(c *gin.Context) {
 		StationCode  int      `json:"station_code"`
 		Lat          *float64 `json:"lat"`
 		Lng          *float64 `json:"lng"`
+		// P0-4 路口/区划挂接
+		CrossingID  *uint  `json:"crossing_id"`
+		StreetID    *uint  `json:"street_id"`
+		CommunityID *uint  `json:"community_id"`
+		RoadID      *uint  `json:"road_id"`
+		RoadName    string `json:"road_name"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "硬件ID必填")
@@ -165,6 +179,11 @@ func CreateDevice(c *gin.Context) {
 		StationCode:  req.StationCode,
 		Lat:          req.Lat,
 		Lng:          req.Lng,
+		CrossingID:   req.CrossingID,
+		StreetID:     req.StreetID,
+		CommunityID:  req.CommunityID,
+		RoadID:       req.RoadID,
+		RoadName:     req.RoadName,
 	}
 	if err := model.DB.Create(&device).Error; err != nil {
 		serverError(c, err)
@@ -192,6 +211,28 @@ func DeleteDevice(c *gin.Context) {
 	}
 	recordOperation(c, model.OpDelete, fmt.Sprintf("device/%d", id), "删除设备台账")
 	ok(c, gin.H{"message": "设备已删除"})
+}
+
+// applyDeviceArea 将路口/区划挂接字段写入 updates map。
+// 约定：传入的指针若为 nil 表示不修改；若指向 0 表示置空（解除挂接）；否则写对应 ID。
+func applyDeviceArea(updates map[string]interface{}, crossing, street, community, road *uint, roadName string) {
+	setOrNull := func(key string, v *uint) {
+		if v == nil {
+			return
+		}
+		if *v == 0 {
+			updates[key] = nil
+		} else {
+			updates[key] = *v
+		}
+	}
+	setOrNull("crossing_id", crossing)
+	setOrNull("street_id", street)
+	setOrNull("community_id", community)
+	setOrNull("road_id", road)
+	if roadName != "" {
+		updates["road_name"] = roadName
+	}
 }
 
 // DeviceStats 设备统计（在线/离线数量）

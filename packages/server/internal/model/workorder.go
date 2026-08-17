@@ -10,23 +10,24 @@ import (
 // WorkOrder 工单表
 // 故障触发后自动生成维修工单，状态流转：pending → processing → completed/rejected
 // FaultActiveScope 用于 MySQL 兼容的「同一故障至多一条活跃工单」约束（M1）：
-//   活跃工单(pending/processing)：FaultActiveScope = fault_id；完结/驳回：FaultActiveScope = NULL。
-//   配合唯一索引 uk_wo_active_scope（NULL 不参与唯一，MySQL/SQLite 均允许多个 NULL），
-//   从 DB 层保证同一 fault_id 至多一条活跃工单，防止并发复核/自动派单重复建单。
-//   （MySQL 不支持 SQLite/Postgres 的“部分/过滤索引”，故用可空派生列模拟；见 migrate.go）
+//
+//	活跃工单(pending/processing)：FaultActiveScope = fault_id；完结/驳回：FaultActiveScope = NULL。
+//	配合唯一索引 uk_wo_active_scope（NULL 不参与唯一，MySQL/SQLite 均允许多个 NULL），
+//	从 DB 层保证同一 fault_id 至多一条活跃工单，防止并发复核/自动派单重复建单。
+//	（MySQL 不支持 SQLite/Postgres 的“部分/过滤索引”，故用可空派生列模拟；见 migrate.go）
 type WorkOrder struct {
-	ID         uint       `json:"id" gorm:"primaryKey"`
-	OrderNo    string     `json:"order_no" gorm:"uniqueIndex;size:32;comment:工单编号(WO{yyyyMMdd}{seq})"`
-	FaultID    uint       `json:"fault_id" gorm:"index;comment:关联故障记录ID"`
-	DeviceHwID uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
-	Status     string     `json:"status" gorm:"size:16;default:pending;comment:状态(pending/processing/completed/rejected)"`
+	ID         uint   `json:"id" gorm:"primaryKey"`
+	OrderNo    string `json:"order_no" gorm:"uniqueIndex;size:32;comment:工单编号(WO{yyyyMMdd}{seq})"`
+	FaultID    uint   `json:"fault_id" gorm:"index;comment:关联故障记录ID"`
+	DeviceHwID uint32 `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	Status     string `json:"status" gorm:"size:16;default:pending;comment:状态(pending/processing/completed/rejected)"`
 	// FaultActiveScope 活跃工单唯一约束载体：active=pending/processing 时为 fault_id；inactive 为 NULL
 	// 注：不用 uniqueIndex tag——唯一索引由 migrate.go 在建列并清理/回填后手动创建，避免 AutoMigrate 在重复数据上建唯一失败
 	FaultActiveScope *uint      `json:"fault_active_scope,omitempty" gorm:"index;comment:活跃工单唯一约束(fault_id);非活跃为NULL(唯一索引见migrate.go)"`
-	AssigneeID        *uint     `json:"assignee_id" gorm:"comment:处理人ID"`
-	Result            string    `json:"result" gorm:"type:text;comment:维修结果说明"`
-	CreatedAt         time.Time `json:"created_at"`
-	ClosedAt          *time.Time `json:"closed_at" gorm:"comment:闭环时间"`
+	AssigneeID       *uint      `json:"assignee_id" gorm:"comment:处理人ID"`
+	Result           string     `json:"result" gorm:"type:text;comment:维修结果说明"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ClosedAt         *time.Time `json:"closed_at" gorm:"comment:闭环时间"`
 }
 
 // TableName 指定表名

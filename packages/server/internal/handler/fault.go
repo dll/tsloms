@@ -382,9 +382,9 @@ func UpdateFault(c *gin.Context) {
 			Where("fault_id = ? AND status IN ?", fault.ID,
 				[]string{model.WorkOrderStatusPending, model.WorkOrderStatusProcessing}).
 			Updates(map[string]interface{}{
-				"status":              model.WorkOrderStatusCompleted,
-				"closed_at":           &now,
-				"fault_active_scope":  nil, // 已完结：释放 fault 的活跃工单位
+				"status":             model.WorkOrderStatusCompleted,
+				"closed_at":          &now,
+				"fault_active_scope": nil, // 已完结：释放 fault 的活跃工单位
 			})
 	}
 

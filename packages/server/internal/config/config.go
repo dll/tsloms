@@ -35,6 +35,10 @@ type Config struct {
 	AIVisionModel   string // AI 多模态模型（默认 glm-4v）
 	AdminInitPwd    string // 首次初始化管理员密码（ADMIN_INIT_PASSWORD，空则生成随机）
 	EnabledModules  string // 可选模块启用列表（ENABLED_MODULES，逗号分隔，空=仅核心模块）
+	// ---- P0-2 认证：短信验证码通道配置 ----
+	SmsProvider string // 短信服务商（console/devcode/留空）。留空或未配置真实服务商时降级 Console 输出，绝不阻塞登录闭环
+	SmsDevCode  string // 固定测试验证码（devcode 通道，开发用；不配置则随机生成）
+	SmsCodeTTL  int    // 验证码有效时长（分钟，默认 SmsCodeTTLMinutes）
 }
 
 // Load 从环境变量构造完整配置（每次调用都会重新解析环境变量）
@@ -66,6 +70,9 @@ func Load() *Config {
 		AIVisionModel:   getEnv("AI_VISION_MODEL", "glm-4v"),
 		AdminInitPwd:    getEnv("ADMIN_INIT_PASSWORD", ""),
 		EnabledModules:  getEnv("ENABLED_MODULES", ""),
+		SmsProvider:     getEnv("SMS_PROVIDER", ""),
+		SmsDevCode:      getEnv("SMS_DEV_CODE", ""),
+		SmsCodeTTL:      getEnvInt("SMS_CODE_TTL_MINUTES", 0),
 	}
 }
 

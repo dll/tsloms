@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { login as loginApi, getUserInfo } from '@/api/auth'
+import { login as loginApi, loginByPhone, getUserInfo } from '@/api/auth'
 import { getMyPermissions } from '@/api/rbac'
 import { getEnabledModules } from '@/api/module'
 
@@ -21,9 +21,20 @@ export const useAuthStore = defineStore('auth', () => {
   // 当前实例已启模块 key 集合（模块化/插件化；核心恒启 + 已购可选）
   const enabledModules = ref<string[]>([])
 
-  // 登录：调用后端接口，存储 token
+  // 登录：username+password 通道
   async function login(username: string, password: string) {
     const res = await loginApi({ username, password })
+    await applyLogin(res)
+  }
+
+  // 登录：手机号+验证码通道（P0）
+  async function loginWithPhone(phone: string, code: string) {
+    const res = await loginByPhone(phone, code)
+    await applyLogin(res)
+  }
+
+  // 应用登录结果：存 token / user / 拉权限与模块
+  async function applyLogin(res: any) {
     token.value = res.data.token
     user.value = res.data.user
     localStorage.setItem('token', res.data.token)
@@ -81,5 +92,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('token')
   }
 
-  return { token, user, permissions, enabledModules, login, loadPermissions, loadModules, fetchUserInfo, logout, hasPerm, hasModule }
+  return { token, user, permissions, enabledModules, login, loginWithPhone, loadPermissions, loadModules, fetchUserInfo, logout, hasPerm, hasModule }
 })

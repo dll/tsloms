@@ -88,6 +88,10 @@ const (
 	PermModuleDept         = "dept"
 	PermModuleRole         = "role"
 	PermModuleAI           = "ai"
+	// P0-3/P0-4 预警 / 路口 / 区划 新权限模块（只增不删既有权限码）
+	PermModuleWarning  = "warning"
+	PermModuleCrossing = "crossing"
+	PermModuleArea     = "area"
 )
 
 // AllPermissions 全量功能权限点字典（种子数据）
@@ -138,6 +142,12 @@ var AllPermissions = []Permission{
 	// AI
 	{Code: "ai:config", Name: "AI-配置/额度重置", Module: PermModuleAI, Sort: 27},
 	{Code: "ai:ops", Name: "AI-分析/报告/建议", Module: PermModuleAI, Sort: 28},
+	// ---- P0-3 预警管理 ----
+	{Code: "warning:manage", Name: "预警-管理(忽略/转工单/导出)", Module: PermModuleWarning, Sort: 29},
+	{Code: "warning:rule", Name: "预警-忽略规则配置", Module: PermModuleWarning, Sort: 30},
+	// ---- P0-4 路口/区划 ----
+	{Code: "crossing:manage", Name: "路口-新建/编辑/删除", Module: PermModuleCrossing, Sort: 31},
+	{Code: "area:manage", Name: "区划-配置", Module: PermModuleArea, Sort: 32},
 }
 
 // 内置角色的默认权限集合（按权限编码）
@@ -150,6 +160,7 @@ var BuiltinRolePerms = map[string][]string{
 		"intersection:update",
 		"fault:update", "fault:dispatch", "fault:review",
 		"workorder:create", "workorder:update", "workorder:assign",
+		"warning:manage", "warning:rule", "crossing:manage",
 		"media:upload",
 		"firmware:manage",
 		"inventory:manage",

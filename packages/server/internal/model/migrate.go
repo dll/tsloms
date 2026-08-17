@@ -84,6 +84,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&UserPermission{},
 		&Notification{},
 		&NotificationRead{},
+		// ---- 第二轮新需求（P0）新增表：预警/区划/路口/验证码 ----
+		&Warning{},
+		&WarningRule{},
+		&Area{},
+		&Crossing{},
+		&SmsCode{},
 	); err != nil {
 		return err
 	}
@@ -101,5 +107,39 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// 初始化 RBAC 权限字典与内置角色（幂等）
 	SeedRBAC(db)
+
+	// ---- 第二轮新需求（P0）：区划种子数据（幂等，仅当 areas 为空时写入最小层级示例） ----
+	SeedAreas(db)
 	return nil
+}
+
+// SeedAreas 初始化行政区划种子数据（幂等）。
+// 仅在 areas 表为空时写入一个最小层级示例（合肥市→庐阳区→街道→社区→道路），
+// 供前端区划树/路口挂接演示与测试用；生产环境可由维护人员补充完整区划。
+// 只做加法，不修改既有表。
+func SeedAreas(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	var cnt int64
+	db.Model(&Area{}).Count(&cnt)
+	if cnt > 0 {
+		return
+	}
+	province := Area{Code: "340000", Name: "安徽省", AreaType: AreaProvince, FullName: "安徽省"}
+	db.Create(&province)
+	city := Area{Code: "340100", Name: "合肥市", AreaType: AreaCity, FullName: "安徽省合肥市", ParentID: &province.ID}
+	db.Create(&city)
+	district := Area{Code: "340103", Name: "庐阳区", AreaType: AreaDistrict, FullName: "安徽省合肥市庐阳区", ParentID: &city.ID}
+	db.Create(&district)
+	street := Area{Code: "340103001", Name: "三孝口街道", AreaType: AreaStreet, FullName: "安徽省合肥市庐阳区三孝口街道", ParentID: &district.ID}
+	db.Create(&street)
+	street2 := Area{Code: "340103002", Name: "逍遥津街道", AreaType: AreaStreet, FullName: "安徽省合肥市庐阳区逍遥津街道", ParentID: &district.ID}
+	db.Create(&street2)
+	community := Area{Code: "340103001001", Name: "龚湾社区", AreaType: AreaCommunity, FullName: "安徽省合肥市庐阳区三孝口街道龚湾社区", ParentID: &street.ID}
+	db.Create(&community)
+	road := Area{Code: "R-001", Name: "长江中路", AreaType: AreaRoad, FullName: "安徽省合肥市庐阳区三孝口街道长江中路", ParentID: &street.ID}
+	db.Create(&road)
+	road2 := Area{Code: "R-002", Name: "宿州路", AreaType: AreaRoad, FullName: "安徽省合肥市庐阳区逍遥津街道宿州路", ParentID: &street2.ID}
+	db.Create(&road2)
 }

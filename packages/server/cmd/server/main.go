@@ -162,6 +162,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		// 公开接口（无需登录）
 		api.POST("/auth/login", handler.Login)
+		api.POST("/auth/sms-code", handler.SendSmsCode)
 		api.GET("/health", handler.Health)
 		// 地图瓦片代理（无鉴权，供 Cesium 图片加载使用）
 		api.GET("/proxy/baidu", handler.BaiduTileProxy)
@@ -190,6 +191,36 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.PUT("/intersections/rename", middleware.RequirePerm("intersection:update"), handler.RenameIntersection)
 			auth.PUT("/intersections/location", middleware.RequirePerm("intersection:update"), handler.SetIntersectionLocation)
 			auth.DELETE("/intersections/clear", middleware.RequirePerm("intersection:delete"), handler.ClearIntersection)
+
+			// ---- P0-4 路口/行政区划（新增独立命名空间，向后兼容） ----
+			auth.GET("/crossings", handler.ListCrossings)
+			auth.GET("/crossings/:id", handler.GetCrossing)
+			auth.POST("/crossings", middleware.RequirePerm("crossing:manage"), handler.CreateCrossing)
+			auth.PUT("/crossings/:id", middleware.RequirePerm("crossing:manage"), handler.UpdateCrossing)
+			auth.DELETE("/crossings/:id", middleware.RequirePerm("crossing:manage"), handler.DeleteCrossing)
+			auth.GET("/crossings/:id/devices", handler.GetCrossingDevices)
+			auth.GET("/areas/tree", handler.ListAreasTree)
+			auth.POST("/areas", middleware.RequirePerm("area:manage"), handler.CreateArea)
+			auth.PUT("/areas/:id", middleware.RequirePerm("area:manage"), handler.UpdateArea)
+			auth.DELETE("/areas/:id", middleware.RequirePerm("area:manage"), handler.DeleteArea)
+
+			// ---- P0-5 地图分级聚合（新增，向后兼容；/map 前端原有设备打点不变） ----
+			auth.GET("/map/crossing-data", handler.GetCrossingMapData)
+			auth.GET("/map/road-data", handler.GetRoadMapData)
+
+			// ---- P0-3 预警管理（新增独立命名空间） ----
+			auth.GET("/warnings", handler.ListWarnings)
+			auth.GET("/warnings/export", middleware.RequirePerm("warning:manage"), handler.ExportWarnings)
+			auth.GET("/warnings/:id", handler.GetWarning)
+			auth.POST("/warnings/:id/ignore", middleware.RequirePerm("warning:manage"), handler.IgnoreWarning)
+			auth.POST("/warnings/batch-ignore", middleware.RequirePerm("warning:manage"), handler.BatchIgnoreWarnings)
+			auth.POST("/warnings/:id/to-workorder", middleware.RequirePerm("warning:manage"), handler.WarningToWorkOrder)
+			auth.POST("/warnings/auto-ignore", middleware.RequirePerm("warning:manage"), handler.AutoIgnoreWarnings)
+			// 预警配置（忽略规则）CRUD
+			auth.GET("/warning-rules", handler.ListWarningRules)
+			auth.POST("/warning-rules", middleware.RequirePerm("warning:rule"), handler.CreateWarningRule)
+			auth.PUT("/warning-rules/:id", middleware.RequirePerm("warning:rule"), handler.UpdateWarningRule)
+			auth.DELETE("/warning-rules/:id", middleware.RequirePerm("warning:rule"), handler.DeleteWarningRule)
 
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)

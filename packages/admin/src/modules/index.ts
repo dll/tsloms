@@ -88,6 +88,13 @@ const coreModules: ModuleDef[] = [
     ],
   },
   {
+    key: 'warning', title: '预警管理', icon: Warning, path: '/warning', core: true,
+    routes: [
+      { path: '/warning', name: 'Warning', component: () => import('@/views/warning/index.vue'), title: '预警管理' },
+      { path: '/warning/rules', name: 'WarningRules', component: () => import('@/views/warning/rules.vue'), title: '预警配置' },
+    ],
+  },
+  {
     key: 'workorder', title: '工单管理', icon: Tickets, path: '/workorder', core: true,
     routes: [{ path: '/workorder', name: 'Workorder', component: () => import('@/views/workorder/index.vue'), title: '工单管理' }],
   },

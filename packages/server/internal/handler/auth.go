@@ -10,23 +10,43 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// LoginRequest 登录请求
+// LoginRequest 登录请求（多态：login_type=pwd/sms）
+// 向后兼容：旧调用仍可传 {username, password}（等价 username+pwd 分支）。
 type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	// 用户名（pwd 分支）；或手机号（sms 分支用 phone 字段）
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// 手机号+验证码（sms 分支）
+	Phone string `json:"phone"`
+	Code  string `json:"code"`
+	// 登录类型：pwd（用户名+密码，默认）/ sms（手机号+验证码）
+	LoginType string `json:"login_type"`
 }
 
-// Login 用户名密码登录，返回 JWT token
+// Login 登录：手机号+验证码 / 用户名+密码 双通道并存（P0-2）。
+// 旧账号（username/password）不受影响；手机号可作为登录主账号。
 func Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, "用户名和密码不能为空")
+		badRequest(c, "请求参数错误")
 		return
 	}
 
-	// 查找用户
-	var user model.User
-	if err := model.DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
+	// 多态：sms 或已提供 phone+code → 手机号验证码分支
+	if req.LoginType == "sms" || (req.Phone != "" && req.Code != "") {
+		phoneLogin(c, trimPhone(req.Phone), req.Code)
+		return
+	}
+
+	// 旧密码分支（login_type 缺省/pwd）：username + password
+	if req.Username == "" || req.Password == "" {
+		badRequest(c, "请输入用户名和密码")
+		return
+	}
+
+	// 查找用户（支持手机号登录账号或用户名）
+	user := findUserByLogin(req.Username)
+	if user == nil {
 		unauthorized(c, "用户名或密码错误")
 		return
 	}
@@ -45,11 +65,11 @@ func Login(c *gin.Context) {
 
 	// 更新最后登录时间
 	now := time.Now()
-	model.DB.Model(&user).Update("last_login_at", now)
+	model.DB.Model(user).Update("last_login_at", now)
 
 	// 签发 JWT
 	cfg := config.Get()
-	token, err := issueToken(&user, cfg.JWTSecret)
+	token, err := issueToken(user, cfg.JWTSecret)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -58,14 +78,16 @@ func Login(c *gin.Context) {
 	ok(c, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":            user.ID,
-			"username":      user.Username,
-			"role":          user.Role,
-			"real_name":     user.RealName,
-			"phone":         user.Phone,
-			"email":         user.Email,
-			"department_id": user.DepartmentID,
-			"status":        user.Status,
+			"id":             user.ID,
+			"username":       user.Username,
+			"role":           user.Role,
+			"real_name":      user.RealName,
+			"phone":          user.Phone,
+			"phone_login":    user.PhoneLogin,
+			"phone_verified": user.PhoneVerified,
+			"email":          user.Email,
+			"department_id":  user.DepartmentID,
+			"status":         user.Status,
 		},
 		"enabled_modules": EnabledModuleList(),
 	})
@@ -97,15 +119,17 @@ func GetUserInfo(c *gin.Context) {
 
 	ok(c, gin.H{
 		"user": gin.H{
-			"id":         user.ID,
-			"username":   user.Username,
-			"role":       user.Role,
-			"real_name":  user.RealName,
-			"phone":      user.Phone,
-			"email":      user.Email,
-			"status":     user.Status,
-			"center_lat": user.CenterLat,
-			"center_lng": user.CenterLng,
+			"id":             user.ID,
+			"username":       user.Username,
+			"role":           user.Role,
+			"real_name":      user.RealName,
+			"phone":          user.Phone,
+			"phone_login":    user.PhoneLogin,
+			"phone_verified": user.PhoneVerified,
+			"email":          user.Email,
+			"status":         user.Status,
+			"center_lat":     user.CenterLat,
+			"center_lng":     user.CenterLng,
 		},
 		"enabled_modules": EnabledModuleList(),
 	})
