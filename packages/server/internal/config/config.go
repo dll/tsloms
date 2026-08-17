@@ -34,6 +34,7 @@ type Config struct {
 	AITextModel     string // AI 文本模型（默认 glm-4-flash）
 	AIVisionModel   string // AI 多模态模型（默认 glm-4v）
 	AdminInitPwd    string // 首次初始化管理员密码（ADMIN_INIT_PASSWORD，空则生成随机）
+	SuperAdminPwd   string // 超级管理员初始密码（SUPER_ADMIN_PASSWORD，空则生成随机并打印一次）
 	EnabledModules  string // 可选模块启用列表（ENABLED_MODULES，逗号分隔，空=仅核心模块）
 	AMapWebKey      string // 高德 Web 服务 Key（POI/地名搜索，AMAP_WEB_KEY，可选）
 }
@@ -66,6 +67,7 @@ func Load() *Config {
 		AITextModel:     getEnv("AI_TEXT_MODEL", "glm-4-flash"),
 		AIVisionModel:   getEnv("AI_VISION_MODEL", "glm-4v"),
 		AdminInitPwd:    getEnv("ADMIN_INIT_PASSWORD", ""),
+		SuperAdminPwd:   getEnv("SUPER_ADMIN_PASSWORD", ""),
 		EnabledModules:  getEnv("ENABLED_MODULES", ""),
 		AMapWebKey:      getEnv("AMAP_WEB_KEY", ""),
 	}

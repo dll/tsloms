@@ -1,6 +1,12 @@
 package model
 
-import "gorm.io/gorm"
+import (
+	"log"
+
+	"gorm.io/gorm"
+
+	"github.com/tsloms/server/internal/config"
+)
 
 // migrateWorkOrderActiveUnique 创建并维护 work_orders.fault_active_scope 唯一索引（M1 并发防重建单）。
 //
@@ -115,8 +121,13 @@ func AutoMigrate(db *gorm.DB) error {
 	SeedRBAC(db)
 
 	// 初始化超级管理员账号 419116（幂等；bcrypt 加密入库，角色 super_admin）
-	if err := SeedSuperAdmin(db); err != nil {
-		return err
+	// 初始密码取自 SUPER_ADMIN_PASSWORD（config.SuperAdminPwd）；未配置时生成随机密码并返回打印一次（审计 BLOCK-1 修复：不再硬编码明文）
+	saPwd, saErr := SeedSuperAdmin(db, config.Get().SuperAdminPwd)
+	if saErr != nil {
+		return saErr
+	}
+	if saPwd != "" {
+		log.Printf("[TSLOMS] 超级管理员账号 %s 已创建，初始密码（仅显示一次，请立即保存并修改）: %s", SuperAdminUsername, saPwd)
 	}
 
 	// ---- 第二轮新需求（P0）：区划种子数据（幂等，仅当 areas 为空时写入最小层级示例） ----

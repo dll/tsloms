@@ -106,29 +106,37 @@ func SeedAdmin(initPwd string) (string, error) {
 	return "", nil
 }
 
-// SuperAdminUsername / SuperAdminPassword 超级管理员内置账号（不对外开放模块设置）
+// SuperAdminUsername 超级管理员内置账号用户名（不对外开放模块设置）
 const (
 	SuperAdminUsername = "419116"
-	SuperAdminPassword = "Osgis!!!"
 )
 
-// SeedSuperAdmin 初始化超级管理员账号（幂等）：账号 419116，密码 Osgis!!!（bcrypt 加密入库），角色 super_admin。
+// SeedSuperAdmin 初始化超级管理员账号（幂等）：账号 419116，角色 super_admin。
+// 初始密码取自参数（由调用方从 SUPER_ADMIN_PASSWORD 环境变量读取）；为空时生成随机强密码并通过返回字符串告知调用方
+// （调用方负责记录到安全渠道/打印一次），避免在任何源代码中硬编码明文密码（审计 BLOCK-1 修复）。
 // 该账号是系统最高权限，负责模块启用设置；登录入口正常可登录（设计 A）。
 // 仅在超级管理员账号不存在时创建（不覆盖既有账号，避免改密）。
-func SeedSuperAdmin(db *gorm.DB) error {
+func SeedSuperAdmin(db *gorm.DB, initPwd string) (string, error) {
 	if db == nil {
-		return fmt.Errorf("数据库未初始化")
+		return "", fmt.Errorf("数据库未初始化")
 	}
 	var count int64
 	db.Model(&User{}).Where("username = ?", SuperAdminUsername).Count(&count)
 	if count > 0 {
-		return nil // 已存在，幂等
+		return "", nil // 已存在，幂等
 	}
 	// 手机号账号（如已存在 phone_login 冲突，则跳过创建避免唯一冲突）
 	var phoneCount int64
 	db.Model(&User{}).Where("phone_login = ?", SuperAdminUsername).Count(&phoneCount)
 	if phoneCount > 0 {
-		return nil
+		return "", nil
+	}
+
+	pwd := initPwd
+	generated := false
+	if pwd == "" {
+		pwd = randomStrongPassword(16)
+		generated = true
 	}
 
 	sa := User{
@@ -136,12 +144,18 @@ func SeedSuperAdmin(db *gorm.DB) error {
 		Phone:         SuperAdminUsername, // 419116 作为手机号账号
 		PhoneLogin:    SuperAdminUsername,
 		PhoneVerified: true,
-		PasswordHash:  HashPassword(SuperAdminPassword),
+		PasswordHash:  HashPassword(pwd),
 		Role:          RoleSuperAdmin,
 		RealName:      "超级管理员",
 		Status:        UserStatusEnabled,
 	}
-	return db.Create(&sa).Error
+	if err := db.Create(&sa).Error; err != nil {
+		return "", err
+	}
+	if generated {
+		return pwd, nil
+	}
+	return "", nil
 }
 
 // randomStrongPassword 生成包含大小写字母与数字的随机强密码（保证每类至少一个）

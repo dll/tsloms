@@ -52,7 +52,11 @@ services:
       DB_NAME: tsloms
       REDIS_ADDR: redis:6379
       REDIS_DB: "1"
-      JWT_SECRET: tsloms-dev-secret
+      # 密钥从 .env 注入（审计 BLOCK-2：不再硬编码弱默认值；部署前需生成≥32字节随机密钥）
+      JWT_SECRET: ${JWT_SECRET}
+      # 初始管理员/超管密码（审计 BLOCK-1：不硬编码明文；未配置则自动生成随机密码并打印一次，务必保存）
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD:-}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
       MQTT_BROKER: tcp://emqx:1883
       MQTT_CLIENT_ID: tsloms-server
       MQTT_TOPIC_PREFIX: trafficLight
