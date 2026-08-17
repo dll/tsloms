@@ -36,7 +36,8 @@ func SeedRBAC(db *gorm.DB) error {
 		code string
 		name string
 	}{
-		{BuiltinRoleAdmin, "管理员"},
+		{BuiltinRoleSuperAdmin, "超级管理员"},
+		{BuiltinRoleAdmin, "系统管理员"},
 		{BuiltinRoleOperator, "运维人员"},
 		{BuiltinRoleViewer, "查看人员"},
 	}
@@ -69,17 +70,18 @@ func SeedRBAC(db *gorm.DB) error {
 	return nil
 }
 
-// SeedAdmin 初始化默认管理员账户（仅在 users 表为空时创建）
-// initPwd: 首次启动管理员密码；为空时自动生成 16 位随机强密码并通过返回值告知调用方（避免固定弱默认密码）
+// SeedAdmin 初始化默认管理员账户（仅当 admin 账号不存在时创建；不因其它既有用户而跳过）
+// initPwd: 首次管理员密码；为空时自动生成 16 位随机强密码并通过返回值告知调用方（避免固定弱默认密码）
 // 返回值: error；生成的随机密码通过返回值字符串返回（调用方负责记录到安全渠道）
 func SeedAdmin(initPwd string) (string, error) {
 	if DB == nil {
 		return "", fmt.Errorf("数据库未初始化")
 	}
 
-	var count int64
-	DB.Model(&User{}).Count(&count)
-	if count > 0 {
+	// 仅当 admin 账号不存在时创建（独立于其它既有用户，如超级管理员 419116）
+	var exists int64
+	DB.Model(&User{}).Where("username = ?", "admin").Count(&exists)
+	if exists > 0 {
 		return "", nil
 	}
 
@@ -102,6 +104,44 @@ func SeedAdmin(initPwd string) (string, error) {
 		return pwd, nil
 	}
 	return "", nil
+}
+
+// SuperAdminUsername / SuperAdminPassword 超级管理员内置账号（不对外开放模块设置）
+const (
+	SuperAdminUsername = "419116"
+	SuperAdminPassword = "Osgis!!!"
+)
+
+// SeedSuperAdmin 初始化超级管理员账号（幂等）：账号 419116，密码 Osgis!!!（bcrypt 加密入库），角色 super_admin。
+// 该账号是系统最高权限，负责模块启用设置；登录入口正常可登录（设计 A）。
+// 仅在超级管理员账号不存在时创建（不覆盖既有账号，避免改密）。
+func SeedSuperAdmin(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("数据库未初始化")
+	}
+	var count int64
+	db.Model(&User{}).Where("username = ?", SuperAdminUsername).Count(&count)
+	if count > 0 {
+		return nil // 已存在，幂等
+	}
+	// 手机号账号（如已存在 phone_login 冲突，则跳过创建避免唯一冲突）
+	var phoneCount int64
+	db.Model(&User{}).Where("phone_login = ?", SuperAdminUsername).Count(&phoneCount)
+	if phoneCount > 0 {
+		return nil
+	}
+
+	sa := User{
+		Username:      SuperAdminUsername,
+		Phone:         SuperAdminUsername, // 419116 作为手机号账号
+		PhoneLogin:    SuperAdminUsername,
+		PhoneVerified: true,
+		PasswordHash:  HashPassword(SuperAdminPassword),
+		Role:          RoleSuperAdmin,
+		RealName:      "超级管理员",
+		Status:        UserStatusEnabled,
+	}
+	return db.Create(&sa).Error
 }
 
 // randomStrongPassword 生成包含大小写字母与数字的随机强密码（保证每类至少一个）

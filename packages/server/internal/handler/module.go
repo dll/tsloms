@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/config"
+	"github.com/tsloms/server/internal/model"
+	"gorm.io/gorm"
 )
 
 // ============================================================================
@@ -150,10 +154,20 @@ func parseEnabledModulesFrom(raw string) {
 	}
 }
 
-// ModuleEnabled 判断某模块是否已启用
+// ModuleEnabled 判断某模块是否已启用（核心恒启；可选模块=env默认 与 DB开关 合并，DB优先）
 func ModuleEnabled(key string) bool {
 	if enabledSet == nil {
 		parseEnabledModules()
+	}
+	// 核心模块恒启，不可被关闭
+	for _, c := range coreModuleKeys {
+		if c == key {
+			return true
+		}
+	}
+	// 可选模块：DB 运行时开关优先（超级管理员设置），未配置则回退 env 默认
+	if val, ok := loadModuleToggle(key); ok {
+		return val
 	}
 	return enabledSet[key]
 }
@@ -170,14 +184,14 @@ func RequireModule(moduleKey string) gin.HandlerFunc {
 	}
 }
 
-// EnabledModuleList 已启模块 key 列表（核心 + 已启可选，保持展示顺序）
+// EnabledModuleList 已启模块 key 列表（核心 + 已启可选；可选按 DB开关>env默认 判定，保持展示顺序）
 func EnabledModuleList() []string {
 	if enabledSet == nil {
 		parseEnabledModules()
 	}
 	out := append([]string{}, coreModuleKeys...)
 	for _, k := range optionalModuleKeys {
-		if enabledSet[k] {
+		if ModuleEnabled(k) {
 			out = append(out, k)
 		}
 	}
@@ -206,4 +220,85 @@ func isCoreModule(k string) bool {
 // ListEnabledModules 返回已启模块列表（前端登录后拉取菜单用）
 func ListEnabledModules(c *gin.Context) {
 	ok(c, gin.H{"modules": EnabledModuleInfos()})
+}
+
+// loadModuleToggle 从 DB 读取某可选模块的运行时开关；返回 (enabled, 存在与否)。
+// 仅可选模块可被 DB 开关；核心模块恒启不受影响。
+func loadModuleToggle(key string) (bool, bool) {
+	if model.DB == nil {
+		return false, false
+	}
+	var t model.ModuleToggle
+	if err := model.DB.Where("module_key = ?", key).First(&t).Error; err != nil {
+		return false, false
+	}
+	return t.Enabled, true
+}
+
+// ModuleSettingsItem 模块设置项（含当前启用态与是否可被开关）
+type ModuleSettingsItem struct {
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Core    bool   `json:"core"`
+	Enabled bool   `json:"enabled"`
+}
+
+// ListModuleSettings GET /modules/settings（仅超级管理员 module:manage）
+// 返回全部模块及当前启用状态，供超级管理员开关可选模块。
+func ListModuleSettings(c *gin.Context) {
+	items := make([]ModuleSettingsItem, 0, len(coreModuleKeys)+len(optionalModuleKeys))
+	for _, k := range coreModuleKeys {
+		items = append(items, ModuleSettingsItem{Key: k, Name: moduleName[k], Core: true, Enabled: true})
+	}
+	for _, k := range optionalModuleKeys {
+		items = append(items, ModuleSettingsItem{Key: k, Name: moduleName[k], Core: false, Enabled: ModuleEnabled(k)})
+	}
+	ok(c, gin.H{"list": items, "total": len(items)})
+}
+
+// UpdateModuleSettings PUT /modules/settings（仅超级管理员 module:manage）
+// body: {module_key: "ai", enabled: true} —— 仅可开关可选模块；核心模块拒绝。
+// DB 持久化到 module_toggles。
+func UpdateModuleSettings(c *gin.Context) {
+	var req struct {
+		ModuleKey string `json:"module_key" binding:"required"`
+		Enabled   bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, "module_key 必填")
+		return
+	}
+	// 仅允许开关可选模块
+	allowed := false
+	for _, k := range optionalModuleKeys {
+		if k == req.ModuleKey {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		badRequest(c, "仅可开关可选模块，核心模块恒启不可关闭")
+		return
+	}
+
+	var t model.ModuleToggle
+	err := model.DB.Where("module_key = ?", req.ModuleKey).First(&t).Error
+	if err == gorm.ErrRecordNotFound {
+		t = model.ModuleToggle{ModuleKey: req.ModuleKey, Enabled: req.Enabled, UpdatedAt: time.Now()}
+		if e := model.DB.Create(&t).Error; e != nil {
+			serverError(c, e)
+			return
+		}
+	} else if err != nil {
+		serverError(c, err)
+		return
+	} else {
+		if e := model.DB.Model(&t).Updates(map[string]interface{}{"enabled": req.Enabled, "updated_at": time.Now()}).Error; e != nil {
+			serverError(c, e)
+			return
+		}
+	}
+
+	recordOperation(c, model.OpUpdate, "module/"+req.ModuleKey, "设置模块启用="+fmt.Sprint(req.Enabled))
+	ok(c, gin.H{"module_key": req.ModuleKey, "enabled": req.Enabled, "message": "模块设置已更新"})
 }

@@ -15,11 +15,11 @@ func TestSeedRBAC(t *testing.T) {
 		t.Fatalf("权限字典数量 = %d, 期望 %d", permCount, len(AllPermissions))
 	}
 
-	// 内置角色
+	// 内置角色：super_admin / admin / operator / viewer
 	var roles []Role
 	db.Find(&roles)
-	if len(roles) != 3 {
-		t.Fatalf("内置角色数量 = %d, 期望 3", len(roles))
+	if len(roles) != 4 {
+		t.Fatalf("内置角色数量 = %d, 期望 4(含super_admin)", len(roles))
 	}
 }
 

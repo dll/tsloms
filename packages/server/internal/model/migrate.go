@@ -92,6 +92,8 @@ func AutoMigrate(db *gorm.DB) error {
 		// ---- 第二轮新需求（P1）新增表：自动巡检 ----
 		&PatrolTask{},
 		&PatrolRecord{},
+		// ---- 模块运行时开关（超级管理员设置）----
+		&ModuleToggle{},
 	); err != nil {
 		return err
 	}
@@ -109,6 +111,11 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// 初始化 RBAC 权限字典与内置角色（幂等）
 	SeedRBAC(db)
+
+	// 初始化超级管理员账号 419116（幂等；bcrypt 加密入库，角色 super_admin）
+	if err := SeedSuperAdmin(db); err != nil {
+		return err
+	}
 
 	// ---- 第二轮新需求（P0）：区划种子数据（幂等，仅当 areas 为空时写入最小层级示例） ----
 	SeedAreas(db)

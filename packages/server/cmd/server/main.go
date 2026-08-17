@@ -174,6 +174,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		{
 			// 当前实例已启模块列表（核心 + 已购可选）——前端动态菜单/路由依据
 			auth.GET("/modules", handler.ListEnabledModules)
+			auth.GET("/modules/settings", middleware.RequirePerm("module:manage"), handler.ListModuleSettings)
+			auth.PUT("/modules/settings", middleware.RequirePerm("module:manage"), handler.UpdateModuleSettings)
 
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)

@@ -47,9 +47,10 @@ func (User) TableName() string {
 
 // 用户角色常量
 const (
-	RoleAdmin    = "admin"
-	RoleOperator = "operator"
-	RoleViewer   = "viewer"
+	RoleSuperAdmin = "super_admin" // 超级管理员（模块设置/不对外开放）
+	RoleAdmin      = "admin"       // 管理员（维护系统运行，不设模块）
+	RoleOperator   = "operator"    // 运维人员（信号灯维护者）
+	RoleViewer     = "viewer"      // 查看人员
 )
 
 // 用户状态常量

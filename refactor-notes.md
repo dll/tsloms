@@ -161,3 +161,32 @@
 
 ### 地图增强（P1 前端，留待下一步）
 - 待做：三维演示、视频巡检入口、实时监控刷新入口（复用 Cesium 3D/VideoPanel/MonitorWall）；地图分级渐变着色前端（基于已部署 /map/crossing-data 的 fault_ratio/green_ratio/level 在 CesiumMap 上 绿→黄→红 着色 + 路→路口→故障点下钻）。后端 `/map/crossing-data`、`/map/road-data` 已在 P0 就绪。
+
+---
+
+## 12. 角色体系改造：超级管理员 / 系统管理员降级 / 模块设置
+
+> 处理：leader-tsloms ｜ 2026-08-17 ｜ 用户规则：超管可控“模块是否可用”，系统管理员降级仅维护系统运行，其它人员为信号灯维护者。
+
+### 角色
+- 新增 `super_admin`（超级管理员）：全部权限，含 `module:manage`（模块启用/停用设置）。
+- 系统管理员 `admin` **降级**：去掉 `module:manage`，保留系统运行维护与业务管理（不含模块设置）。
+- `operator`（运维/信号灯维护者）、`viewer`（查看人员）不变。
+
+### 超级管理员账号
+- 内置账号 `419116` / 密码 `Osgis!!!`（**bcrypt 加密入库**，非明文），由 `SeedSuperAdmin` 幂等创建（仅当不存在时），角色 super_admin。
+- 登录入口**可正常登录**（设计 A）；“不对外开放”= 模块设置能力不向普通用户开放。
+- `SeedAdmin` 改为“admin 不存在才创建”，与超级管理员种子解耦。
+
+### 模块设置（DB 持久化）
+- 新增 `module_toggles` 表：可选模块运行时启用/停用（DB 优先于 env 默认）。
+- `GET/PUT /modules/settings`（需 `module:manage`，仅超级管理员）：查看/开关可选模块；核心模块恒启不可关。
+- `ModuleEnabled`/`EnabledModuleList` 合并 env 默认 + DB 开关。
+
+### 测试
+- `p0_superadmin_test.go`：SeedSuperAdmin 幂等创建、密码 bcrypt 可校验、super_admin 含 admin 不含 module:manage。
+- 适配：`TestSeedRBAC` 角色数 3→4、`TestCreateUser_AndList` 用户数 1→2、`SeedAdmin` 语义修正。
+- 已知遗留：`internal/ai` 的 `TestNlRequirePermNoDB` 存在包内测试顺序依赖（单跑 PASS，全量可能因先序测试设 DB 而断言全局 nil 失败），与本次改动无关（未触碰 internal/ai），需单独排期。
+
+### 验证
+- `go build`/`go vet` 全绿；`go test ./internal/model|handler` 全 ok；gofmt 0。

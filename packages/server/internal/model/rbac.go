@@ -67,9 +67,10 @@ func (UserPermission) TableName() string { return "user_permissions" }
 
 // 内置角色编码常量（沿用 User.Role 的取值，保证兼容）
 const (
-	BuiltinRoleAdmin    = "admin"
-	BuiltinRoleOperator = "operator"
-	BuiltinRoleViewer   = "viewer"
+	BuiltinRoleSuperAdmin = "super_admin" // 超级管理员：全部权限，含模块启用设置；账号 419116（不对外开放模块设置）
+	BuiltinRoleAdmin      = "admin"       // 系统管理员：维护系统运行，不含模块设置
+	BuiltinRoleOperator   = "operator"    // 运维人员（信号灯维护者）
+	BuiltinRoleViewer     = "viewer"      // 查看人员
 )
 
 // 权限模块常量（用于前端分组展示）
@@ -94,6 +95,8 @@ const (
 	PermModuleArea     = "area"
 	// P1 自动巡检新权限模块（只增不删既有权限码）
 	PermModulePatrol = "patrol"
+	// 模块设置（仅超级管理员）
+	PermModuleSettings = "settings"
 )
 
 // AllPermissions 全量功能权限点字典（种子数据）
@@ -154,13 +157,17 @@ var AllPermissions = []Permission{
 	{Code: "patrol:manage", Name: "巡检-任务/记录管理", Module: PermModulePatrol, Sort: 33},
 	{Code: "patrol:run", Name: "巡检-执行/自检", Module: PermModulePatrol, Sort: 34},
 	{Code: "patrol:selfcheck", Name: "巡检-信号灯自检", Module: PermModulePatrol, Sort: 35},
+	// ---- 模块设置（仅超级管理员）----
+	{Code: "module:manage", Name: "模块-启用/停用设置", Module: PermModuleSettings, Sort: 36},
 }
 
 // 内置角色的默认权限集合（按权限编码）
 var BuiltinRolePerms = map[string][]string{
-	// 管理员：全部权限
-	BuiltinRoleAdmin: allPermCodes(),
-	// 运维人员：业务写操作（不含用户/组织/角色管理，不含 AI 配置，不含核心删除）
+	// 超级管理员：全部权限（含模块设置 module:manage）
+	BuiltinRoleSuperAdmin: allPermCodes(),
+	// 管理员（系统管理员）：全部权限，但【不含模块设置】（不能设置模块，只能维护系统运行）
+	BuiltinRoleAdmin: withoutPerms(allPermCodes(), "module:manage"),
+	// 运维人员：业务写操作（不含用户/组织/角色管理，不含 AI 配置，不含核心删除，不含模块设置）
 	BuiltinRoleOperator: {
 		"device:create", "device:update",
 		"intersection:update",
@@ -178,6 +185,17 @@ var BuiltinRolePerms = map[string][]string{
 	},
 	// 查看人员：仅只读（无写权限）
 	BuiltinRoleViewer: {},
+}
+
+// withoutPerms 返回在 base 中剔除 exclude 中列出的权限码后的切片
+func withoutPerms(base []string, exclude string) []string {
+	out := make([]string, 0, len(base))
+	for _, c := range base {
+		if c != exclude {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // allPermCodes 返回全部权限编码

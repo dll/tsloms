@@ -58,12 +58,15 @@ func TestCreateUser_AndList(t *testing.T) {
 		} `json:"data"`
 	}
 	_ = json.Unmarshal(w2.Body.Bytes(), &resp)
-	if resp.Data.Total != 1 {
-		t.Errorf("用户总数 = %v, 期望 1", resp.Data.Total)
+	// 期望 2：SeedSuperAdmin 预置的 419116 + 本次创建的 operator1
+	if resp.Data.Total != 2 {
+		t.Errorf("用户总数 = %v, 期望 2(含种子超级管理员419116)", resp.Data.Total)
 	}
 	// 列表不应返回 password_hash
-	if len(resp.Data.List) > 0 && resp.Data.List[0].PasswordHash != "" {
-		t.Error("列表不应返回密码哈希")
+	for _, u := range resp.Data.List {
+		if u.PasswordHash != "" {
+			t.Error("列表不应返回密码哈希")
+		}
 	}
 }
 

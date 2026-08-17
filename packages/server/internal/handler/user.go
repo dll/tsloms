@@ -360,7 +360,7 @@ func DeleteUser(c *gin.Context) {
 
 // validRole 校验角色合法性
 func validRole(role string) bool {
-	return role == model.RoleAdmin || role == model.RoleOperator || role == model.RoleViewer
+	return role == model.RoleSuperAdmin || role == model.RoleAdmin || role == model.RoleOperator || role == model.RoleViewer
 }
 
 // validPhoneFormat 校验大陆手机号格式（11 位，1 开头）
