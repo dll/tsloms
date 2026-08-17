@@ -378,6 +378,12 @@ func (h *Handler) processFault(rec *EventRecord) {
 	h.persistEvidence(eval, &fault, judge, rec, now)
 	h.persistCase(eval, judge)
 
+	// 预警生成：确认的故障自动产生一条预警记录（闭合数据链路：设备→故障→预警→转工单/忽略→工单）
+	// 预警独立于工单，可被 转工单 或 忽略（含预警配置自动忽略），不影响既有故障-派单链路。
+	if judge.RecognitionStatus == model.RecognitionConfirmed {
+		h.createWarningFromFault(&fault, judge, now)
+	}
+
 	// 严重故障自动生成工单 —— 仅当研判为【确认】状态才自动派单（R6 语义保持）；
 	// 待确认/存疑故障不自动派单，可被证据补充后升级确认后再派。
 	if judge.FaultLevel == "critical" && judge.RecognitionStatus == model.RecognitionConfirmed {
@@ -392,6 +398,73 @@ func (h *Handler) processFault(rec *EventRecord) {
 		zap.Float64("confidence", judge.Confidence),
 		zap.String("recognitionStatus", judge.RecognitionStatus),
 		zap.Uint("faultId", fault.ID),
+	)
+}
+
+// createWarningFromFault 确认的故障 → 生成一条预警记录（闭合数据链路：设备→故障→预警→处理）。
+// 预警独立于工单，可被 转工单 或 忽略（含预警配置自动忽略）处置。
+// 同 fault 仅生成一条预警（幂等：已存在 source=fault+fault_id 的预警则不重复）。
+func (h *Handler) createWarningFromFault(fault *model.FaultRecord, judge model.FaultRecognition, now time.Time) {
+	if model.DB == nil || fault == nil {
+		return
+	}
+	// 幂等：同一故障只产生一条预警
+	var cnt int64
+	model.DB.Model(&model.Warning{}).Where("source = ? AND fault_id = ?", model.WarningSourceFault, fault.ID).Count(&cnt)
+	if cnt > 0 {
+		return
+	}
+
+	level := model.WarningLevelWarning
+	if fault.FaultLevel == "critical" {
+		level = model.WarningLevelCritical
+	}
+
+	w := &model.Warning{
+		DeviceHwID:   fault.DeviceHwID,
+		WarningCode:  int(fault.ErrCode),
+		WarningLabel: FaultTypeFromErrCode(fault.ErrCode),
+		Level:        level,
+		Source:       model.WarningSourceFault,
+		DealState:    model.WarningDealUnhandled,
+		Status:       model.WarningUntransferred,
+		FaultID:      &fault.ID,
+		OccurredAt:   now,
+		Remark:       "自动生成：故障已确认（" + fault.FaultType + "）",
+	}
+	// 预警路口归属（由设备接口冗余）
+	var dev model.Device
+	if model.DB.Where("hw_id = ?", fault.DeviceHwID).First(&dev).Error == nil {
+		w.CrossingID = dev.CrossingID
+		w.EquipmentUUID = dev.Intersection
+	}
+
+	if err := model.DB.Create(w).Error; err != nil {
+		h.logger.Warn("生成预警失败", zap.Uint("faultId", fault.ID), zap.Error(err))
+		return
+	}
+
+	// 预警配置自动忽略检查：命中忽略规则则直接置为已忽略（不生成待处理）
+	var rules []model.WarningRule
+	if model.DB.Where("enabled = ?", true).Find(&rules).Error == nil {
+		rt := time.Now()
+		for i := range rules {
+			if rules[i].Matches(w) {
+				model.DB.Model(w).Updates(map[string]interface{}{
+					"deal_state":    model.WarningDealIgnored,
+					"ignore_reason": "自动忽略规则 [" + rules[i].Name + "]",
+					"resolved_at":   &rt,
+				})
+				break
+			}
+		}
+	}
+
+	h.logger.Info("已生成预警",
+		zap.Uint("warningId", w.ID),
+		zap.Uint("faultId", fault.ID),
+		zap.Uint32("hwId", fault.DeviceHwID),
+		zap.Int8("errCode", fault.ErrCode),
 	)
 }
 

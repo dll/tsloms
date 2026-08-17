@@ -148,10 +148,19 @@ async function handleBatchIgnore() {
 }
 
 async function handleToWorkorder(row: WarningItem) {
-  await ElMessageBox.confirm('确定将该预警转为维修工单？', '提示', { type: 'info' })
+  // 转工单：填写备注后生成维修工单（参考项目 a 的 flowWorkOrder 填 remark）
+  let remark = ''
+  try {
+    const r = await ElMessageBox.prompt('填写转工单备注（故障描述/位置等）', '转为维修工单', {
+      confirmButtonText: '确认转单', cancelButtonText: '取消',
+      inputType: 'textarea', inputPlaceholder: '例如：长江中路 3 号灯断电',
+      inputValidator: (v) => (!!v || '请填写备注以转工单'),
+    })
+    remark = r.value || ''
+  } catch { return } // 用户取消
   busy.value = true
   try {
-    await warningToWorkOrder(row.id)
+    await warningToWorkOrder(row.id, remark)
     ElMessage.success('已转工单')
     fetchData()
   } finally {

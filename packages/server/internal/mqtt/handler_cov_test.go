@@ -93,6 +93,12 @@ func TestMqttHandleAlarm_CriticalFault(t *testing.T) {
 	if wo != 1 {
 		t.Errorf("critical 应生成工单, got %d", wo)
 	}
+	// 数据链路闭环：确认故障 → 自动生成预警记录（可转工单/忽略）
+	var warn int64
+	model.DB.Model(&model.Warning{}).Where("source = ? AND fault_id = ?", model.WarningSourceFault, f.ID).Count(&warn)
+	if warn != 1 {
+		t.Errorf("确认故障应生成 1 条预警, got %d", warn)
+	}
 }
 
 func TestMqttHandleAlarm_NoEvents(t *testing.T) {

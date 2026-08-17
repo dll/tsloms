@@ -48,8 +48,8 @@ export function ignoreWarning(id: number | string): Promise<ApiResponse> {
 export function batchIgnoreWarnings(ids: number[]): Promise<ApiResponse> {
   return request.post('/warnings/batch-ignore', { ids }) as unknown as Promise<ApiResponse>
 }
-export function warningToWorkOrder(id: number | string): Promise<ApiResponse> {
-  return request.post(`/warnings/${id}/to-workorder`) as unknown as Promise<ApiResponse>
+export function warningToWorkOrder(id: number | string, remark?: string): Promise<ApiResponse> {
+  return request.post(`/warnings/${id}/to-workorder`, { remark: remark || '' }) as unknown as Promise<ApiResponse>
 }
 export function autoIgnoreWarnings(): Promise<ApiResponse> {
   return request.post('/warnings/auto-ignore') as unknown as Promise<ApiResponse>
