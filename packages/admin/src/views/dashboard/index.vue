@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard">
+  <div ref="dashRootRef" class="dashboard" :class="{ 'is-fullscreen': isFullscreen }">
     <!-- 顶部统计卡片 -->
     <div class="toolbar">
       <span class="toolbar-label">统计范围：</span>
@@ -9,6 +9,7 @@
         <el-radio-button :value="90">近90天</el-radio-button>
       </el-radio-group>
       <el-button size="small" style="margin-left: 12px" @click="exportFaultStats">导出故障统计 CSV</el-button>
+      <el-button size="small" style="margin-left: 8px" :icon="FullScreen" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</el-button>
     </div>
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
@@ -72,6 +73,40 @@
           </div>
         </el-card>
       </el-col>
+    </el-row>
+
+    <!-- 巡检 / 班组 卡片（参考项目 a：首页巡检统计/巡检排行） -->
+    <el-row :gutter="20" class="stat-row-2">
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card stat-patrol">
+          <div class="stat-content">
+            <div class="stat-info">
+              <p class="stat-label">巡检记录 / 异常</p>
+              <p class="stat-value">
+                {{ patrolStats.total ?? 0 }}
+                <span class="stat-sub">/ {{ patrolStats.abnormal ?? 0 }}</span>
+              </p>
+              <p class="stat-sub" style="font-size:12px">巡检人次 {{ patrolStats.runs ?? 0 }} · 人员 {{ patrolStats.personRows ?? 0 }}</p>
+            </div>
+            <el-icon :size="40" color="#722ED1"><Aim /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card shadow="hover" class="stat-card stat-team">
+          <div class="stat-content">
+            <div class="stat-info">
+              <p class="stat-label">班组 / 维护人员</p>
+              <p class="stat-value">
+                {{ teamStats.departments ?? 0 }}
+                <span class="stat-sub">班组 · {{ teamStats.maintainers ?? 0 }} 维护人员</span>
+              </p>
+            </div>
+            <el-icon :size="40" color="#13C2C2"><OfficeBuilding /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="12" />
     </el-row>
 
     <!-- AI 智慧大屏 -->
@@ -186,6 +221,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { FullScreen } from '@element-plus/icons-vue'
+import { getPatrolRecords, getPatrolRanking } from '@/api/patrol'
+import { getDepartments } from '@/api/department'
+import { getUsers } from '@/api/user'
 import * as echarts from 'echarts'
 import { useRouter } from 'vue-router'
 import {
@@ -206,6 +245,46 @@ const overview = reactive({
 const rangeDays = ref(30)
 const avgClosureHours = ref(0)
 const closureCount = ref(0)
+
+// ---- 全屏 + 可滚动（参考需求：仪表盘可全屏/可滚动）----
+const dashRootRef = ref<HTMLElement>()
+const isFullscreen = ref(false)
+function toggleFullscreen() {
+  const el = dashRootRef.value
+  if (!el) return
+  if (!document.fullscreenElement) {
+    el.requestFullscreen?.().then(() => { isFullscreen.value = true }).catch(() => { /* 忽略 */ })
+  } else {
+    document.exitFullscreen?.().then(() => { isFullscreen.value = false })
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  isFullscreen.value = !!document.fullscreenElement
+})
+
+// ---- 巡检 / 班组 卡片（参考项目 a 首页巡检统计）----
+const patrolStats = reactive({ total: 0, abnormal: 0, runs: 0, personRows: 0 })
+const teamStats = reactive({ departments: 0, maintainers: 0 })
+async function fetchPatrolTeam() {
+  try {
+    const recP = getPatrolRecords({ page: 1, page_size: 500 })
+    const rankP = getPatrolRanking('person')
+    const deptP = getDepartments()
+    const userP = getUsers({ page: 1, page_size: 1 })
+    const [rec, rank, dept, users] = await Promise.allSettled([recP, rankP, deptP, userP])
+    if (rec.status === 'fulfilled') {
+      const rows = rec.value?.data?.list || []
+      patrolStats.total = rows.length
+      patrolStats.abnormal = rows.filter((x: any) => x.check_result === 'abnormal').length
+      patrolStats.runs = new Set(rows.map((x: any) => x.task_id)).size
+    }
+    if (rank.status === 'fulfilled') patrolStats.personRows = (rank.value?.data?.list || []).length
+    if (dept.status === 'fulfilled') {
+      teamStats.departments = dept.value?.data?.list?.length ?? dept.value?.data?.total ?? 0
+    }
+    if (users.status === 'fulfilled') teamStats.maintainers = users.value?.data?.total ?? 0
+  } catch { /* 忽略 */ }
+}
 
 // 图表 DOM 引用
 const pieChartRef = ref<HTMLElement>()
@@ -483,6 +562,7 @@ function handleResize() {
 onMounted(async () => {
   await fetchOverview()
   await fetchAIData()
+  await fetchPatrolTeam()
   await refreshAll()
   window.addEventListener('resize', handleResize)
 })
@@ -499,6 +579,21 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.dashboard {
+  padding: 4px;
+}
+/* 全屏：铺满视口 + 可滚动 */
+.dashboard.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #f5f7fa;
+  overflow: auto;
+  padding: 16px 24px;
+}
+.stat-row-2 {
+  margin-top: 4px;
+}
 .toolbar {
   display: flex;
   align-items: center;
