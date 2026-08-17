@@ -74,3 +74,8 @@ export function faultStatusLabel(s: string): string {
 export function faultStatusTag(s: string): string {
   return FAULT_STATUSES.find((x) => x.value === s)?.tag || 'info'
 }
+
+// 导出当前过滤条件下故障为 CSV（后端 /faults/export 返回文件流，自动下载）
+export function exportFaultsCsv(params: FaultQuery): Promise<Blob> {
+  return request.get('/faults/export', { params, responseType: 'blob' }) as unknown as Promise<Blob>
+}

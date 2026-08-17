@@ -37,3 +37,16 @@ export function updateMyPhone(phone: string): Promise<ApiResponse> {
 export function updateMyCenter(lat: number | null, lng: number | null): Promise<ApiResponse> {
   return request.put('/user/center', { lat, lng }) as unknown as Promise<ApiResponse>
 }
+
+// 用户自助注册（对外开放）：参考项目 a（username/password/confirm/归属部门+验证码），并含本项目姓名/手机号；默认 viewer 只读角色
+export function register(data: {
+  username: string
+  password: string
+  real_name?: string
+  phone?: string
+  department_id?: number
+  captcha_uuid: string
+  captcha_code: string
+}): Promise<ApiResponse> {
+  return request.post('/auth/register', data) as unknown as Promise<ApiResponse>
+}

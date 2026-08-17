@@ -92,6 +92,20 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
+// RequireSystemAdmin 系统管理员（admin 或 super_admin）权限校验
+// 用于仅系统管理员可用的功能（如「系统演示」）。
+func RequireSystemAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := c.GetString("user_role")
+		if role != model.RoleAdmin && role != model.RoleSuperAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "需要系统管理员权限"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // RequireOperator 运维人员权限校验中间件
 // 管理员和运维人员可通过，查看人员不可
 func RequireOperator() gin.HandlerFunc {

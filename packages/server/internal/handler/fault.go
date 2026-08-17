@@ -1,12 +1,99 @@
 package handler
 
 import (
+	"encoding/csv"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"github.com/tsloms/server/internal/model"
 )
+
+// faultTypeCN 故障类型中文映射（导出用）
+var faultTypeCN = map[string]string{"lamp_off": "灯灭", "abnormal_on": "异常同亮", "timeout": "亮灯超时", "dim": "缺亮", "power_loss": "断电", "unknown": "未知"}
+
+// buildFaultQuery 按当前过滤条件构造故障查询（列表/导出共用）。
+func buildFaultQuery(c *gin.Context) *gorm.DB {
+	query := model.DB.Model(&model.FaultRecord{})
+	if hwID := c.Query("hw_id"); hwID != "" {
+		query = query.Where("device_hw_id = ?", hwID)
+	}
+	if status := c.Query("status"); status != "" {
+		if op, arg, ok := ParseStatusFilter(status); ok {
+			if op == "IN" {
+				query = query.Where("status IN ?", arg)
+			} else {
+				query = query.Where("status = ?", arg)
+			}
+		}
+	}
+	if faultType := c.Query("fault_type"); faultType != "" {
+		query = query.Where("fault_type = ?", faultType)
+	}
+	if faultLevel := c.Query("fault_level"); faultLevel != "" {
+		query = query.Where("fault_level = ?", faultLevel)
+	}
+	if recogStatus := c.Query("recognition_status"); recogStatus != "" {
+		if recogStatus == "active" {
+			query = query.Where("status IN ?", activeStatuses)
+		} else {
+			query = query.Where("recognition_status = ?", recogStatus)
+		}
+	}
+	start, end := ParseFaultTimeRange(c)
+	if start != nil {
+		query = query.Where("first_seen >= ?", *start)
+	}
+	if end != nil {
+		query = query.Where("last_seen <= ?", *end)
+	}
+	return query
+}
+
+// ExportFaults GET /faults/export
+// 导出当前过滤条件内故障为 CSV（不区分页，最多 5000 条）
+func ExportFaults(c *gin.Context) {
+	var list []model.FaultRecord
+	buildFaultQuery(c).Order("last_seen DESC").Limit(5000).Find(&list)
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", "attachment; filename=faults_"+time.Now().Format("20060102")+".csv")
+	writer := csv.NewWriter(c.Writer)
+	defer writer.Flush()
+	_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+	_ = writer.Write([]string{"ID", "设备硬件ID", "错误码", "故障类型", "等级", "灯态", "红灯电流", "黄灯电流", "绿灯电流", "首次", "末次", "状态", "研判", "置信度", "工单ID"})
+	for i := range list {
+		f := &list[i]
+		conf := ""
+		if f.Confidence != nil {
+			conf = fmt.Sprintf("%.2f", *f.Confidence)
+		}
+		woid := ""
+		if f.WorkOrderID != nil {
+			woid = strconv.FormatUint(uint64(*f.WorkOrderID), 10)
+		}
+		_ = writer.Write([]string{
+			strconv.FormatUint(uint64(f.ID), 10),
+			strconv.FormatUint(uint64(f.DeviceHwID), 10),
+			strconv.Itoa(int(f.ErrCode)),
+			faultTypeCN[f.FaultType],
+			f.FaultLevel,
+			strconv.Itoa(int(f.LedState)),
+			strconv.FormatUint(uint64(f.CurrentR), 10),
+			strconv.FormatUint(uint64(f.CurrentY), 10),
+			strconv.FormatUint(uint64(f.CurrentG), 10),
+			f.FirstSeen.Format("2006-01-02 15:04:05"),
+			f.LastSeen.Format("2006-01-02 15:04:05"),
+			f.Status,
+			f.RecognitionStatus,
+			conf,
+			woid,
+		})
+	}
+}
 
 // activeStatuses 旧 “active” 兼容语义 = 未解决：occurred/confirmed/dispatched
 var activeStatuses = []string{

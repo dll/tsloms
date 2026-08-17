@@ -97,6 +97,8 @@ const (
 	PermModulePatrol = "patrol"
 	// 模块设置（仅超级管理员）
 	PermModuleSettings = "settings"
+	// 系统演示（仅系统管理员 admin/super_admin）
+	PermModuleDemo = "demo"
 )
 
 // AllPermissions 全量功能权限点字典（种子数据）
@@ -159,6 +161,8 @@ var AllPermissions = []Permission{
 	{Code: "patrol:selfcheck", Name: "巡检-信号灯自检", Module: PermModulePatrol, Sort: 35},
 	// ---- 模块设置（仅超级管理员）----
 	{Code: "module:manage", Name: "模块-启用/停用设置", Module: PermModuleSettings, Sort: 36},
+	// ---- 系统演示（仅系统管理员）----
+	{Code: "demo:use", Name: "系统演示-生成/清理", Module: PermModuleDemo, Sort: 37},
 }
 
 // 内置角色的默认权限集合（按权限编码）

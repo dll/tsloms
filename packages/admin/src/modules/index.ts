@@ -79,6 +79,10 @@ const coreModules: ModuleDef[] = [
     routes: [{ path: '/access', name: 'Access', component: () => import('@/views/access/index.vue'), title: '检测器接入（真实硬件/CSV/Mock）' }],
   },
   {
+    key: 'demo', title: '系统演示', icon: Monitor, path: '/demo', core: true,
+    routes: [{ path: '/demo', name: 'Demo', component: () => import('@/views/demo/index.vue'), title: '系统演示（全流程）' , perm: 'demo:use' }],
+  },
+  {
     key: 'map', title: '地图大屏', icon: MapLocation, path: '/map', core: true,
     routes: [{ path: '/map', name: 'Map', component: () => import('@/views/map/index.vue'), title: '地图大屏' }],
   },

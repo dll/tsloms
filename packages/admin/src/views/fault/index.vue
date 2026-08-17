@@ -108,6 +108,7 @@
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
           <el-button :icon="Refresh" @click="handleReset">重置</el-button>
+          <el-button :icon="Download" @click="exportCsv">导出 CSV</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -303,7 +304,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, DataAnalysis } from '@element-plus/icons-vue'
+import { Search, Refresh, DataAnalysis, Download } from '@element-plus/icons-vue'
 import { getFaults, getFault, updateFault, dispatchFault, FAULT_STATUSES, faultStatusLabel, faultStatusTag } from '@/api/fault'
 import {
   getFaultEvidence, getRecognitionStats, reviewFault,
@@ -556,6 +557,37 @@ async function fetchData() {
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
   } catch { /* 忽略 */ } finally { loading.value = false }
+}
+
+// 导出当前筛选条件下的故障为 CSV（客户端生成下载；复用列表过滤参数）
+const faultTypeCNExport: Record<string, string> = { lamp_off: '灯灭', abnormal_on: '异常同亮', timeout: '亮灯超时', dim: '缺亮', power_loss: '断电', unknown: '未知' }
+async function exportCsv() {
+  const params: Record<string, any> = {
+    page: 1, page_size: 5000,
+    device_hw_id: searchForm.device_hw_id || undefined,
+    status: searchForm.status || undefined,
+    fault_type: searchForm.fault_type || undefined,
+    fault_level: searchForm.fault_level || undefined,
+    recognition_status: searchForm.recognition_status || undefined,
+  }
+  if (dateRange.value && dateRange.value.length === 2) { params.start_date = dateRange.value[0]; params.end_date = dateRange.value[1] }
+  try {
+    const res = await getFaults(params)
+    const list = res.data?.list || []
+    const header = ['ID', '设备硬件ID', '错误码', '故障类型', '等级', '灯态', '红灯', '黄灯', '绿灯', '状态', '研判', '置信度', '首次', '末次']
+    const rows = list.map((f: any) => [
+      f.id, f.device_hw_id, f.err_code, faultTypeCNExport[f.fault_type] || f.fault_type, f.fault_level,
+      f.led_state, f.current_r, f.current_y, f.current_g, faultStatusLabel(f.status), f.recognition_status,
+      f.confidence != null ? Number(f.confidence).toFixed(2) : '', f.first_seen, f.last_seen,
+    ])
+    const csv = '\ufeff' + [header, ...rows].map((r) => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `故障_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click(); URL.revokeObjectURL(a.href)
+    ElMessage.success(`已导出 ${list.length} 条故障`)
+  } catch { ElMessage.error('导出失败') }
 }
 
 function handleSearch() { pagination.page = 1; fetchData() }

@@ -167,6 +167,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	{
 		// 公开接口（无需登录）
 		api.POST("/auth/login", handler.Login)
+		api.POST("/auth/register", handler.Register)
 		api.GET("/auth/captcha", handler.GetCaptcha)
 		api.GET("/health", handler.Health)
 		// 地图瓦片代理（无鉴权，供 Cesium 图片加载使用）
@@ -226,6 +227,10 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/access/status", handler.DetectorAccessStatus)
 			auth.POST("/access/mock/send", handler.MockSend)
 			auth.POST("/access/csv/import", handler.CSVImport)
+			// 系统演示（仅系统管理员）：生成随机演示数据 / 一键清理回滚
+			auth.GET("/demo/status", middleware.RequireSystemAdmin(), handler.DemoStatus)
+			auth.POST("/demo/start", middleware.RequireSystemAdmin(), handler.DemoStart)
+			auth.POST("/demo/end", middleware.RequireSystemAdmin(), handler.DemoEnd)
 
 			// ---- P1 自动巡检（独立命名空间 /patrol/*） ----
 			auth.GET("/patrol/tasks", handler.ListPatrolTasks)
@@ -254,6 +259,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 故障查询（只读）
 			auth.GET("/faults", handler.ListFaults)
+			auth.GET("/faults/export", handler.ExportFaults)
 			auth.GET("/faults/:id", handler.GetFault)
 			// 故障管理（确认/负责人/维修人/状态更新：管理员/运维）
 			auth.PUT("/faults/:id", middleware.RequirePerm("fault:update"), handler.UpdateFault)
