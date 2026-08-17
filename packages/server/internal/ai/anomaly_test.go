@@ -75,6 +75,9 @@ func strContains(s, sub string) bool {
 
 // TestNlRequirePermNoDB 无数据库时写命令应被拒绝而非 panic
 func TestNlRequirePermNoDB(t *testing.T) {
+	saved := model.DB
+	model.DB = nil // 强制无 DB 状态（该断言依赖全局；其它 ai 测试可能已初始化，故显式置空以确保确定性）
+	defer func() { model.DB = saved }()
 	deny, ans := nlRequirePerm(1, "workorder:create")
 	if !deny {
 		t.Error("无数据库时应拒绝写命令")
