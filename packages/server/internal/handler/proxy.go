@@ -1,12 +1,18 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tsloms/server/internal/config"
 )
 
 // baiduTileProxy 百度瓦片代理
@@ -95,6 +101,74 @@ func GaodeTileProxy(c *gin.Context) {
 	c.Header("Cache-Control", "public, max-age=86400")
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, resp.Body)
+}
+
+// AmapPlaceSearch 高德 POI 地名搜索代理
+// 瓦片底图无需 key（公开端点），但搜索/地理编码需高德 Web 服务 Key（restapi.amap.com）。
+// 本接口在服务端持有 key，前端无 key；未配置 key 时返回可识别错误由前端降级为本地搜索。
+// GET /proxy/amap/place?kw=人民路&city=上海&loc=121.47,31.23
+func AmapPlaceSearch(c *gin.Context) {
+	kw := strings.TrimSpace(c.Query("kw"))
+	if kw == "" {
+		badRequest(c, "缺少搜索关键字")
+		return
+	}
+	key := config.Get().AMapWebKey
+	if key == "" {
+		ok(c, gin.H{"pois": []gin.H{}, "fallback": true, "message": "未配置 AMAP_WEB_KEY，使用本地点位搜索"})
+		return
+	}
+
+	q := url.Values{}
+	q.Set("key", key)
+	q.Set("keywords", kw)
+	q.Set("output", "json")
+	// 可选：城市约束 / 周边搜索半径
+	if city := c.Query("city"); city != "" {
+		q.Set("city", city)
+	}
+	if loc := c.Query("loc"); loc != "" {
+		q.Set("location", loc)
+		q.Set("radius", c.DefaultQuery("radius", "10000"))
+	}
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Get("https://restapi.amap.com/v3/place/text?" + q.Encode())
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var body struct {
+		Status string `json:"status"`
+		Info   string `json:"info"`
+		Pois   []struct {
+			Name     string `json:"name"`
+			Location string `json:"location"` // "lng,lat"
+			Address  string `json:"address"`
+			Type     string `json:"type"`
+		} `json:"pois"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		serverError(c, err)
+		return
+	}
+
+	out := make([]gin.H, 0, len(body.Pois))
+	for _, p := range body.Pois {
+		parts := strings.Split(p.Location, ",")
+		if len(parts) != 2 {
+			continue
+		}
+		lng, err1 := strconv.ParseFloat(parts[0], 64)
+		lat, err2 := strconv.ParseFloat(parts[1], 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		out = append(out, gin.H{"name": p.Name, "lat": lat, "lng": lng, "address": p.Address})
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{"list": out, "source": "amap"}})
 }
 
 // mustParseInt 简化整数解析（代理参数来自受控调用，出错返回 0）

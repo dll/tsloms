@@ -215,6 +215,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// ---- P0-5 地图分级聚合（新增，向后兼容；/map 前端原有设备打点不变） ----
 			auth.GET("/map/crossing-data", handler.GetCrossingMapData)
 			auth.GET("/map/road-data", handler.GetRoadMapData)
+			// 高德 POI 地名搜索代理（走服务器端 AMAP_WEB_KEY；未配置时前端降级本地搜索）
+			auth.GET("/proxy/amap/place", handler.AmapPlaceSearch)
 
 			// ---- P1 自动巡检（独立命名空间 /patrol/*） ----
 			auth.GET("/patrol/tasks", handler.ListPatrolTasks)

@@ -9,8 +9,9 @@
     </div>
 
     <div class="mp-search-list" v-if="searchResults.length">
-      <div v-for="r in searchResults" :key="r.id" class="mp-search-item" @click="flyTo(r.lng, r.lat)">
-        <span>{{ r.name }}</span><span class="mp-coord">{{ fmt(r.lat) }}, {{ fmt(r.lng) }}</span>
+      <div v-for="r in searchResults" :key="r.name + r.lat" class="mp-search-item" @click="flyTo(r.lng, r.lat)">
+        <span class="mp-search-name">{{ r.name }}<el-tag v-if="r.src === 'amap'" size="small" type="warning" effect="plain">POI</el-tag></span>
+        <span class="mp-coord">{{ r.address ? r.address + ' · ' : '' }}{{ fmt(r.lat) }}, {{ fmt(r.lng) }}</span>
       </div>
     </div>
 
@@ -52,7 +53,7 @@ let initCoord = { lat: 0, lng: 0 }
 const kw = ref('')
 const coordLat = ref('')
 const coordLng = ref('')
-const searchResults = ref<{ id: number; name: string; lat: number; lng: number }[]>([])
+const searchResults = ref<{ id: number; name: string; lat: number; lng: number; address?: string; src?: string }[]>([])
 
 function fmt(v: any) { return v == null ? '' : Number(v).toFixed(6) }
 
@@ -114,7 +115,7 @@ function applyCoord() {
   if (isFinite(lng) && isFinite(lat)) flyTo(lng, lat)
 }
 
-// 地名搜索：匹配 路口(crossings)、设备(路口名)、区划(areas/道路) 名称
+// 地名搜索：优先高德 POI（真实地名，需 AMAP_WEB_KEY），否则降级本地(设备/路口/区划)点位
 async function searchPlace() {
   searchResults.value = []
   const k = kw.value.trim().toLowerCase()
@@ -124,28 +125,33 @@ async function searchPlace() {
     const lng = parseFloat(coordMatch[1]), lat = parseFloat(coordMatch[3])
     if (isFinite(lng) && isFinite(lat)) { flyTo(lng, lat); return }
   }
+  // 1) 高德 POI（服务器端代理，带 key）
+  try {
+    const res: any = await import('@/utils/request').then((m) => m.default.get('/proxy/amap/place', { params: { kw: kw.value.trim() } }))
+    const pois = res?.data?.list || []
+    if (pois.length) {
+      searchResults.value = pois.map((p: any) => ({ id: p.name, name: p.name, lat: p.lat, lng: p.lng, address: p.address, src: 'amap' }))
+      if (k === '') return
+    }
+  } catch { /* 无 key 或失败 → 本地降级 */ }
+  // 2) 本地点位（设备/路口/区划）作为补充/降级
   try {
     const [cr, ar, dev] = await Promise.all([getCrossings({ page_size: 500 }), getAreasTree(), getAllDevices(1000)])
-    const out: { id: number; name: string; lat: number; lng: number }[] = []
-    const add = (name: string, lat: any, lng: any, id = out.length) => {
+    const out: { id: number; name: string; lat: number; lng: number; src?: string }[] = []
+    const add = (name: string, lat: any, lng: any) => {
       if (lat == null || lng == null) return
       if (k !== '' && !String(name || '').toLowerCase().includes(k)) return
-      out.push({ id, name: String(name || ''), lat: Number(lat), lng: Number(lng) })
+      // 去重（高德已返回同名时不重复）
+      if (!searchResults.value.some((s) => s.name === String(name) && Math.abs(s.lat - Number(lat)) < 0.0001)) {
+        out.push({ id: out.length, name: String(name || ''), lat: Number(lat), lng: Number(lng), src: 'local' })
+      }
     }
-    // 设备（含路口名/坐标）
     ;(dev.data?.list || []).forEach((d: any) => add(d.intersection || ('设备#' + d.hw_id), d.lat, d.lng))
-    // 路口
     ;(cr.data?.list || []).forEach((c: any) => add(c.name, c.lat, c.lng))
-    // 区划（树）
-    const flat = (list: any[]) => {
-      if (!list) return
-      list.forEach((it: any) => { add(it.full_name || it.name, it.lat, it.lng); flat(it.children) })
-    }
+    const flat = (list: any[]) => { if (!list) return; list.forEach((it: any) => { add(it.full_name || it.name, it.lat, it.lng); flat(it.children) }) }
     flat(ar.data?.tree || ar.data?.list || [])
-    searchResults.value = out.slice(0, 40)
-  } catch {
-    searchResults.value = []
-  }
+    searchResults.value = [...searchResults.value, ...out]
+  } catch { /* 忽略 */ }
 }
 
 function confirmPick() {
@@ -169,6 +175,8 @@ onUnmounted(() => { if (viewer) { viewer.destroy(); viewer = null; marker = null
 .mp-search-list { max-height: 120px; overflow: auto; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 6px; }
 .mp-search-item { display: flex; justify-content: space-between; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .mp-search-item:hover { background: #f0f2f5; }
+.mp-search-name { display: inline-flex; align-items: center; gap: 6px; }
+.mp-search-name .el-tag { margin-left: 4px; }
 .mp-coord { color: #909399; }
 .mp-coord-bar { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .mp-tip { font-size: 12px; color: #909399; margin-left: 8px; }
