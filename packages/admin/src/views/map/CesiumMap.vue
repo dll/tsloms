@@ -136,6 +136,30 @@
         </div>
       </div>
     </div>
+
+    <!-- 视频内嵌浮层（视频巡检，不跳转） -->
+    <VideoOverlay v-if="videoOverlay && videoHwId" :device-hw-id="videoHwId" :title="videoTitle" @close="videoOverlay = false" />
+
+    <!-- 道路级钻取面板 -->
+    <div v-if="roadPanel" class="road-panel">
+      <div class="road-head">
+        <span>道路「{{ selRoad }}」</span>
+        <el-button link type="info" size="small" @click="roadPanel = false">×</el-button>
+      </div>
+      <div class="road-body">
+        <el-table :data="roadCrossings" size="small" max-height="220">
+          <el-table-column prop="name" label="路口" show-overflow-tooltip />
+          <el-table-column label="故障比例" width="90" align="center">
+            <template #default="{ row }">{{ Math.round((row.fault_ratio || 0) * 100) }}%</template>
+          </el-table-column>
+          <el-table-column label="级别" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :color="gradientColor(row.fault_ratio)" style="border:0">{{ row.level || '-' }}</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -149,7 +173,8 @@ import { getFaults } from '@/api/fault'
 import { updateDevice } from '@/api/device'
 import { getUserInfo } from '@/api/auth'
 import { getSignalIcon } from './signalIcons'
-import { getCrossingMapData, type CrossingPoly } from '@/api/map'
+import { getCrossingMapData, getRoadMapData, type CrossingPoly } from '@/api/map'
+import VideoOverlay from './VideoOverlay.vue'
 import { bus, consumePendingFocus } from '@/utils/eventBus'
 // @ts-ignore 百度/高德瓦片
 import BaiduImageryProvider from './BaiduImagery.js'
@@ -171,6 +196,17 @@ const isFullscreen = ref(false)
 const devices = ref<any[]>([])
 const selDev = ref<any | null>(null)
 const userCenterRef = ref<{ lat: number; lng: number } | null>(null)
+
+// ---- 视频内嵌浮层（替代跳转 /video）----
+const videoOverlay = ref(false)
+const videoHwId = ref<number | undefined>()
+const videoTitle = ref('')
+
+// ---- 道路级钻取 ----
+const roads = ref<any[]>([])
+const roadPanel = ref(false)
+const selRoad = ref<string>('')
+const roadCrossings = ref<any[]>([])
 
 // ---- 图层开关 ----
 const layerSignal = ref(true)   // 信号灯
@@ -239,6 +275,13 @@ function initCesium() {
     if (id.startsWith('cross-grad-')) {
       const data = (picked.id as any).properties?.data?.getValue()
       if (data) drillCrossing(data)
+      return
+    }
+    // 道路(分级)点位 → 道路级钻取
+    if (id.startsWith('road-grad-')) {
+      const props = (picked.id as any).properties
+      const name = props?.name?.getValue ? props.name.getValue() : props?.name
+      if (name) selectRoad(String(name))
       return
     }
     // 设备点位
@@ -316,6 +359,69 @@ async function loadCrossings() {
   }
 }
 
+// 道路级钻取：加载道路聚合 + 为有经纬度的路（取首个路口中心）画道路着色点
+async function loadRoads() {
+  try {
+    const res = await getRoadMapData()
+    roads.value = res.data?.list || []
+  } catch {
+    roads.value = []
+  }
+}
+
+function plotRoads() {
+  if (!viewer) return
+  const v = viewer
+  const old: string[] = []
+  v.entities.values.forEach((e: any) => { if (e.id && String(e.id).startsWith('road-grad-')) old.push(e.id) })
+  old.forEach((id) => v.entities.remove(v.entities.getById(id) as any))
+  if (!layerGradient.value) return
+  // 道路 → 路口中心聚合（道路用其全部路口的故障比例平均着色，点落在中心）
+  const roadCenter = new Map<string, { lng: number; lat: number; ratio: number; cnt: number }>()
+  for (const r of roads.value) {
+    const cxs = (r.crossing_ids || [] as number[])
+    if (!cxs.length) continue
+    let lng = 0, lat = 0, ratio = 0, cnt = 0
+    for (const cid of cxs) {
+      const cx = crossings.value.find((c) => c.id === cid)
+      if (!cx || cx.lat == null || cx.lng == null) continue
+      lng += cx.lng; lat += cx.lat; ratio += cx.fault_ratio; cnt++
+    }
+    if (cnt === 0) continue
+    roadCenter.set(r.road_name, { lng: lng / cnt, lat: lat / cnt, ratio: ratio / cnt, cnt })
+  }
+  for (const [name, c] of roadCenter) {
+    const color = gradientColor(c.ratio)
+    v.entities.add({
+      id: 'road-grad-' + name,
+      position: Cesium.Cartesian3.fromDegrees(c.lng, c.lat),
+      ellipse: {
+        semiMajorAxis: 220, semiMinorAxis: 140,
+        material: Cesium.Color.fromCssColorString(color).withAlpha(0.6),
+        outline: true, outlineColor: Cesium.Color.fromCssColorString(color),
+        height: 0,
+      },
+      properties: { kind: 'road', name, ratio: c.ratio, cnt: c.cnt } as any,
+    })
+  }
+}
+
+// 选择道路 → 打开道路钻取面板（列出该道路路口）
+function selectRoad(name: string) {
+  selRoad.value = name
+  const r = roads.value.find((x) => x.road_name === name)
+  const cxs = (r?.crossing_ids || []) as number[]
+  roadCrossings.value = cxs.map((id) => crossings.value.find((c) => c.id === id)).filter(Boolean)
+  if (roadCrossings.value.length && viewer) {
+    const mapped = roadCrossings.value.filter((c: any) => c.lat != null && c.lng != null)
+    if (mapped.length) {
+      const rect = Cesium.Rectangle.fromCartesianArray(mapped.map((c: any) => Cesium.Cartesian3.fromDegrees(c.lng, c.lat)))
+      viewer.camera.flyTo({ destination: rect, duration: 0.9 })
+    }
+  }
+  roadPanel.value = true
+}
+
 function plotDevices() {
   if (!viewer) return
   viewer.entities.removeAll()
@@ -349,7 +455,7 @@ function plotDevices() {
 }
 
 // 撤销图层调整后立即重绘
-function onLayerChange() { plotDevices(); plotCrossings() }
+function onLayerChange() { plotDevices(); plotCrossings(); plotRoads() }
 
 // ---- 关注/锁定 ----
 async function toggleWatch() {
@@ -507,7 +613,13 @@ function togglePanel() { panelOpen.value = !panelOpen.value }
 // 跳转
 function goFault() { router.push({ path: '/fault', query: { hw_id: selDev.value?.hw_id } }) }
 function goWorkOrder() { router.push({ path: '/workorder', query: { device_hw_id: selDev.value?.hw_id } }) }
-function goVideo() { router.push({ path: '/video', query: { device_hw_id: selDev.value?.hw_id } }) }
+function goVideo() {
+  if (!selDev.value?.hw_id) { ElMessage.warning('请先选择信号灯/设备'); return }
+  // 内嵌视频浮层（不跳转）；保留 /video 在“监控大屏”入口
+  videoHwId.value = selDev.value.hw_id
+  videoTitle.value = (selDev.value.intersection || '设备#' + selDev.value.hw_id) + ' · 视频巡检'
+  videoOverlay.value = true
+}
 function goFeedback() { router.push({ path: '/feedback', query: { device_hw_id: selDev.value?.hw_id } }) }
 
 // ---- 事件总线订阅：地图聚焦 ----
@@ -532,9 +644,10 @@ async function load() {
   try {
     const res = await getAllDevices(1000)
     devices.value = res.data?.list || []
-    await Promise.all([loadFaults(), loadCrossings()])
+    await Promise.all([loadFaults(), loadCrossings(), loadRoads()])
     plotDevices()
     plotCrossings()
+    plotRoads()
     focusWithRetry(0)
   } catch { /* 忽略 */ }
 }
