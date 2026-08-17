@@ -190,3 +190,27 @@
 
 ### 验证
 - `go build`/`go vet` 全绿；`go test ./internal/model|handler` 全 ok；gofmt 0。
+
+---
+
+## 13. 授权/试用/防破解系统 + P1 地图渐变增强
+
+> 处理：leader-tsloms ｜ 2026-08-17 ｜ 用户需求：超管控制模块/功能/产品价值，保密难破解，核心100天/可选30天试用，到期须超管授权解锁。
+
+### 授权系统
+- **internal/license/**：Ed25519 签名验签（供应方私钥离线签名、服务器仅存公钥验签）；TrialDaysCore=100、TrialDaysOptional=30；ParseUnlockCode/VerifyUnlockCode 校验 nbf/exp/签名/模块匹配/篡改。
+- **internal/model/license.go**：license_state 单行表（核心激活、模块激活 map、解锁、时间回拨 last_check）。
+- **internal/handler/license.go**：GET /license/status、POST /license/trial/start、POST /license/unlock（超管一键/授权码验签）——仅 module:manage（超管）。
+- **cmd/licensegen**：供应方离线授权码生成工具（持私钥，go run ./cmd/licensegen -module ai -days 365）。
+- **模块授权拦截**：ModuleEnabled 叠加 moduleLicenseOK——核心需核心试用/解锁，可选需该模块试用/解锁；**首次访问惰性自动开试用**；RequireModule 对超管恒放行（避免管理页死锁）；时间回拨超 1 分钟判篡改锁定。
+- **前端**：/settings/license 授权管理页（状态/开始试用/一键解锁/输入授权码），仅超管可见。
+- 测试：internal/license/license_test.go（验签/过期/未生效/模块不匹配/篡改）；module 测试适配惰性试用。
+
+### P1 地图渐变增强（前端）
+- CesiumMap 新增「路口分级」图层：/map/crossing-data 故障比例 → 路口彩色圆环 绿→黄→红 渐变着色（gradientColor），标注路口名；随图层开关重绘；getCrossingMapData/getRoadMapData API。
+- 既有 3D/2D 场景、信号灯/故障/锁定图层、视频监控按钮已具备，本次补上分级着色核心。
+- 前端 build（vue-tsc+vite）通过。
+
+### 验证
+- 后端 go test ./... 全绿（14 包含 license）；gofmt 0；前端 build exit 0。
+- 待：CI + 部署 + 超管授权验收（419116 登录→开始试用→一键解锁/授权码解锁；可选模块到期锁定）。

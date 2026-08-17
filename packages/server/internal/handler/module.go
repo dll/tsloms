@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tsloms/server/internal/config"
+	"github.com/tsloms/server/internal/license"
 	"github.com/tsloms/server/internal/model"
 	"gorm.io/gorm"
 )
@@ -154,12 +155,16 @@ func parseEnabledModulesFrom(raw string) {
 	}
 }
 
-// ModuleEnabled 判断某模块是否已启用（核心恒启；可选模块=env默认 与 DB开关 合并，DB优先）
+// ModuleEnabled 判断某模块是否已启用（核心=授权可用；可选=开关 且 授权可用）
 func ModuleEnabled(key string) bool {
 	if enabledSet == nil {
 		parseEnabledModules()
 	}
-	// 核心模块恒启，不可被关闭
+	// 授权校验：未授权/试用过期的模块不可用（超管登录与授权管理不受此限）
+	if !moduleLicenseOK(key) {
+		return false
+	}
+	// 核心模块恒启（授权通过后启用）；可选模块还需开关判定
 	for _, c := range coreModuleKeys {
 		if c == key {
 			return true
@@ -172,11 +177,82 @@ func ModuleEnabled(key string) bool {
 	return enabledSet[key]
 }
 
+// moduleLicenseOK 授权门槛：核心模块需核心试用/解锁通过；可选模块需其自身试用/解锁通过。
+// 依据 license_state（见 handler/license.go）。
+func moduleLicenseOK(key string) bool {
+	if model.DB == nil {
+		return true // 无数据库（只读/测试/启动前）不作授权拦截
+	}
+	ls := model.LoadLicenseState(model.DB)
+	if ls == nil {
+		return false // 无授权状态，保守起见默认不可用（但超管可先在授权页开始试用/解锁）
+	}
+	now := time.Now()
+
+	// 时间回拨检测：若系统时间早于最近校验时间，判定篡改，锁定（避免改时钟续期）
+	if ls.LastCheckTime != nil && now.Add(-1*time.Minute).Before(*ls.LastCheckTime) {
+		// 回拨超过 1 分钟 → 触发锁定
+		return false
+	}
+
+	// 核心模块：需要核心试用进行中（首次访问自动开试用懒启动）或 已解锁
+	isCore := false
+	for _, c := range coreModuleKeys {
+		if c == key {
+			isCore = true
+			break
+		}
+	}
+	if isCore {
+		if ls.CoreUnlocked {
+			return true
+		}
+		// 惰性自动开始核心试用（首次访问起算 100 天）
+		if ls.CoreActivatedAt == nil {
+			t := now
+			ls.CoreActivatedAt = &t
+			_ = model.SaveLicenseState(model.DB, ls)
+		}
+		expiry := ls.CoreActivatedAt.Add(license.TrialDaysCore * 24 * time.Hour)
+		return now.Before(expiry)
+	}
+
+	// 可选模块：需要该模块试用进行中（首次访问自动开试用懒启动）或 已解锁
+	for _, k := range optionalModuleKeys {
+		if k != key {
+			continue
+		}
+		m := ls.DecodeModules()[key]
+		if m == nil || m.ActivatedAt == nil {
+			// 惰性自动开始可选模块试用（首次访问起算 30 天）
+			if m == nil {
+				m = &model.ModuleLicenseState{}
+			}
+			m.ActivatedAt = &now
+			mm := ls.DecodeModules()
+			mm[key] = m
+			ls.EncodeModules(mm)
+			_ = model.SaveLicenseState(model.DB, ls)
+			return true
+		}
+		if m.Unlocked {
+			if m.UnlockExpiry != nil && now.After(*m.UnlockExpiry) {
+				return false // 解锁但已到期
+			}
+			return true
+		}
+		expiry := m.ActivatedAt.Add(license.TrialDaysOptional * 24 * time.Hour)
+		return now.Before(expiry)
+	}
+	return true
+}
+
 // RequireModule 返回校验模块启用的中间件：未启用 → 403（功能不可用）
 func RequireModule(moduleKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !ModuleEnabled(moduleKey) {
-			forbidden(c, "该功能模块未启用")
+		// 超级管理员恒可访问（管理授权/模块，避免试用未开始或过期时无法进入管理页的死锁）
+		if roleFromCtx(c) != model.RoleSuperAdmin && !ModuleEnabled(moduleKey) {
+			forbidden(c, "该功能模块未启用或试用已过期/未授权")
 			c.Abort()
 			return
 		}
@@ -184,7 +260,17 @@ func RequireModule(moduleKey string) gin.HandlerFunc {
 	}
 }
 
-// EnabledModuleList 已启模块 key 列表（核心 + 已启可选；可选按 DB开关>env默认 判定，保持展示顺序）
+// roleFromCtx 从 gin.Context 读取当前用户角色（由鉴权中间件注入）
+func roleFromCtx(c *gin.Context) string {
+	if v, ok := c.Get("user_role"); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// EnabledModuleList 已启模块 key 列表（核心恒列于菜单；可选按模块开关+授权判定，保持展示顺序）
 func EnabledModuleList() []string {
 	if enabledSet == nil {
 		parseEnabledModules()

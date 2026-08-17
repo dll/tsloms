@@ -108,7 +108,10 @@ const coreModules: ModuleDef[] = [
   },
   {
     key: 'settings', title: '系统设置', icon: Setting, path: '/settings', core: true,
-    routes: [{ path: '/settings', name: 'Settings', component: () => import('@/views/settings/index.vue'), title: '系统设置' }],
+    routes: [
+      { path: '/settings', name: 'Settings', component: () => import('@/views/settings/index.vue'), title: '系统设置' },
+      { path: '/settings/license', name: 'License', component: () => import('@/views/settings/license.vue'), title: '授权与试用', perm: 'module:manage' },
+    ],
   },
 ]
 

@@ -23,6 +23,7 @@
         <el-checkbox v-model="layerSignal" @change="onLayerChange" title="信号灯（在线/离线）">信号灯</el-checkbox>
         <el-checkbox v-model="layerFault" @change="onLayerChange" title="故障信号灯（红色警示）">故障</el-checkbox>
         <el-checkbox v-model="layerWatched" @change="onLayerChange" title="锁定/关注的信号灯（金色星标）">锁定</el-checkbox>
+        <el-checkbox v-model="layerGradient" @change="onLayerChange" title="路口故障分级渐变着色(绿→黄→红,按故障比例)">路口分级</el-checkbox>
       </div>
 
       <div class="tb-stats">
@@ -147,6 +148,7 @@ import { getFaults } from '@/api/fault'
 import { updateDevice } from '@/api/device'
 import { getUserInfo } from '@/api/auth'
 import { getSignalIcon } from './signalIcons'
+import { getCrossingMapData, type CrossingPoly } from '@/api/map'
 import { bus, consumePendingFocus } from '@/utils/eventBus'
 // @ts-ignore 百度/高德瓦片
 import BaiduImageryProvider from './BaiduImagery.js'
@@ -173,6 +175,8 @@ const userCenterRef = ref<{ lat: number; lng: number } | null>(null)
 const layerSignal = ref(true)   // 信号灯
 const layerFault = ref(true)    // 故障
 const layerWatched = ref(false) // 锁定/关注
+const layerGradient = ref(true) // 路口故障分级渐变着色(按故障比例 绿→黄→红)
+const crossings = ref<CrossingPoly[]>([])
 const watchedFilter = ref(false)// 设备列表只看关注
 
 // ---- 缩放级别 ----
@@ -240,6 +244,68 @@ function initCesium() {
 }
 
 // 图层重绘：按当前开关 + 状态绘制信号灯图标
+// 由故障比例推导着色：全绿(0)→黄(中)→红(≥1) 渐变（对齐后端 level）
+function gradientColor(ratio: number): string {
+  if (ratio <= 0) return '#3ecf6a'      // 全绿/正常
+  if (ratio >= 1) return '#e02020'      // 全红/停电
+  // 0<ratio<1：绿→黄→橙→红
+  if (ratio < 0.34) return '#f5e62b'    // 黄低
+  if (ratio < 0.67) return '#f5a623'    // 黄/橙
+  return '#e02020'                       // 红
+}
+
+// 路口故障分级渐变着色图层：按 fault_ratio 给每个路口画彩色圆环（绿→黄→红）
+function plotCrossings() {
+  if (!viewer) return
+  const v = viewer
+  const map = crossings.value
+  // 移除旧的渐变层（按实体 id 前缀）
+  const old: string[] = []
+  v.entities.values.forEach((e: any) => { if (e.id && String(e.id).startsWith('cross-grad-')) old.push(e.id) })
+  old.forEach((id) => v.entities.remove(v.entities.getById(id) as any))
+  if (!layerGradient.value) return
+
+  for (const x of map) {
+    if (x.lat == null || x.lng == null) continue
+    const color = gradientColor(x.fault_ratio)
+    const id = 'cross-grad-' + x.id
+    const ent = v.entities.add({
+      id,
+      position: Cesium.Cartesian3.fromDegrees(x.lng, x.lat),
+      ellipse: {
+        semiMajorAxis: 90,
+        semiMinorAxis: 90,
+        material: Cesium.Color.fromCssColorString(color).withAlpha(0.55),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString(color).withAlpha(0.9),
+        height: 0,
+      },
+      properties: { kind: 'crossing', data: x } as any,
+    })
+    // 点击路口 → 聚焦该路口（下钻到路口层）
+    ;(ent as any).label = {
+      text: x.name || ('路口#' + x.id),
+      font: '11px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -14),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    }
+  }
+}
+
+async function loadCrossings() {
+  try {
+    const res = await getCrossingMapData()
+    crossings.value = (res.data?.list || []) as CrossingPoly[]
+  } catch {
+    crossings.value = []
+  }
+}
+
 function plotDevices() {
   if (!viewer) return
   viewer.entities.removeAll()
@@ -273,7 +339,7 @@ function plotDevices() {
 }
 
 // 撤销图层调整后立即重绘
-function onLayerChange() { plotDevices() }
+function onLayerChange() { plotDevices(); plotCrossings() }
 
 // ---- 关注/锁定 ----
 async function toggleWatch() {
@@ -416,8 +482,9 @@ async function load() {
   try {
     const res = await getAllDevices(1000)
     devices.value = res.data?.list || []
-    await loadFaults()
+    await Promise.all([loadFaults(), loadCrossings()])
     plotDevices()
+    plotCrossings()
     focusWithRetry(0)
   } catch { /* 忽略 */ }
 }

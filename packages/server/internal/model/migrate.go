@@ -94,6 +94,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&PatrolRecord{},
 		// ---- 模块运行时开关（超级管理员设置）----
 		&ModuleToggle{},
+		// ---- 授权/试用状态 ----
+		&LicenseState{},
 	); err != nil {
 		return err
 	}

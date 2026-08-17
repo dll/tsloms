@@ -176,6 +176,10 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/modules", handler.ListEnabledModules)
 			auth.GET("/modules/settings", middleware.RequirePerm("module:manage"), handler.ListModuleSettings)
 			auth.PUT("/modules/settings", middleware.RequirePerm("module:manage"), handler.UpdateModuleSettings)
+			// 授权/试用管理（仅超级管理员 module:manage）
+			auth.GET("/license/status", middleware.RequirePerm("module:manage"), handler.GetLicenseStatus)
+			auth.POST("/license/trial/start", middleware.RequirePerm("module:manage"), handler.StartTrial)
+			auth.POST("/license/unlock", middleware.RequirePerm("module:manage"), handler.UnlockLicense)
 
 			// 用户信息
 			auth.GET("/user/info", handler.GetUserInfo)
