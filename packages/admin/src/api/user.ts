@@ -31,6 +31,11 @@ export function getUsers(params: UserQuery): Promise<ApiResponse> {
   return request.get('/users', { params }) as unknown as Promise<ApiResponse>
 }
 
+// 可分配运维/管理员用户（工单指派用，无 user:manage 权限门槛；仪表盘算维护人员数引用）
+export function getAssignableUsers(): Promise<ApiResponse> {
+  return request.get('/users/assignable') as unknown as Promise<ApiResponse>
+}
+
 // 创建用户
 export function createUser(data: {
   username: string; password: string; role: string; real_name?: string; phone?: string; email?: string; department_id?: number | null

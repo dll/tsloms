@@ -162,7 +162,7 @@ import { ElMessage } from 'element-plus'
 import { FullScreen, VideoPlay, Refresh } from '@element-plus/icons-vue'
 import { getPatrolRecords, getPatrolRanking } from '@/api/patrol'
 import { getDepartments } from '@/api/department'
-import { getUsers } from '@/api/user'
+import { getAssignableUsers } from '@/api/user'
 import * as echarts from 'echarts'
 import { useRouter } from 'vue-router'
 import {
@@ -208,7 +208,7 @@ async function fetchPatrolTeam() {
     const recP = getPatrolRecords({ page: 1, page_size: 500 })
     const rankP = getPatrolRanking('person')
     const deptP = getDepartments()
-    const userP = getUsers({ page: 1, page_size: 1 })
+    const userP = getAssignableUsers()
     const [rec, rank, dept, users] = await Promise.allSettled([recP, rankP, deptP, userP])
     if (rec.status === 'fulfilled') {
       const rows = rec.value?.data?.list || []
@@ -220,7 +220,7 @@ async function fetchPatrolTeam() {
     if (dept.status === 'fulfilled') {
       teamStats.departments = dept.value?.data?.list?.length ?? dept.value?.data?.total ?? 0
     }
-    if (users.status === 'fulfilled') teamStats.maintainers = users.value?.data?.total ?? 0
+    if (users.status === 'fulfilled') teamStats.maintainers = users.value?.data?.total ?? (users.value?.data?.list || []).length ?? 0
   } catch { /* 忽略 */ }
 }
 
