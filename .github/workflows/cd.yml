@@ -48,8 +48,12 @@ jobs:
             cp packages/server/server $APP/deploy/backups/server-$TS 2>/dev/null || true
             echo "backup done: $TS"
 
-            echo "=== 2. 拉取最新代码 ==="
-            GIT_TERMINAL_PROMPT=0 git pull origin main
+            echo "=== 2. 检出触发的确定 commit SHA（不 git pull main，避免漂移代码 P0-03） ==="
+            RELEASE_SHA="${{ github.sha }}"
+            test -n "$RELEASE_SHA" || { echo "ERROR: 缺失 RELEASE_SHA"; exit 1; }
+            GIT_TERMINAL_PROMPT=0 git fetch origin main
+            git checkout --detach "$RELEASE_SHA" || { echo "ERROR: 无法检出 $RELEASE_SHA"; exit 1; }
+            echo "部署 commit: $(git rev-parse --short HEAD)"
 
             echo "=== 3. 构建服务端 ==="
             cd packages/server
