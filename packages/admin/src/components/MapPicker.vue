@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import * as Cesium from 'cesium'
 import { getCrossings } from '@/api/warning'      // 复用 crossings 接口

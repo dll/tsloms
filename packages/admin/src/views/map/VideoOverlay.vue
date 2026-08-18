@@ -28,7 +28,7 @@ import { ref, watch, onMounted } from 'vue'
 import { getDeviceMedia, type DeviceMedia } from '@/api/media'
 
 const props = defineProps<{ deviceHwId?: number; title?: string }>()
-const emit = defineEmits<{ (e: 'close'): void }>()
+defineEmits<{ (e: 'close'): void }>()
 
 const list = ref<DeviceMedia[]>([])
 const playing = ref<DeviceMedia | null>(null)
