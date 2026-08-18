@@ -48,20 +48,52 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server cmd/server/main.go
 
       # ---------- 上传与部署 ----------
-      - name: 上传产物并部署
+      - name: 上传产物并部署（SSH + tar 管道）
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            set -e
+            APP=${{ env.DEPLOY_APP_DIR }}
+            STAGE=$APP/deploy/stage
+            ADMIN=$APP/packages/admin
+            SERVER=$APP/packages/server
+
+            mkdir -p $STAGE/packages/admin/dist $STAGE/packages/server
+            rm -rf $STAGE/*
+
+            echo "backup start"
+            TS=$(date +%Y%m%d%H%M%S)
+            mkdir -p $APP/deploy/backups
+            cp -r $ADMIN/dist $APP/deploy/backups/dist-$TS 2>/dev/null || true
+            cp $SERVER/server $APP/deploy/backups/server-$TS 2>/dev/null || true
+            echo "backup done: $TS"
+
+      - name: 上传前端 dist
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          strip_components: 0
-          source: |
-            packages/admin/dist/
-            packages/server/server
-          target: ${{ env.DEPLOY_APP_DIR }}/deploy/stage/
+          source: "packages/admin/dist/*"
+          target: /opt/tsloms/deploy/stage/packages/admin/dist
 
-      - name: 备份旧版本并替换（SSH）
+      - name: 上传后端二进制
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          source: "packages/server/server"
+          target: /opt/tsloms/deploy/stage/packages/server/
+
+      - name: 替换旧版本并重启（SSH）
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -74,12 +106,6 @@ jobs:
             STAGE=$APP/deploy/stage
             ADMIN=$APP/packages/admin
             SERVER=$APP/packages/server
-
-            # 备份
-            mkdir -p $APP/deploy/backups
-            TS=$(date +%Y%m%d%H%M%S)
-            cp -r $ADMIN/dist $APP/deploy/backups/dist-$TS 2>/dev/null || true
-            cp $SERVER/server $APP/deploy/backups/server-$TS 2>/dev/null || true
 
             # 替换前端（先清空再拷入，避免残留旧 chunk）
             rm -rf $ADMIN/dist
