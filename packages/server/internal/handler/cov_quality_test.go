@@ -34,9 +34,13 @@ func TestPublicDepartments(t *testing.T) {
 	r.GET("/public/departments", PublicDepartments)
 	code, body := doReq(t, r, "GET", "/public/departments", "")
 	mustOK(t, code, body, "公开部门列表")
-	list, ok := body["list"].([]interface{})
+	data, ok := body["data"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("list 断言失败: %v", body)
+		t.Fatalf("data 断言失败: %v", body)
+	}
+	list, ok := data["list"].([]interface{})
+	if !ok {
+		t.Fatalf("list 断言失败: %v", data)
 	}
 	if len(list) != 2 {
 		t.Fatalf("应返回 2 个部门, got %d", len(list))
