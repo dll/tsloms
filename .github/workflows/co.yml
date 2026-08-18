@@ -9,6 +9,11 @@ on:
 env:
   DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
 
+# P1-03：CO 需要创建/关闭告警 issue，显式声明最小权限
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   health-check:
     name: 健康巡检（API + 前端 + MQTT 端口）
@@ -32,22 +37,68 @@ jobs:
         run: |
           (echo > /dev/tcp/${{ env.DEPLOY_HOST }}/1883) 2>/dev/null || { echo "MQTT 1883 端口不可达"; exit 1; }
 
-      - name: 巡检失败 - 创建告警 issue
+      - name: 巡检失败 - 创建/去重告警 issue
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-            });
-            const exists = issues.some(i => i.title.includes('生产环境巡检失败'));
+            const TITLE = '[告警] 生产环境巡检失败';
+            const LABEL = 'prod-incident';
+            // P1-05：按标签 + 分页去重，避免默认第一页漏查
+            let exists = null;
+            for (let p = 1; ; p++) {
+              const { data } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: LABEL,
+                per_page: 100,
+                page: p,
+              });
+              if (!data.length) break;
+              const hit = data.find(i => i.title === TITLE);
+              if (hit) { exists = hit; break; }
+            }
             if (!exists) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: `[告警] 生产环境巡检失败 ${new Date().toISOString()}`,
+                title: TITLE,
+                labels: [LABEL],
                 body: `生产环境巡检失败：\n- 时间：${new Date().toISOString()}\n- 主机：${{ env.DEPLOY_HOST }}\n\n请检查服务状态：\n\`ssh root@${{ env.DEPLOY_HOST }}\` 后执行 \`systemctl status tsloms-server\` 和 \`journalctl -u tsloms-server -n 50\`。`,
               });
+            }
+
+      - name: 巡检恢复 - 关闭旧告警 issue
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const TITLE = '[告警] 生产环境巡检失败';
+            const LABEL = 'prod-incident';
+            for (let p = 1; ; p++) {
+              const { data } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: LABEL,
+                per_page: 100,
+                page: p,
+              });
+              if (!data.length) break;
+              for (const it of data) {
+                if (it.title !== TITLE) continue;
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: it.number,
+                  body: `巡检已恢复：${new Date().toISOString()}`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: it.number,
+                  state: 'closed',
+                });
+              }
             }

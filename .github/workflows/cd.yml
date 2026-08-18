@@ -14,19 +14,27 @@ env:
   DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
   DEPLOY_APP_DIR: /opt/tsloms
 
+concurrency:
+  # 同一时间只允许一个生产部署，避免并发写同一目录（P1-01）
+  group: tsloms-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: 构建并部署到生产
     runs-on: ubuntu-latest
     steps:
       - name: 拉取最新代码并在服务器构建部署（SSH）
-        uses: appleboy/ssh-action@v1.0.3
+        # P1-02：固定第三方 action 完整 commit SHA，避免可变 tag 漂移；移除不安全的宽加密选项
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          use_insecure_cipher: true
           command_timeout: 20m
           script: |
             set -e
