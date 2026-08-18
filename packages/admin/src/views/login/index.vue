@@ -49,6 +49,9 @@
           </div>
         </el-form-item>
         <el-form-item>
+          <el-checkbox v-model="remember">记住密码</el-checkbox>
+        </el-form-item>
+        <el-form-item>
           <el-button
             type="primary"
             size="large"
@@ -84,13 +87,51 @@ const authStore = useAuthStore()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 const captchaQuestion = ref('')
+const remember = ref(false)
 let captchaUUID = ''
+
+const REMEMBER_KEY = 'tsloms_remember_login'
 
 const loginForm = reactive({
   username: '',
   password: '',
   captcha_code: '',
 })
+
+// 读取本地保存的账号密码（base64 简单编码），勾选后自动填充
+function loadRemembered() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY)
+    if (!raw) return
+    const data = JSON.parse(raw)
+    if (data && data.username) {
+      loginForm.username = data.username
+      loginForm.password = atob(data.password || '')
+      remember.value = true
+    }
+  } catch {
+    localStorage.removeItem(REMEMBER_KEY)
+  }
+}
+
+// 登录成功后按勾选状态保存/清除账号密码
+function saveRemembered() {
+  try {
+    if (remember.value) {
+      localStorage.setItem(
+        REMEMBER_KEY,
+        JSON.stringify({
+          username: loginForm.username,
+          password: btoa(loginForm.password),
+        }),
+      )
+    } else {
+      localStorage.removeItem(REMEMBER_KEY)
+    }
+  } catch {
+    /* 忽略存储异常 */
+  }
+}
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入账号（用户名或手机号）', trigger: 'blur' }],
@@ -125,6 +166,7 @@ async function handleLogin() {
         captcha_uuid: captchaUUID,
         captcha_code: loginForm.captcha_code,
       })
+      saveRemembered()
       ElMessage.success('登录成功')
       const redirect = (route.query.redirect as string) || '/dashboard'
       router.push(redirect)
@@ -137,7 +179,10 @@ async function handleLogin() {
   })
 }
 
-onMounted(loadCaptcha)
+onMounted(() => {
+  loadRemembered()
+  loadCaptcha()
+})
 </script>
 
 <style scoped>
