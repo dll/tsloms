@@ -55,8 +55,8 @@ const router = createRouter({
   ],
 })
 
-// 已注册模块路由的 layout 路由索引（第 2 个顶层路由）
-const layoutRouteIndex = 1
+// 已注册模块路由的 layout 路由（第 2 个顶层路由，按 name 定位，避免路由顺序变更导致错位）
+const layoutRouteIndex = router.options.routes.findIndex((r) => r.name === 'Layout')
 
 // 模块路由是否已注册
 let registered = false
@@ -89,6 +89,7 @@ export function registerModuleRoutes(enabledKeys: EnabledModules) {
   }
 
   const layout = router.options.routes[layoutRouteIndex]
+  if (!layout) return
   ;(layout as { children: RouteRecordRaw[] }).children = children
   // 幂等替换：先移除旧的、再以同一 name 重新挂载，避免重复匹配
   if (router.hasRoute('Layout')) router.removeRoute('Layout')
