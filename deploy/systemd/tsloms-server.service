@@ -6,8 +6,10 @@ After=network.target mysql.service redis.service
 Type=simple
 User=tsloms
 Group=tsloms
-WorkingDirectory=/opt/tsloms/packages/server
-ExecStart=/opt/tsloms/packages/server/server
+# 制品化部署：working dir 与可执行文件均指向原子切换的 current 符号链接，
+# 服务器不在本地编译，releases/<sha> 由 CD 上传，current -> releases/<sha>。
+WorkingDirectory=/opt/tsloms/current
+ExecStart=/opt/tsloms/current/server
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
@@ -15,7 +17,9 @@ TimeoutStopSec=15
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/tsloms/packages/server
+# 需要写的目录：release 切换后 only shared/media（用户媒体）与日志/临时目录。
+# current 与 releases 由部署脚本以原子切换管理，运行期服务只写媒体目录。
+ReadWritePaths=/opt/tsloms/shared/media /opt/tsloms/current
 
 # 密钥与敏感配置统一放入 /etc/tsloms/tsloms.env（权限 0600，见部署说明），
 # 禁止在 unit 内使用 ${VAR}（systemd 不展开，会被当作字面值注入导致密钥泄露/连接失败）
@@ -29,6 +33,8 @@ Environment=REDIS_DB=1
 Environment=MQTT_CLIENT_ID=tsloms-server
 Environment=MQTT_TOPIC_PREFIX=trafficLight
 Environment=LOG_LEVEL=info
+# 媒体目录：固定独立于 release，避免滚动发布时旧媒体路径失效（P0-04 数据不随版本删除）
+Environment=MEDIA_DIR=/opt/tsloms/shared/media
 
 # 以下敏感项由 EnvironmentFile 提供：SERVER_PORT、DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、
 # REDIS_ADDR、REDIS_PASS、JWT_SECRET、MQTT_BROKER、MQTT_USERNAME、MQTT_PASSWORD
@@ -37,12 +43,12 @@ Environment=LOG_LEVEL=info
 #   DB_HOST=127.0.0.1
 #   DB_PORT=3306
 #   DB_USER=tsloms
-#   DB_PASSWORD=<强密码>
-#   JWT_SECRET=<至少32位强随机>
+#   DB_PASSWORD=<强密码，勿写明文到仓库>
+#   JWT_SECRET=<至少32位强随机，勿写明文到仓库>
 #   REDIS_ADDR=127.0.0.1:6379
 #   MQTT_BROKER=tcp://127.0.0.1:1883
 #   MQTT_USERNAME=tsloms
-#   MQTT_PASSWORD=<强密码>
+#   MQTT_PASSWORD=<强密码，勿写明文到仓库>
 
 [Install]
 WantedBy=multi-user.target

@@ -2,12 +2,25 @@ name: CI - Go 质量门（含覆盖率门禁 ≥80%）
 
 on:
   push:
+    branches: [main]
     paths:
       - 'packages/server/**'
+      - 'packages/admin/**'
+      - 'deploy/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/cd.yml'
+      - '.tool-versions'
   pull_request:
     paths:
       - 'packages/server/**'
+      - 'packages/admin/**'
+      - 'deploy/**'
+      - '.github/workflows/ci.yml'
+      - '.tool-versions'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   quality-gate:
@@ -23,11 +36,18 @@ jobs:
         with:
           go-version-file: packages/server/go.mod
           cache: true
+          cache-dependency-path: packages/server/go.sum
 
       - name: 安装 Go 依赖（GOPROXY 国内镜像）
         run: |
           go env -w GOPROXY="https://goproxy.cn,direct"
           go mod download
+
+      - name: 校验 Go 版本（须为 1.26.x）
+        run: |
+          go version
+          test "$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)" = "go1.26.6" \
+            || echo "WARN: 版本可能与 .tool-versions 不一致（go.mod toolchain 会接管）"
 
       - name: gofmt 检查（应为 0 文件）
         run: |
@@ -48,5 +68,81 @@ jobs:
       - name: go test 全量
         run: go test ./... -count=1
 
-      - name: 覆盖率门禁（合并全包，低于 80% 失败）
-        run: make coverage-check COV_THRESHOLD=80
+      - name: 覆盖率门禁（合并全包浮点比较，低于 80% 失败）
+        run: |
+          go test ./... -count=1 -covermode=set -coverpkg=./... -coverprofile=coverage.out
+          go run ./cmd/coveragecheck -threshold 80 -profile coverage.out
+
+      - name: 上传覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage-report
+          path: packages/server/coverage.out
+          if-no-files-found: ignore
+
+  package:
+    name: 构建不可变制品（server + admin dist + manifest）
+    needs: quality-gate
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release-sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: sha
+        shell: bash
+        run: echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/server/go.mod
+          cache: true
+          cache-dependency-path: packages/server/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: packages/admin/package-lock.json
+
+      - name: 构建后端（Linux/amd64，不可变制品）
+        working-directory: packages/server
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go env -w GOPROXY="https://goproxy.cn,direct"
+          go mod download
+          mkdir -p ../../release
+          go build -trimpath -ldflags "-s -w" -o ../../release/server ./cmd/server
+
+      - name: 构建前端 dist
+        working-directory: packages/admin
+        run: |
+          npm config set registry https://registry.npmmirror.com
+          npm ci
+          npm run build
+          mkdir -p ../../release/admin
+          cp -r dist ../../release/admin/dist
+
+      - name: 编排制品清单与校验
+        run: |
+          mkdir -p release
+          # 发布脚本由 CD 单独上传到服务器固定 /opt/tsloms/bin/，不打包进制品
+          # （避免与服务器端脚本版本漂移）。制品只含不可变二进制与前端。
+          echo "${GITHUB_SHA}" > release/version.txt
+          ( cd release && sha256sum server admin/dist/index.html > manifest.sha256 )
+          echo "== 制品清单 =="
+          ls -la release
+          ( cd release && cat manifest.sha256 )
+
+      - name: 上传制品（tsloms-release）
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsloms-release
+          path: release/
+          if-no-files-found: error
+          retention-days: 7

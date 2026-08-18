@@ -1,21 +1,31 @@
-name: CD - 生产自动部署
+name: CD - 生产制品化部署
 
+# workflow_run：仅当 CI（.github/workflows/ci.yml）成功完成后触发，
+# 保证所部署的 commit SHA 已通过全部质量门（P0-03：CD 严格依赖 CI）。
+#
+# 关键约束：
+#   - workflow_run 工作流无法直接读取 repository secrets（除 GITHUB_TOKEN），
+#     生产 SSH 密钥、主机等必须放在 GitHub Environment "production" 的 secrets 中，
+#     本工作流通过 environment: production 引用（environment 级 secrets 在 workflow_run 可用）。
+#   - 制品由 ci.yml 的 package job 构建并上传（不可变、带 SHA），CD 只负责传输+切换，
+#     服务器不执行任何编译/构建（P0-02 / P1-09）。
 on:
-  push:
+  workflow_run:
+    workflows: ['CI - Go 质量门（含覆盖率门禁 ≥80%）']
+    types: [completed]
     branches: [main]
-    paths:
-      - 'packages/**'
-      - 'deploy/**'
-      - '.github/workflows/cd.yml'
   workflow_dispatch:
+    inputs:
+      sha:
+        description: '手动指定部署的 commit SHA（默认当前 main HEAD）'
+        required: false
+        default: ''
 
 env:
-  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
   DEPLOY_APP_DIR: /opt/tsloms
 
+# P1-01：同一时间仅允许一个生产部署，且不取消进行中的部署
 concurrency:
-  # 同一时间只允许一个生产部署，避免并发写同一目录（P1-01）
   group: tsloms-production
   cancel-in-progress: false
 
@@ -24,59 +34,125 @@ permissions:
 
 jobs:
   deploy:
-    name: 构建并部署到生产
+    name: 上传制品并原子切换生产
     runs-on: ubuntu-latest
+    environment: production
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: 拉取最新代码并在服务器构建部署（SSH）
-        # P1-02：固定第三方 action 完整 commit SHA，避免可变 tag 漂移；移除不安全的宽加密选项
+      - uses: actions/checkout@v4
+
+      - name: 解析目标 commit SHA
+        id: sha
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ github.event.inputs.sha }}" ]; then
+              SHA="${{ github.event.inputs.sha }}"
+            else
+              SHA="${{ github.sha }}"
+            fi
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+          fi
+          SHA="${SHA//$'\r'/}"
+          echo "RELEASE_SHA=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "解析部署 SHA: ${SHA}"
+
+      - name: 定位 CI 制品的 run_id
+        id: runid
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+          else
+            RUN_ID=$(gh run list --workflow "CI - Go 质量门（含覆盖率门禁 ≥80%）" --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "ERROR: 无法定位 CI 制品的 run_id（workflow_run 未提供，或未找到成功的 CI 运行）" >&2
+            exit 1
+          fi
+          echo "CI_RUN_ID=${RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo "CI 运行 ID: ${RUN_ID}"
+
+      - name: 下载 CI 构建制品（server / admin dist / manifest / version）
+        uses: actions/download-artifact@v4
+        with:
+          name: tsloms-release
+          path: ./release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.runid.outputs.CI_RUN_ID }}
+        continue-on-error: true
+
+      - name: 校验制品完整性
+        shell: bash
+        run: |
+          set -e
+          SRC=./release
+          echo "制品内容："
+          ls -la "$SRC" || true
+          find "$SRC" -maxdepth 3 -type f | sort
+          for f in server admin/dist/index.html manifest.sha256 version.txt; do
+            if [ ! -f "$SRC/$f" ]; then
+              echo "ERROR: 缺少制品文件 $f" >&2
+              exit 1
+            fi
+          done
+          ( cd "$SRC" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败" >&2; exit 1; }
+          echo "制品校验通过"
+
+      - name: 流式上传制品到服务器暂存目录（sha-staging）
+        # 用 tar + ssh 流式传输，避免逐文件 scp 半成品；服务器只做落位与切换。
+        # 发布脚本固定放置于 /opt/tsloms/bin/release-install.sh（不随 release 滚动）。
+        shell: bash
+        run: |
+          set -e
+          SHA="${{ steps.sha.outputs.RELEASE_SHA }}"
+          KEY_FILE="$RUNNER_TEMP/deploy_key"
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          USER="${{ secrets.DEPLOY_USER }}"
+          ROOT="${{ env.DEPLOY_APP_DIR }}"
+
+          SSHOPTS=(-i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=20)
+
+          # 1) 创建 releases / bin 目录并放置发布脚本（固定路径，幂等）
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
+            "mkdir -p ${ROOT}/releases ${ROOT}/bin && cat > ${ROOT}/bin/release-install.sh" < deploy/scripts/release-install.sh
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" "chmod +x ${ROOT}/bin/release-install.sh"
+          # 首次引导脚本（手动执行，用于平滑迁移现役版本到制品化结构）
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
+            "cat > ${ROOT}/bin/bootstrap-artifacts.sh" < deploy/scripts/bootstrap-artifacts.sh
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" "chmod +x ${ROOT}/bin/bootstrap-artifacts.sh"
+
+          # 2) 清理并重建 staging 目录（保持 .staging 态，校验通过前不落位）
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
+            "rm -rf ${ROOT}/releases/${SHA}.staging && mkdir -p ${ROOT}/releases/${SHA}.staging/admin"
+
+          # 3) 流式上传制品（保持相对路径：admin/ server manifest.sha256 version.txt）
+          tar -C ./release -czf - admin server manifest.sha256 version.txt \
+            | ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
+              "cat > /tmp/tsloms-${SHA}.tgz && tar -xzf /tmp/tsloms-${SHA}.tgz -C ${ROOT}/releases/${SHA}.staging && rm -f /tmp/tsloms-${SHA}.tgz"
+
+          echo "制品已上传到 ${ROOT}/releases/${SHA}.staging"
+
+      - name: 执行原子切换 + 迁移备份 + 探活回滚（服务器端脚本）
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           port: 22
-          command_timeout: 20m
+          timeout: 180s
           script: |
             set -e
-            APP=${{ env.DEPLOY_APP_DIR }}
-            cd $APP
+            # 服务器端发布脚本固定路径，入参为 release SHA
+            RELEASE_SHA=${{ steps.sha.outputs.RELEASE_SHA }} \
+            bash ${{ env.DEPLOY_APP_DIR }}/bin/release-install.sh
 
-            echo "=== 1. 备份当前版本 ==="
-            TS=$(date +%Y%m%d%H%M%S)
-            mkdir -p $APP/deploy/backups
-            cp -r packages/admin/dist $APP/deploy/backups/dist-$TS 2>/dev/null || true
-            cp packages/server/server $APP/deploy/backups/server-$TS 2>/dev/null || true
-            echo "backup done: $TS"
-
-            echo "=== 2. 检出触发的确定 commit SHA（不 git pull main，避免漂移代码 P0-03） ==="
-            RELEASE_SHA="${{ github.sha }}"
-            test -n "$RELEASE_SHA" || { echo "ERROR: 缺失 RELEASE_SHA"; exit 1; }
-            GIT_TERMINAL_PROMPT=0 git fetch origin main
-            git checkout --detach "$RELEASE_SHA" || { echo "ERROR: 无法检出 $RELEASE_SHA"; exit 1; }
-            echo "部署 commit: $(git rev-parse --short HEAD)"
-
-            echo "=== 3. 构建服务端 ==="
-            cd packages/server
-            go env -w GOPROXY="https://goproxy.cn,direct"
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server cmd/server/main.go
-
-            echo "=== 4. 构建管理后台 ==="
-            cd ../admin
-            npm config set registry https://registry.npmmirror.com
-            npm ci
-            npm run build
-
-            echo "=== 5. 修正属主 ==="
-            chown -R tsloms:tsloms $APP/packages/admin/dist 2>/dev/null || true
-            chown tsloms:tsloms $APP/packages/server/server 2>/dev/null || true
-
-            echo "=== 6. 重启服务 ==="
-            systemctl restart tsloms-server
-            sleep 5
-            systemctl is-active tsloms-server
-
-      - name: 健康检查（生产 API）
+      - name: 生产入口健康检查（HTTPS + 后台 index）
         run: |
-          curl -fsS --max-time 20 "http://${{ env.DEPLOY_HOST }}:8092/tsloms/health" || exit 1
-          curl -fsS --max-time 20 -o /dev/null "http://${{ env.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
+          curl -fsS --max-time 20 "http://${{ secrets.DEPLOY_HOST }}:8092/tsloms/health" || exit 1
+          curl -fsS --max-time 20 -o /dev/null "http://${{ secrets.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
           echo "部署完成，前端与 API 均正常"
