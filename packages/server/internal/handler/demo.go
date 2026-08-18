@@ -14,14 +14,20 @@ import (
 // ---------------------------------------------------------------------------
 // 系统演示：生成随机演示数据 / 一键清理回滚（不影响生产数据）
 // ---------------------------------------------------------------------------
-// 演示设备使用独立硬件ID段 900000-909999，且路口名/名称打 [演示] 标记；
-// 清理仅按本段+标记删除，绝不动生产设备/路口/故障/工单。
+// 演示设备使用独立硬件ID段（uuid 前缀 DEMO，编号 900001-909999），且路口名/名称打 [演示] 标记；
+// 清理仅按本段前缀+标记删除，绝不动生产设备/路口/故障/工单。
 
 const (
-	demoHwStart = 900001 // 演示设备硬件ID段起始
-	demoHwEnd   = 909999 // 演示设备硬件ID段结束
-	demoMark    = "[演示]"
+	demoHWPrefix = "DEMO" // 演示设备硬件ID uuid 前缀
+	demoHwStart  = 900001 // 演示设备硬件ID段起始
+	demoHwEnd    = 909999 // 演示设备硬件ID段结束
+	demoMark     = "[演示]"
 )
+
+// demoHWID 生成演示设备 uuid 硬件ID：DEMO900001 形式
+func demoHWID(i int) string {
+	return fmt.Sprintf("%s%d", demoHWPrefix, demoHwStart+i)
+}
 
 // demoDevices 随机演示交叉口名（打标记便于识别/清理）
 var demoIntersections = []string{"长江中路", "黄河大道", "人民路", "解放路", "中山北路", "文化路", "建设东路", "和平南路", "环城西路", "站前广场"}
@@ -63,7 +69,7 @@ func DemoStart(c *gin.Context) {
 	// 2) 演示设备
 	createdDevices := 0
 	for i := 0; i < body.N*2; i++ {
-		hw := uint32(demoHwStart + i)
+		hw := demoHWID(i)
 		dev := model.Device{
 			HwID:         hw,
 			Intersection: demoMark + demoIntersections[rand.Intn(len(demoIntersections))],
@@ -85,7 +91,7 @@ func DemoStart(c *gin.Context) {
 	createdFaults := 0
 	createdOrders := 0
 	for i := 0; i < body.N*2; i++ {
-		hw := uint32(demoHwStart + i)
+		hw := demoHWID(i)
 		errCode := demoErrs[rand.Intn(len(demoErrs))]
 		fault := model.FaultRecord{
 			DeviceHwID:        hw,
@@ -133,14 +139,14 @@ func DemoStart(c *gin.Context) {
 // DemoEnd 一键清理演示数据并回滚（仅删演示段/标记数据，不动生产）。
 // POST /demo/end
 func DemoEnd(c *gin.Context) {
-	// 1) 删除演示段设备的工单
-	orderDeleted := model.DB.Where("device_hw_id BETWEEN ? AND ?", demoHwStart, demoHwEnd).
+	// 1) 删除演示段设备的工单（uuid 前缀 DEMO 匹配）
+	orderDeleted := model.DB.Where("device_hw_id LIKE ?", demoHWPrefix+"%").
 		Delete(&model.WorkOrder{}).RowsAffected
 	// 2) 删除演示段设备的故障
-	faultDeleted := model.DB.Where("device_hw_id BETWEEN ? AND ?", demoHwStart, demoHwEnd).
+	faultDeleted := model.DB.Where("device_hw_id LIKE ?", demoHWPrefix+"%").
 		Delete(&model.FaultRecord{}).RowsAffected
 	// 3) 删除演示段设备
-	deviceDeleted := model.DB.Where("hw_id BETWEEN ? AND ?", demoHwStart, demoHwEnd).
+	deviceDeleted := model.DB.Where("hw_id LIKE ?", demoHWPrefix+"%").
 		Delete(&model.Device{}).RowsAffected
 	// 4) 删除演示路口（名称带 [演示]）
 	intersectionDeleted := model.DB.Where("name LIKE ?", "%"+demoMark+"%").
@@ -158,7 +164,7 @@ func DemoEnd(c *gin.Context) {
 // demoDeviceCount 统计演示段设备数
 func demoDeviceCount() int64 {
 	var n int64
-	model.DB.Model(&model.Device{}).Where("hw_id BETWEEN ? AND ?", demoHwStart, demoHwEnd).Count(&n)
+	model.DB.Model(&model.Device{}).Where("hw_id LIKE ?", demoHWPrefix+"%").Count(&n)
 	return n
 }
 

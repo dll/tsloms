@@ -17,6 +17,11 @@ export function getDepartments(): Promise<ApiResponse> {
   return request.get('/departments') as unknown as Promise<ApiResponse>
 }
 
+// 公开部门列表（仅 id/name，无需登录）——供自助注册页选择归属部门
+export function getPublicDepartments(): Promise<ApiResponse> {
+  return request.get('/public/departments') as unknown as Promise<ApiResponse>
+}
+
 // 新增部门（管理员）
 export function createDepartment(data: { name: string; parent_id?: number | null; leader?: string; description?: string }): Promise<ApiResponse> {
   return request.post('/departments', data) as unknown as Promise<ApiResponse>

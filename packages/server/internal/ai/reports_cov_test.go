@@ -10,11 +10,11 @@ import (
 func reportSeed(t *testing.T) {
 	t.Helper()
 	model.InitTestDB()
-	model.DB.Create(&model.Device{HwID: 1001, Intersection: "人民路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 1002, Intersection: "建设路口", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "1001", Intersection: "人民路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1002", Intersection: "建设路口", OnlineStatus: false})
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1001, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1002, FaultType: "abnormal_on", FaultLevel: "major", Status: model.FaultStatusResolved, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1001", FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1002", FaultType: "abnormal_on", FaultLevel: "major", Status: model.FaultStatusResolved, FirstSeen: now, LastSeen: now})
 	wo := model.WorkOrder{OrderNo: "WO1", Status: model.WorkOrderStatusPending, CreatedAt: now}
 	model.DB.Create(&wo)
 	model.DB.Create(&model.WorkOrder{OrderNo: "WO2", Status: model.WorkOrderStatusProcessing, CreatedAt: now})
@@ -23,8 +23,8 @@ func reportSeed(t *testing.T) {
 	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE1", Amount: 1200, CreatedAt: now})
 	model.DB.Create(&model.MaterialStock{MaterialID: 1, MaterialName: "灯珠", Type: model.StockTypeIn, Quantity: 10, CreatedAt: now})
 	model.DB.Create(&model.MaterialStock{MaterialID: 1, MaterialName: "灯珠", Type: model.StockTypeUse, Quantity: -3, CreatedAt: now})
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 1001, RiskLevel: "high", HealthScore: 55, Intersection: "人民路口", PredictType: "x", BatchID: "B2026081501"})
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 1002, RiskLevel: "low", HealthScore: 90, Intersection: "建设路口", PredictType: "x", BatchID: "B2026081501"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "1001", RiskLevel: "high", HealthScore: 55, Intersection: "人民路口", PredictType: "x", BatchID: "B2026081501"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "1002", RiskLevel: "low", HealthScore: 90, Intersection: "建设路口", PredictType: "x", BatchID: "B2026081501"})
 }
 
 func TestBuildDailySnapshot_Cov(t *testing.T) {
@@ -58,7 +58,7 @@ func TestBuildDailySnapshot_Cov(t *testing.T) {
 
 func TestBuildDailySnapshot_NoPredictions(t *testing.T) {
 	model.InitTestDB()
-	model.DB.Create(&model.Device{HwID: 1, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1", OnlineStatus: true})
 	s, _ := BuildDailySnapshot()
 	if s.HealthSummary != "尚无预测批次" {
 		t.Errorf("无预测批次时摘要=%q", s.HealthSummary)
@@ -120,9 +120,9 @@ func TestReportHelpers(t *testing.T) {
 		t.Error("joinFaults 输出为空")
 	}
 	ds := joinDevices([]struct {
-		DeviceHwID uint32
+		DeviceHwID string
 		Count      int64
-	}{{1, 1}, {2, 2}, {3, 3}, {4, 4}})
+	}{{"1", 1}, {"2", 2}, {"3", 3}, {"4", 4}})
 	if ds == "" {
 		t.Error("joinDevices 输出为空")
 	}

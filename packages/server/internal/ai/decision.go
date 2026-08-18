@@ -413,7 +413,7 @@ func BuildDecisions() ([]DecisionSuggestion, error) {
 		Where("created_at >= ?", since30).
 		Group("type").Scan(&costByType)
 	var costTopDevice []struct {
-		DeviceHwID uint32
+		DeviceHwID string
 		Total      float64
 	}
 	model.DB.Model(&model.RepairExpense{}).
@@ -439,11 +439,11 @@ func BuildDecisions() ([]DecisionSuggestion, error) {
 	if len(costTopDevice) > 0 && costTopDevice[0].Total > 3000 {
 		d := costTopDevice[0]
 		decisions = append(decisions, DecisionSuggestion{
-			Category: "成本优化", Title: fmt.Sprintf("设备 HW#%d 维修成本最高", d.DeviceHwID),
-			Detail: fmt.Sprintf("设备 #%d 近30天维修成本 %.2f 元居首，建议排查该设备是否存在反复故障或已到生命周期末期，考虑更换或重点维护。",
+			Category: "成本优化", Title: fmt.Sprintf("设备 HW#%s 维修成本最高", d.DeviceHwID),
+			Detail: fmt.Sprintf("设备 #%s 近30天维修成本 %.2f 元居首，建议排查该设备是否存在反复故障或已到生命周期末期，考虑更换或重点维护。",
 				d.DeviceHwID, d.Total),
 			Priority: "medium", Action: "none",
-			Data: []NameValue{{Name: fmt.Sprintf("设备#%d", d.DeviceHwID), Value: d.Total}},
+			Data: []NameValue{{Name: fmt.Sprintf("设备#%s", d.DeviceHwID), Value: d.Total}},
 		})
 	}
 

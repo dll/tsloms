@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tsloms/server/internal/model"
+	"github.com/tsloms/server/internal/recognition"
 )
 
 // TestProcessFault_PersistsEvidenceAndCase 故障研判后多源证据落库 + 案例沉淀
@@ -15,13 +16,13 @@ func TestProcessFault_PersistsEvidenceAndCase(t *testing.T) {
 
 	// 多源证据落库
 	var evCount int64
-	model.DB.Model(&model.FaultEvidence{}).Where("device_hw_id = ?", uint32(6001)).Count(&evCount)
+	model.DB.Model(&model.FaultEvidence{}).Where("device_hw_id = ?", recognition.LedUUID(6001)).Count(&evCount)
 	if evCount == 0 {
 		t.Error("研判后应写入多源证据(fault_evidence)")
 	}
 	// 主信号证据 source=firmware
 	var ev model.FaultEvidence
-	model.DB.Where("device_hw_id = ? AND source_type = ?", uint32(6001), model.EvSourceFirmware).First(&ev)
+	model.DB.Where("device_hw_id = ? AND source_type = ?", recognition.LedUUID(6001), model.EvSourceFirmware).First(&ev)
 	if ev.SourceType != model.EvSourceFirmware {
 		t.Errorf("主信号证据 source=%s, 期望 firmware", ev.SourceType)
 	}
@@ -49,7 +50,7 @@ func TestProcessFault_CriticalConfirmedAutoWorkorder(t *testing.T) {
 		t.Errorf("critical confirmed 应自动建 1 个工单, 实际 %d", woCount)
 	}
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 	if f.RecognitionStatus != model.RecognitionConfirmed {
 		t.Errorf("fault recognition_status=%s, 期望 confirmed", f.RecognitionStatus)
 	}
@@ -66,7 +67,7 @@ func TestProcessFault_DedupStillWorks_R3(t *testing.T) {
 	h.processFault(rec)
 
 	var count int64
-	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", rec.LedHwID).Count(&count)
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).Count(&count)
 	if count != 1 {
 		t.Errorf("去重窗口内应只 1 条故障, 实际 %d", count)
 	}
@@ -82,7 +83,7 @@ func TestProcessFault_PendingReviewNoAutoWorkOrder(t *testing.T) {
 	h.processFault(rec)
 
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 	if f.RecognitionStatus != model.RecognitionPendingReview {
 		t.Fatalf("未知 errCode 应 pending_review, got %s", f.RecognitionStatus)
 	}
@@ -103,7 +104,7 @@ func TestReviewUpgrade_PendingToConfirmedDispatch(t *testing.T) {
 	// 复核确认为真故障（通过 handler 层逻辑直接验证 fault_reviewWorkorder 行为由 handler 测试覆盖；
 	// 此处验证状态升级路径的数据可回写）
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 	high := 0.99
 	now := timeNow()
 	model.DB.Model(&f).Updates(map[string]interface{}{
@@ -128,7 +129,7 @@ func TestM2_PendingReviewAutoUpgradeDispatch(t *testing.T) {
 	now := time.Now()
 	conf := 0.6
 	f := model.FaultRecord{
-		DeviceHwID: 7002, ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
+		DeviceHwID: recognition.LedUUID(7002), ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now,
 		Confidence: &conf, RecognitionStatus: model.RecognitionPendingReview,
 	}
@@ -171,7 +172,7 @@ func TestM2_NoFalseDowngradeOfConfirmedGuard(t *testing.T) {
 	now := time.Now()
 	conf := 0.98
 	f := model.FaultRecord{
-		DeviceHwID: 7003, ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
+		DeviceHwID: recognition.LedUUID(7003), ErrCode: LEDErrROFF, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusConfirmed, FirstSeen: now, LastSeen: now,
 		Confidence: &conf, RecognitionStatus: model.RecognitionConfirmed,
 	}

@@ -44,8 +44,8 @@ func TestDevice_OfflineThreshold(t *testing.T) {
 	db := InitTestDB()
 	oldTime := time.Now().Add(-10 * time.Minute)
 	recent := time.Now()
-	db.Create(&Device{HwID: 1, OnlineStatus: true, LastCheckinAt: &oldTime})
-	db.Create(&Device{HwID: 2, OnlineStatus: true, LastCheckinAt: &recent})
+	db.Create(&Device{HwID: "1", OnlineStatus: true, LastCheckinAt: &oldTime})
+	db.Create(&Device{HwID: "2", OnlineStatus: true, LastCheckinAt: &recent})
 
 	// 模拟离线检测：6分钟阈值
 	threshold := time.Now().Add(-6 * time.Minute)

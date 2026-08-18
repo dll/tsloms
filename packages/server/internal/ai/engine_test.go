@@ -8,7 +8,7 @@ import (
 // 构造基础无风险设备
 func baseFacts() DeviceFacts {
 	return DeviceFacts{
-		HwID:         1,
+		HwID:         "1",
 		Intersection: "人民路与建设路交叉口",
 		AgeDays:      100,
 		Online:       true,

@@ -16,7 +16,7 @@ type LifecycleEvent struct {
 
 // LifecycleResult 设备全流程溯源结果
 type LifecycleResult struct {
-	DeviceHwID   uint32           `json:"device_hw_id"`
+	DeviceHwID   string           `json:"device_hw_id"`
 	Intersection string           `json:"intersection"`
 	Timeline     []LifecycleEvent `json:"timeline"`
 	Summary      string           `json:"summary"` // LLM生成的生命周期画像
@@ -64,7 +64,7 @@ func BuildLifecycle(userID uint, dev *model.Device) LifecycleResult {
 
 	// LLM 溯源画像
 	ctx := fmt.Sprintf(
-		"【交通信号灯全流程生命周期溯源】设备ID:%d 路口:%s 在线:%v\n"+
+		"【交通信号灯全流程生命周期溯源】设备ID:%s 路口:%s 在线:%v\n"+
 			"安装至今累计故障 %d 次，工单 %d 张，当前故障状态活跃。\n"+
 			"请用中文输出一段 ≤180字的生命周期画像与溯源分析，包括：总体健康状况、高频故障项、维修闭环情况、老化风险、后续保养建议。\n",
 		dev.HwID, dev.Intersection, dev.OnlineStatus, faultCount, len(orders),

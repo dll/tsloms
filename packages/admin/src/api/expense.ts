@@ -6,7 +6,7 @@ export interface RepairExpense {
   id: number
   expense_no: string
   work_order_id?: number
-  device_hw_id: number
+  device_hw_id: string
   type: string
   amount: number
   description: string

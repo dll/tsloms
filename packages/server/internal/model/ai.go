@@ -36,7 +36,7 @@ type AIUsage struct {
 // AIPrediction AI 故障预测结果：每个设备一次预测
 type AIPrediction struct {
 	ID           uint      `json:"id" gorm:"primaryKey"`
-	DeviceHwID   uint32    `json:"device_hw_id" gorm:"index:idx_pred_dev,unique,priority:1;comment:设备硬件ID"`
+	DeviceHwID   string    `json:"device_hw_id" gorm:"size:64;index:idx_pred_dev,unique,priority:1;comment:设备硬件ID(uuid字符串)"`
 	Intersection string    `json:"intersection" gorm:"size:128;comment:路口位置"`
 	BatchID      string    `json:"batch_id" gorm:"size:40;index;comment:批次ID(YYYYMMDDHHMM)"`
 	HealthScore  int       `json:"health_score" gorm:"comment:健康分0-100"`

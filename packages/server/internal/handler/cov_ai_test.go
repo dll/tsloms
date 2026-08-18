@@ -75,7 +75,7 @@ func TestAiUsage(t *testing.T) {
 
 func TestAiPrediction(t *testing.T) {
 	r := aiHandlerEngine(t)
-	model.DB.Create(&model.Device{HwID: 55, Intersection: "预测路口", OnlineStatus: true, Lat: &lat, Lng: &lng})
+	model.DB.Create(&model.Device{HwID: "55", Intersection: "预测路口", OnlineStatus: true, Lat: &lat, Lng: &lng})
 	// 全量预测
 	code, body := doReq(t, r, "POST", "/api/v1/ai/predict/run", "")
 	mustOK(t, code, body, "全量预测")
@@ -96,7 +96,7 @@ func TestAiPrediction(t *testing.T) {
 
 func TestAiPrediction_Enhance(t *testing.T) {
 	r := aiHandlerEngine(t)
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 55, RiskLevel: "high", HealthScore: 60, PredictType: "x", RemainDays: 5, Factors: "f"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "55", RiskLevel: "high", HealthScore: 60, PredictType: "x", RemainDays: 5, Factors: "f"})
 	var p model.AIPrediction
 	model.DB.First(&p)
 	// LLM 无 key → badRequest(400) 或成功
@@ -118,7 +118,7 @@ func TestAiPrediction_Enhance(t *testing.T) {
 
 func TestAiDiagnoseAndLifecycle(t *testing.T) {
 	r := aiHandlerEngine(t)
-	model.DB.Create(&model.Device{HwID: 66, Intersection: "诊断路口"})
+	model.DB.Create(&model.Device{HwID: "66", Intersection: "诊断路口"})
 	// 反馈诊断
 	model.DB.Create(&model.Feedback{DeviceHwID: &hw66, Title: "闪烁", Content: "诊断", Status: "open"})
 	var fb model.Feedback
@@ -140,9 +140,9 @@ func TestAiDiagnoseAndLifecycle(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Errorf("生命周期不存在设备 code=%d", code)
 	}
-	// 非法 hwid
+	// 非数字 hwid（现在 hwid 为 uuid 字符串，直接按字符串查；不存在设备 → 404）
 	code, _ = doReq(t, r, "GET", "/api/v1/ai/lifecycle/abc", "")
-	if code != http.StatusBadRequest {
+	if code != http.StatusNotFound {
 		t.Errorf("生命周期非法hwid code=%d", code)
 	}
 }
@@ -193,4 +193,4 @@ func TestAiHelpers(t *testing.T) {
 
 var lat = float64(31.2)
 var lng = float64(121.5)
-var hw66 = uint32(66)
+var hw66 = "66"

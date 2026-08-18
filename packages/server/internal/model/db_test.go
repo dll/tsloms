@@ -78,14 +78,14 @@ func TestMigrateLegacyDeviceMaterials(t *testing.T) {
 	if !(dby.Name == "中文测试黄灯珠" && dby.Code == "中文测试黄灯珠" && dby.Stock == 5) {
 		t.Errorf("黄灯珠 migrate wrong: %+v", dby)
 	}
-	if dby.DeviceHwID == nil || *dby.DeviceHwID != 1 {
+	if dby.DeviceHwID == nil || *dby.DeviceHwID != "00000001" {
 		t.Errorf("黄灯珠 device_hw_id not bound: %+v", dby.DeviceHwID)
 	}
 	ps = mats[2]
 	if !(ps.Name == "LED驱动电源" && ps.Code == "PS-48V" && ps.Stock == 6 && ps.Threshold == 2) {
 		t.Errorf("电源 migrate wrong: %+v", ps)
 	}
-	if ps.DeviceHwID == nil || *ps.DeviceHwID != 1 {
+	if ps.DeviceHwID == nil || *ps.DeviceHwID != "00000001" {
 		t.Errorf("电源 device_hw_id not bound: %+v", ps.DeviceHwID)
 	}
 
@@ -94,7 +94,7 @@ func TestMigrateLegacyDeviceMaterials(t *testing.T) {
 	if err := db.Where("code = ?", "EXIST-X").First(&exist).Error; err != nil {
 		t.Fatalf("find EXIST-X: %v", err)
 	}
-	if exist.DeviceHwID == nil || *exist.DeviceHwID != 2 {
+	if exist.DeviceHwID == nil || *exist.DeviceHwID != "00000002" {
 		t.Errorf("EXIST-X device binding not supplemented: %+v", exist.DeviceHwID)
 	}
 	if exist.Stock != 20 {

@@ -7,7 +7,7 @@ export type MediaType = 'evidence' | 'monitoring' | 'timelapse'
 // 设备媒体
 export interface DeviceMedia {
   id: number
-  device_hw_id: number
+  device_hw_id: string
   media_type: MediaType
   category: 'photo' | 'video'
   title: string
@@ -46,7 +46,7 @@ export function uploadDeviceMedia(formData: FormData): Promise<ApiResponse> {
 
 // 登记 RTSP / 云URL 监控或时间视频
 export interface StreamBody {
-  device_hw_id: number
+  device_hw_id: string
   media_type: MediaType
   title?: string
   url: string

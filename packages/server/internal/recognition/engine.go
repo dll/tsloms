@@ -64,7 +64,7 @@ func baseConfidence(errCode int8) float64 {
 
 // RuleEvidence 归一化后的单条证据
 type RuleEvidence struct {
-	DeviceHwID    uint32    // 设备硬件ID
+	DeviceHwID    string    // 设备硬件ID(uuid字符串)
 	SourceType    string    // model.EvSource*
 	ErrCode       *int8     // firmware 类
 	LedState      *int8     // firmware/led_state 类
@@ -77,6 +77,12 @@ type RuleEvidence struct {
 	RefFeedbackID *uint     // 群众反映
 	Confidence    float64   // 该证据对判定的贡献度 0-1
 }
+
+// LedUUID 协议帧设备硬件ID(uint32) → 台账 uuid 字符串（大写十六进制，8位补零）。
+// 设计边界：协议层 LedHwID/Evaluator.DeviceHwID 保持 uint32 不变；
+// 台账层（devices/fault_records/fault_evidence/fault_case 等）hw_id 为 uuid 字符串。
+// AIITSS 设备的十六进制 uuid（如 "1114004B"）恰为该 uint32 的十六进制表示，可无缝对应。
+func LedUUID(v uint32) string { return fmt.Sprintf("%08X", v) }
 
 // Evaluator 一次研判的引擎上下文
 type Evaluator struct {

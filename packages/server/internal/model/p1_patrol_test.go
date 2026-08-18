@@ -55,7 +55,7 @@ func TestPatrolModel_AutoMigrateCreatesTables(t *testing.T) {
 	}
 
 	// 记录读写
-	rec := &PatrolRecord{TaskID: &task.ID, DeviceHwID: 1, PatrolType: PatrolModeRandom, CheckResult: PatrolResultNormal}
+	rec := &PatrolRecord{TaskID: &task.ID, DeviceHwID: "1", PatrolType: PatrolModeRandom, CheckResult: PatrolResultNormal}
 	if err := db.Create(rec).Error; err != nil {
 		t.Fatalf("创建记录失败: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestPatrolModel_AutoMigrateCreatesTables(t *testing.T) {
 	if err := db.First(&gotRec, rec.ID).Error; err != nil {
 		t.Fatalf("读取记录失败: %v", err)
 	}
-	if gotRec.DeviceHwID != 1 || gotRec.CheckResult != PatrolResultNormal {
+	if gotRec.DeviceHwID != "1" || gotRec.CheckResult != PatrolResultNormal {
 		t.Errorf("记录读写内容不符: %+v", gotRec)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tsloms/server/internal/model"
+	"github.com/tsloms/server/internal/recognition"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +68,7 @@ func TestProcessFault_NewRecordAfterWindow(t *testing.T) {
 
 	// 将 last_seen 调到 31 分钟前，模拟超出去重窗口
 	model.DB.Model(&model.FaultRecord{}).
-		Where("device_hw_id = ?", rec.LedHwID).
+		Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).
 		Update("last_seen", time.Now().Add(-31*time.Minute))
 
 	// 再次研判：旧故障应标记 resolved，并新建故障

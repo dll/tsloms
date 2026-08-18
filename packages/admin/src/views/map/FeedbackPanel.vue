@@ -122,11 +122,11 @@ const statCards = [
 ]
 const statMap = ref<Record<string, number>>({})
 
-const form = reactive({ device_hw_id: undefined as number | undefined, intersection: '', title: '', content: '', reporter: '', contact: '' })
+const form = reactive({ device_hw_id: undefined as string | undefined, intersection: '', title: '', content: '', reporter: '', contact: '' })
 const statusLabel = (s: string) => ({ open: '待处理', processing: '处理中', resolved: '已解决', closed: '已关闭' } as Record<string, string>)[s] || s
 const statusTag = (s: string) => ({ open: 'danger', processing: 'warning', resolved: 'success', closed: 'info' } as Record<string, string>)[s] || 'info'
 
-function onDeviceChange(id: number) {
+function onDeviceChange(id: string) {
   const d = devices.value.find((x) => x.hw_id === id)
   form.intersection = d?.intersection || ''
 }

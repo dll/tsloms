@@ -35,14 +35,14 @@ func newDashboardEngine(t *testing.T) *gin.Engine {
 // seedAIDashboardData 造 AI 看板数据：一个设备 + 一批预测 + 若干用量记录
 func seedAIDashboardData(t *testing.T) {
 	t.Helper()
-	model.DB.Create(&model.Device{ID: 1, HwID: 1001})
+	model.DB.Create(&model.Device{ID: 1, HwID: "1001"})
 
 	now := time.Now()
 	batch := "202608150600"
 	preds := []model.AIPrediction{
-		{DeviceHwID: 1001, Intersection: "A路口", BatchID: batch, HealthScore: 30, RiskLevel: "critical", PredictType: "lamp_off", RemainDays: 3},
-		{DeviceHwID: 1002, Intersection: "B路口", BatchID: batch, HealthScore: 55, RiskLevel: "high", PredictType: "power_loss", RemainDays: 15},
-		{DeviceHwID: 1003, Intersection: "C路口", BatchID: batch, HealthScore: 80, RiskLevel: "medium", PredictType: "dim", RemainDays: 60},
+		{DeviceHwID: "1001", Intersection: "A路口", BatchID: batch, HealthScore: 30, RiskLevel: "critical", PredictType: "lamp_off", RemainDays: 3},
+		{DeviceHwID: "1002", Intersection: "B路口", BatchID: batch, HealthScore: 55, RiskLevel: "high", PredictType: "power_loss", RemainDays: 15},
+		{DeviceHwID: "1003", Intersection: "C路口", BatchID: batch, HealthScore: 80, RiskLevel: "medium", PredictType: "dim", RemainDays: 60},
 	}
 	for i := range preds {
 		preds[i].CreatedAt = now

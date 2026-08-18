@@ -207,7 +207,7 @@ const intersectionOptions = computed(() => {
 })
 
 const selIntersections = ref<string[]>([])
-const deviceId = ref<number | undefined>()
+const deviceId = ref<string | undefined>()
 const mediaType = ref('evidence')
 const filterType = ref('')
 const onlyFault = ref(false)
@@ -245,7 +245,7 @@ function onDeviceChange() { /* 选择设备用于上传/登记 */ }
 
 // ---- 上传（举证必填信号灯信息） ----
 const uploadVisible = ref(false)
-const uploadForm = reactive({ device_hw_id: undefined as number | undefined, intersection: '', light_color: 'red', fault_desc: '', is_active_fault: false, title: '' })
+const uploadForm = reactive({ device_hw_id: undefined as string | undefined, intersection: '', light_color: 'red', fault_desc: '', is_active_fault: false, title: '' })
 const uploadFile = ref<File | null>(null)
 const uploading = ref(false)
 
@@ -254,7 +254,7 @@ function openUpload() {
   uploadFile.value = null
   uploadVisible.value = true
 }
-function onUploadDeviceChange(id: number) {
+function onUploadDeviceChange(id: string) {
   const d = deviceOptions.value.find((x) => x.hw_id === id)
   if (d?.intersection) uploadForm.intersection = d.intersection
   if (d && !uploadForm.title) uploadForm.title = d.intersection ? `${d.intersection} 信号灯异常` : ''
@@ -270,7 +270,7 @@ async function confirmUpload() {
   uploading.value = true
   try {
     const fd = new FormData()
-    fd.append('device_hw_id', String(uploadForm.device_hw_id))
+    fd.append('device_hw_id', uploadForm.device_hw_id)
     fd.append('media_type', 'evidence')
     fd.append('intersection', uploadForm.intersection.trim())
     fd.append('light_color', uploadForm.light_color)
@@ -300,7 +300,7 @@ async function del(m: DeviceMedia) {
 
 // 登记RTSP
 const streamVisible = ref(false)
-const streamForm = reactive({ device_hw_id: undefined as number | undefined, intersection: '', media_type: 'monitoring', url: '', compatible_url: '', title: '', duration: 0, note: '' })
+const streamForm = reactive({ device_hw_id: undefined as string | undefined, intersection: '', media_type: 'monitoring', url: '', compatible_url: '', title: '', duration: 0, note: '' })
 function openStreamDialog() { streamVisible.value = true }
 async function saveStream() {
   if (!streamForm.device_hw_id || !streamForm.url) { ElMessage.warning('设备与地址必填'); return }

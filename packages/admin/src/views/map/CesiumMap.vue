@@ -161,6 +161,57 @@
       </div>
     </div>
   </div>
+
+  <!-- 路口点击卡片：设备/预警/故障/工单/维护 列表（数据链路闭环） -->
+  <el-dialog v-model="crossingCardVisible" :title="'路口 ' + (crossingCard?.crossing?.name || '') + '（详表）'" width="720px" top="6vh" append-to-body>
+    <el-tabs v-model="crossingTab">
+      <el-tab-pane :label="'设备 (' + (crossingCard?.devices?.length ?? 0) + ')'" name="devices">
+        <el-table :data="crossingCard?.devices || []" size="small" max-height="320">
+          <el-table-column prop="hw_id" label="硬件ID" width="110" />
+          <el-table-column prop="func" label="信号灯功能" width="110" />
+          <el-table-column prop="orientation" label="朝向" width="80" />
+          <el-table-column label="在线" width="80">
+            <template #default="{ row }"><el-tag :type="row.online_status ? 'success' : 'info'" size="small">{{ row.online_status ? '在线' : '离线' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column prop="batch" label="批次" />
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane :label="'预警 (' + (crossingCard?.warnings?.length ?? 0) + ')'" name="warnings">
+        <el-table :data="crossingCard?.warnings || []" size="small" max-height="320">
+          <el-table-column prop="warning_label" label="预警内容" min-width="140" />
+          <el-table-column prop="level" label="级别" width="80" />
+          <el-table-column prop="deal_state" label="处理" width="90" />
+          <el-table-column prop="occurred_at" label="发生时间" width="160" />
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane :label="'故障 (' + (crossingCard?.faults?.length ?? 0) + ')'" name="faults">
+        <el-table :data="crossingCard?.faults || []" size="small" max-height="320">
+          <el-table-column prop="fault_type" label="故障类型" width="110" />
+          <el-table-column prop="fault_level" label="等级" width="80" />
+          <el-table-column prop="status" label="状态" width="90" />
+          <el-table-column prop="err_code" label="errCode" width="90" />
+          <el-table-column label="置信度" width="80"><template #default="{ row }">{{ (row.confidence || 0).toFixed(2) }}</template></el-table-column>
+          <el-table-column prop="last_seen" label="末次" width="160" />
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane :label="'工单 (' + (crossingCard?.work_orders?.length ?? 0) + ')'" name="workorders">
+        <el-table :data="crossingCard?.work_orders || []" size="small" max-height="320">
+          <el-table-column prop="order_no" label="工单号" width="180" />
+          <el-table-column prop="status" label="状态" width="100" />
+          <el-table-column prop="created_at" label="创建时间" width="160" />
+          <el-table-column prop="result" label="结果" />
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane :label="'维护 (' + (crossingCard?.patrols?.length ?? 0) + ')'" name="patrols">
+        <el-table :data="crossingCard?.patrols || []" size="small" max-height="320">
+          <el-table-column prop="patrol_type" label="类型" width="100" />
+          <el-table-column prop="check_result" label="结果" width="90" />
+          <el-table-column prop="patrol_by" label="巡检人" width="100" />
+          <el-table-column prop="patrol_at" label="时间" width="160" />
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -173,7 +224,7 @@ import { getFaults } from '@/api/fault'
 import { updateDevice } from '@/api/device'
 import { getUserInfo } from '@/api/auth'
 import { getSignalIcon } from './signalIcons'
-import { getCrossingMapData, getRoadMapData, type CrossingPoly } from '@/api/map'
+import { getCrossingMapData, getRoadMapData, getCrossingDetail, type CrossingPoly } from '@/api/map'
 import VideoOverlay from './VideoOverlay.vue'
 import { bus, consumePendingFocus } from '@/utils/eventBus'
 // @ts-ignore 百度/高德瓦片
@@ -214,6 +265,25 @@ const layerFault = ref(true)    // 故障
 const layerWatched = ref(false) // 锁定/关注
 const layerGradient = ref(true) // 路口故障分级渐变着色(按故障比例 绿→黄→红)
 const crossings = ref<CrossingPoly[]>([])
+
+// 路口点击卡片（设备/预警/故障/工单/维护 闭环详表）
+const crossingCardVisible = ref(false)
+const crossingTab = ref('devices')
+const crossingCard = ref<any>(null)
+async function openCrossingCard(x: any) {
+  if (!x?.id) {
+    ElMessage.warning('该路口无 ID，无法查看详表')
+    return
+  }
+  try {
+    const res = await getCrossingDetail(x.id)
+    crossingCard.value = res.data
+    crossingTab.value = 'devices'
+    crossingCardVisible.value = true
+  } catch {
+    ElMessage.error('路口详表加载失败')
+  }
+}
 const watchedFilter = ref(false)// 设备列表只看关注
 
 // ---- 缩放级别 ----
@@ -221,7 +291,7 @@ const zoomPanelOpen = ref(false)
 const customHeight = ref(1000)
 
 // ---- 故障映射（device_hw_id → 故障数）----
-const faultByDev = ref<Record<number, number>>({})
+const faultByDev = ref<Record<string, number>>({})
 const faultDeviceCount = computed(() => Object.keys(faultByDev.value).length)
 
 const onlineCount = computed(() => devices.value.filter((d) => d.online_status).length)
@@ -494,22 +564,20 @@ function drillCrossing(x: any) {
   // 按路口名匹配设备
   const match = devices.value.filter((d) => d.intersection && String(d.intersection) === String(x.name))
   if (match.length > 0) {
-    // 聚焦到这些设备的聚合范围
     const m = match.filter((d) => d.lat != null && d.lng != null)
     if (m.length > 0 && viewer) {
       const rect = Cesium.Rectangle.fromCartesianArray(m.map((d) => Cesium.Cartesian3.fromDegrees(d.lng, d.lat)))
       viewer.camera.flyTo({ destination: rect, duration: 0.9 })
     }
-    ElMessage.success(`路口「${x.name}」共 ${match.length} 台设备（${match.filter((d) => d.online_status).length} 在线）`)
-    return
+  } else {
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(x.lng, x.lat, 1500),
+      orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
+      duration: 0.9,
+    })
   }
-  // 无命名匹配：直接飞至路口中心并缩放到路口级（1500m）
-  viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(x.lng, x.lat, 1500),
-    orientation: { heading: 0, pitch: -Math.PI / 2.2, roll: 0 },
-    duration: 0.9,
-  })
-  ElMessage.info(`路口「${x.name}」故障比例 ${Math.round((x.fault_ratio || 0) * 100)}%（下钻到最近型号灯）`)
+  // 打开路口详表卡片（设备/预警/故障/工单/维护 闭环数据）
+  openCrossingCard(x)
 }
 
 // 实时监控：定时刷新设备/故障/路口分级着色
@@ -665,11 +733,11 @@ async function loadFaults() {
   try {
     const res = await getFaults({ status: 'active', page_size: 500 })
     const list = res.data?.list || []
-    const map: Record<number, number> = {}
+    const map: Record<string, number> = {}
     for (const f of list) {
-      // device_hw_id 可能为空/非数字，过滤无效后作为数值索引（修复 TS2538）
-      const hw = Number(f.device_hw_id)
-      if (!Number.isFinite(hw)) continue
+      // device_hw_id 为空则跳过；否则按 uuid 字符串作为索引
+      const hw = String(f.device_hw_id)
+      if (!hw) continue
       map[hw] = (map[hw] || 0) + 1
     }
     faultByDev.value = map

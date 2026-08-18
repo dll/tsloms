@@ -9,7 +9,7 @@ import "time"
 //   - 时间视频（监控自动截取的短视频片段，辅助维修判断）
 type DeviceMedia struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
-	DeviceHwID    uint32    `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID    string    `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	MediaType     string    `json:"media_type" gorm:"size:16;comment:媒体类型(evidence/monitoring/timelapse)"`
 	Category      string    `json:"category" gorm:"size:32;comment:类别(photo/video)"`
 	Title         string    `json:"title" gorm:"size:128;comment:标题"`

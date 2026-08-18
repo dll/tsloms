@@ -204,7 +204,7 @@ func TestExpenseTypesAndConfirm(t *testing.T) {
 	// 四种费用类型
 	for i, typ := range []string{model.ExpenseTypeMaterial, model.ExpenseTypeLabor, model.ExpenseTypeTraffic, model.ExpenseTypeOther} {
 		w := doJSON(r, "POST", "/expenses", map[string]interface{}{
-			"type": typ, "amount": 100 + i, "device_hw_id": 9, "work_date": "2026-08-15",
+			"type": typ, "amount": 100 + i, "device_hw_id": "9", "work_date": "2026-08-15",
 		})
 		body := parseBody(t, w)
 		if code, _ := body["code"].(float64); code != 0 {
@@ -258,7 +258,7 @@ func TestWorkOrderMaterialUse(t *testing.T) {
 	// 构造一张工单
 	wo := model.WorkOrder{
 		OrderNo:    model.NextOrderNo(model.DB),
-		DeviceHwID: 7,
+		DeviceHwID: "7",
 		Status:     model.WorkOrderStatusProcessing,
 	}
 	model.DB.Create(&wo)
@@ -302,7 +302,7 @@ func TestWorkOrderMaterialUse(t *testing.T) {
 		t.Fatalf("领料未自动生成耗材费用单")
 	}
 	if e.DeviceHwID != wo.DeviceHwID {
-		t.Fatalf("费用设备ID应为 %d, got %d", wo.DeviceHwID, e.DeviceHwID)
+		t.Fatalf("费用设备ID应为 %s, got %s", wo.DeviceHwID, e.DeviceHwID)
 	}
 	if e.Amount != float64(3*m.UnitPrice) {
 		t.Fatalf("费用金额应为 %.2f, got %.2f", float64(3*m.UnitPrice), e.Amount)

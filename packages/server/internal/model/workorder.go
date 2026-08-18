@@ -19,7 +19,7 @@ type WorkOrder struct {
 	ID         uint   `json:"id" gorm:"primaryKey"`
 	OrderNo    string `json:"order_no" gorm:"uniqueIndex;size:32;comment:工单编号(WO{yyyyMMdd}{seq})"`
 	FaultID    uint   `json:"fault_id" gorm:"index;comment:关联故障记录ID"`
-	DeviceHwID uint32 `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID string `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	Status     string `json:"status" gorm:"size:16;default:pending;comment:状态(pending/processing/completed/rejected)"`
 	// FaultActiveScope 活跃工单唯一约束载体：active=pending/processing 时为 fault_id；inactive 为 NULL
 	// 注：不用 uniqueIndex tag——唯一索引由 migrate.go 在建列并清理/回填后手动创建，避免 AutoMigrate 在重复数据上建唯一失败
@@ -91,7 +91,7 @@ func NextOrderNo(db *gorm.DB) string {
 // 配合 fault_records.work_order_id 的条件更新（WHERE work_order_id IS NULL）做应用层抢锁，
 // 保证同一故障无论从多少入口（processFault 自动派单 / ReviewFault 复核派单）并发触发，最终只建成一条活跃工单。
 // 返回最终生效的工单；建单失败且无既有活跃单可复用时返回 nil。
-func EnsureActiveWorkOrder(db *gorm.DB, faultID uint, deviceHwID uint32) *WorkOrder {
+func EnsureActiveWorkOrder(db *gorm.DB, faultID uint, deviceHwID string) *WorkOrder {
 	if db == nil {
 		return nil
 	}

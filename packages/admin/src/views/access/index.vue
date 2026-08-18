@@ -225,7 +225,11 @@ async function loadDevice() {
   try {
     const res = await getDevices({ page: 1, page_size: 1, online_status: 'true' })
     const first = res.data?.list?.[0]
-    if (first?.hw_id && mock.hw_id === 9001 && first.hw_id !== 9001) mock.hw_id = Number(first.hw_id)
+    if (first?.hw_id && mock.hw_id === 9001) {
+      // 数据库 hw_id 为 uuid 字符串；协议模拟帧需要 uint32，仅当纯数字时预填
+      const n = Number(first.hw_id)
+      if (/^\d+$/.test(first.hw_id) && Number.isFinite(n) && n >= 1 && n <= 99999999) mock.hw_id = n
+    }
   } catch { /* 忽略 */ }
 }
 

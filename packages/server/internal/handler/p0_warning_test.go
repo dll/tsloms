@@ -38,7 +38,7 @@ func p0WarningEngine(t *testing.T) *gin.Engine {
 	return r
 }
 
-func seedWarning(hw uint32, code int, level string, source string) model.Warning {
+func seedWarning(hw string, code int, level string, source string) model.Warning {
 	now := time.Now()
 	w := model.Warning{
 		DeviceHwID:   hw,
@@ -56,9 +56,9 @@ func seedWarning(hw uint32, code int, level string, source string) model.Warning
 
 func TestWarnings_ListAndFilter(t *testing.T) {
 	r := p0WarningEngine(t)
-	seedWarning(1, -1, model.WarningLevelCritical, model.WarningSourceFault)
-	seedWarning(2, -5, model.WarningLevelInfo, model.WarningSourceMQTT)
-	seedWarning(3, -1, model.WarningLevelWarning, model.WarningSourceSelfCheck)
+	seedWarning("1", -1, model.WarningLevelCritical, model.WarningSourceFault)
+	seedWarning("2", -5, model.WarningLevelInfo, model.WarningSourceMQTT)
+	seedWarning("3", -1, model.WarningLevelWarning, model.WarningSourceSelfCheck)
 
 	_, body := doReq(t, r, "GET", "/api/v1/warnings", "")
 	if body["code"].(float64) != 0 {
@@ -85,7 +85,7 @@ func TestWarningDetail_IncludeContext(t *testing.T) {
 	r := p0WarningEngine(t)
 	crossing := model.Crossing{Name: "路口甲", RoadName: "长江中路"}
 	model.DB.Create(&crossing)
-	w := model.Warning{DeviceHwID: 9, CrossingID: &crossing.ID, WarningCode: -1, Level: model.WarningLevelCritical, Status: model.WarningUntransferred, OccurredAt: time.Now()}
+	w := model.Warning{DeviceHwID: "9", CrossingID: &crossing.ID, WarningCode: -1, Level: model.WarningLevelCritical, Status: model.WarningUntransferred, OccurredAt: time.Now()}
 	model.DB.Create(&w)
 
 	_, body := doReq(t, r, "GET", "/api/v1/warnings/"+strconv.FormatUint(uint64(w.ID), 10), "")
@@ -103,9 +103,9 @@ func TestWarningDetail_IncludeContext(t *testing.T) {
 
 func TestWarning_IgnoreAndBatchIgnore(t *testing.T) {
 	r := p0WarningEngine(t)
-	w1 := seedWarning(1, -1, model.WarningLevelCritical, model.WarningSourceFault)
-	w2 := seedWarning(2, -2, model.WarningLevelWarning, model.WarningSourceMQTT)
-	w3 := seedWarning(3, -3, model.WarningLevelInfo, model.WarningSourceFault)
+	w1 := seedWarning("1", -1, model.WarningLevelCritical, model.WarningSourceFault)
+	w2 := seedWarning("2", -2, model.WarningLevelWarning, model.WarningSourceMQTT)
+	w3 := seedWarning("3", -3, model.WarningLevelInfo, model.WarningSourceFault)
 
 	// 单条忽略
 	_, body := doReq(t, r, "POST", "/api/v1/warnings/"+strconv.FormatUint(uint64(w1.ID), 10)+"/ignore", `{"reason":"人工忽略"}`)
@@ -132,7 +132,7 @@ func TestWarning_IgnoreAndBatchIgnore(t *testing.T) {
 func TestWarning_ToWorkOrder(t *testing.T) {
 	r := p0WarningEngine(t)
 	// 无来源故障的预警 → 转工单（占位独立工单）
-	w := seedWarning(5, -8, model.WarningLevelCritical, model.WarningSourceSelfCheck)
+	w := seedWarning("5", -8, model.WarningLevelCritical, model.WarningSourceSelfCheck)
 
 	_, body := doReq(t, r, "POST", "/api/v1/warnings/"+strconv.FormatUint(uint64(w.ID), 10)+"/to-workorder", `{"remark":"紧急转单"}`)
 	if body["code"].(float64) != 0 {
@@ -161,7 +161,7 @@ func TestWarning_ExportCSV(t *testing.T) {
 	// 注意：ExportWarnings 直接写 CSV 到 ResponseWriter，不能走 doReq 的 JSON 反序列化。
 	// 单独验证：至少不 panic 且 Content-Type 正确。
 	r := p0WarningEngine(t)
-	seedWarning(1, -1, model.WarningLevelCritical, model.WarningSourceFault)
+	seedWarning("1", -1, model.WarningLevelCritical, model.WarningSourceFault)
 	req := newReq("GET", "/api/v1/warnings/export", "")
 	wrec := newRecorder()
 	r.ServeHTTP(wrec, req)
@@ -199,8 +199,8 @@ func TestWarningRule_CRUD_AndAutoIgnore(t *testing.T) {
 	}
 
 	// 自动忽略：落入规则的路口X critical -1 未处理预警被忽略；其余不受影响
-	wHit := seedWarningBig(crossing.ID, 10, -1, model.WarningLevelCritical)
-	wOther := seedWarning(99, -1, model.WarningLevelCritical, model.WarningSourceFault) // 无路口
+	wHit := seedWarningBig(crossing.ID, "10", -1, model.WarningLevelCritical)
+	wOther := seedWarning("99", -1, model.WarningLevelCritical, model.WarningSourceFault) // 无路口
 
 	_, body4 := doReq(t, r, "POST", "/api/v1/warnings/auto-ignore", "")
 	if body4["code"].(float64) != 0 {
@@ -227,7 +227,7 @@ func TestWarningRule_CRUD_AndAutoIgnore(t *testing.T) {
 }
 
 // seedWarningBig 构造带路口+设备的预警
-func seedWarningBig(crossingID uint, hw uint32, code int, level string) model.Warning {
+func seedWarningBig(crossingID uint, hw string, code int, level string) model.Warning {
 	now := time.Now()
 	w := model.Warning{
 		DeviceHwID:   hw,

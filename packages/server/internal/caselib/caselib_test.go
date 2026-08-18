@@ -53,7 +53,7 @@ func TestSeedRecord_Dedup(t *testing.T) {
 	_, _ = cr.SeedRecord(e, judge, judge.EvaluationID)
 
 	var total int64
-	model.DB.Model(&model.FaultCase{}).Where("device_hw_id = ?", 5001).Count(&total)
+	model.DB.Model(&model.FaultCase{}).Where("device_hw_id = ?", recognition.LedUUID(5001)).Count(&total)
 	if total != 1 {
 		t.Errorf("同特征同设备应只写 1 条案例, 实际 %d", total)
 	}

@@ -59,7 +59,7 @@ func ListFaultEvidence(c *gin.Context) {
 //	ref_media_id?, ref_feedback_id?, captured_at?, fault_id?
 func IngestEvidence(c *gin.Context) {
 	var req struct {
-		DeviceHwID    uint32     `json:"device_hw_id" binding:"required"`
+		DeviceHwID    string     `json:"device_hw_id" binding:"required"`
 		SourceType    string     `json:"source_type" binding:"required"`
 		ErrCode       *int8      `json:"err_code"`
 		LedState      *int8      `json:"led_state"`
@@ -107,7 +107,7 @@ func IngestEvidence(c *gin.Context) {
 	ev.CapturedAt = *captured
 
 	// 独立 evidence 事件：无 fault_id时给一个临时批次号，保证可溯源
-	evID := fmt.Sprintf("ingest-%d-%d", req.DeviceHwID, time.Now().UnixNano())
+	evID := fmt.Sprintf("ingest-%s-%d", req.DeviceHwID, time.Now().UnixNano())
 	m := recognition.EvidenceToModel(ev, req.FaultID, evID)
 	if err := model.DB.Create(&m).Error; err != nil {
 		serverError(c, err)
@@ -155,7 +155,7 @@ func ListFaultCases(c *gin.Context) {
 //	evidence_summary?, source_evaluation_id?
 func CreateFaultCase(c *gin.Context) {
 	var req struct {
-		DeviceHwID         uint32 `json:"device_hw_id" binding:"required"`
+		DeviceHwID         string `json:"device_hw_id" binding:"required"`
 		InputSignature     string `json:"input_signature"`
 		FaultType          string `json:"fault_type"`
 		FaultLevel         string `json:"fault_level"`

@@ -13,15 +13,15 @@ export type MapFocusPayload = {
   lng?: number
   // 聚焦高度（米）；不传则由 kind 决定
   height?: number
-  // 设备相关
-  hw_id?: number
+  // 设备相关（hw_id 为 uuid 字符串）
+  hw_id?: string
 }
 
 export type BusEvents = {
   /** 地图聚焦定位 */
   'map:focus': MapFocusPayload
   /** 设备关注状态变更（is_watched） */
-  'device:watched': { hw_id: number; is_watched: boolean }
+  'device:watched': { hw_id: string; is_watched: boolean }
 }
 
 // 单例事件总线

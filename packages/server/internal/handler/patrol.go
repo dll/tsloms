@@ -209,7 +209,7 @@ func GetPatrolRanking(c *gin.Context) {
 func PostPatrolSelfCheck(c *gin.Context) {
 	var req struct {
 		DeviceIDs   []uint   `json:"device_ids"`
-		DeviceHwIDs []uint32 `json:"device_hw_ids"`
+		DeviceHwIDs []string `json:"device_hw_ids"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "参数错误")

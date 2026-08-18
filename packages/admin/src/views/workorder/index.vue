@@ -354,7 +354,7 @@ async function searchDevices(keyword?: string) {
   try {
     const kw = (keyword || '').trim()
     const params: Record<string, any> = { page_size: 50 }
-    if (kw && /^\d+$/.test(kw)) params.hw_id = kw
+    if (kw && /^[A-Za-z0-9_-]+$/.test(kw)) params.hw_id = kw
     else if (kw) params.intersection = kw
     const res = await getDevices(params)
     const list: any[] = res.data?.list || []

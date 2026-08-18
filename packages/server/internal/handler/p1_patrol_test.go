@@ -35,8 +35,8 @@ func p1PatrolEngine(t *testing.T) *gin.Engine {
 // seedPatrolDevices 构造测试设备：2 台正常 + 1 台离线 + 1 台带活跃故障
 func seedPatrolDevices(t *testing.T) (normal, offline, faulty model.Device) {
 	t.Helper()
-	normal = model.Device{HwID: 1001, Intersection: "路口A", OnlineStatus: true}
-	offline = model.Device{HwID: 1002, Intersection: "路口B", OnlineStatus: false}
+	normal = model.Device{HwID: "1001", Intersection: "路口A", OnlineStatus: true}
+	offline = model.Device{HwID: "1002", Intersection: "路口B", OnlineStatus: false}
 	lat, lng := 31.86, 117.28
 	normal.Lat, normal.Lng = &lat, &lng
 	offline.Lat, offline.Lng = &lat, &lng
@@ -44,11 +44,11 @@ func seedPatrolDevices(t *testing.T) (normal, offline, faulty model.Device) {
 	model.DB.Create(&offline)
 
 	// 带活跃故障设备
-	model.DB.Create(&model.Device{HwID: 1003, Intersection: "路口C", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1003", Intersection: "路口C", OnlineStatus: true})
 	var faultyD model.Device
-	model.DB.Where("hw_id = ?", 1003).First(&faultyD)
+	model.DB.Where("hw_id = ?", "1003").First(&faultyD)
 	model.DB.Create(&model.FaultRecord{
-		DeviceHwID: 1003, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
+		DeviceHwID: "1003", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusOccurred, FirstSeen: time.Now(), LastSeen: time.Now(),
 	})
 	return normal, offline, faultyD
@@ -171,9 +171,9 @@ func TestPatrolRanking_ByPatroler(t *testing.T) {
 	r := p1PatrolEngine(t)
 	model.InitTestDB()
 	now := time.Now()
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 1, PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "张三", PatrolAt: now})
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 2, PatrolType: "selfcheck", CheckResult: model.PatrolResultAbnormal, PatrolBy: "张三", PatrolAt: now})
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 3, PatrolType: "random", CheckResult: model.PatrolResultAbnormal, PatrolBy: "李四", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "1", PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "张三", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "2", PatrolType: "selfcheck", CheckResult: model.PatrolResultAbnormal, PatrolBy: "张三", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "3", PatrolType: "random", CheckResult: model.PatrolResultAbnormal, PatrolBy: "李四", PatrolAt: now})
 
 	_, body := doReq(t, r, "GET", "/api/v1/patrol/ranking", "")
 	if body["code"].(float64) != 0 {
@@ -204,8 +204,8 @@ func TestPatrolRanking_ByPatroler(t *testing.T) {
 func TestPatrolRanking_ByDevice(t *testing.T) {
 	model.InitTestDB()
 	now := time.Now()
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 777, PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "a", PatrolAt: now})
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 777, PatrolType: "random", CheckResult: model.PatrolResultAbnormal, PatrolBy: "b", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "777", PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "a", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "777", PatrolType: "random", CheckResult: model.PatrolResultAbnormal, PatrolBy: "b", PatrolAt: now})
 	svc := patrolSvc()
 	items, err := svc.Ranking("device", 10)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestPatrolSelfCheck_Post(t *testing.T) {
 	seedPatrolDevices(t)
 	// 用 device_ids 直接自检（含离线 + 故障设备）—— 取设备表真实自增 ID
 	var devs []model.Device
-	model.DB.Where("hw_id IN ?", []uint32{1001, 1002, 1003}).Find(&devs)
+	model.DB.Where("hw_id IN ?", []string{"1001", "1002", "1003"}).Find(&devs)
 	if len(devs) != 3 {
 		t.Fatalf("应 seed 3 台设备, 实际 %d", len(devs))
 	}
@@ -257,7 +257,7 @@ func TestPatrolSelfCheck_Post(t *testing.T) {
 func TestPatrolSelfCheck_ByHwIDs(t *testing.T) {
 	r := p1PatrolEngine(t)
 	seedPatrolDevices(t)
-	_, body := doReq(t, r, "POST", "/api/v1/patrol/selfcheck", `{"device_hw_ids":[1001,1003]}`)
+	_, body := doReq(t, r, "POST", "/api/v1/patrol/selfcheck", `{"device_hw_ids":["1001","1003"]}`)
 	if body["code"].(float64) != 0 {
 		t.Fatalf("按 hw 自检失败: %v", body)
 	}
@@ -272,8 +272,8 @@ func TestPatrolSelfCheck_ByHwIDs(t *testing.T) {
 func TestPatrolRecords_Filter(t *testing.T) {
 	r := p1PatrolEngine(t)
 	now := time.Now()
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 1, PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "张三", PatrolAt: now})
-	model.DB.Create(&model.PatrolRecord{DeviceHwID: 2, PatrolType: "selfcheck", CheckResult: model.PatrolResultAbnormal, PatrolBy: "张三", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "1", PatrolType: "random", CheckResult: model.PatrolResultNormal, PatrolBy: "张三", PatrolAt: now})
+	model.DB.Create(&model.PatrolRecord{DeviceHwID: "2", PatrolType: "selfcheck", CheckResult: model.PatrolResultAbnormal, PatrolBy: "张三", PatrolAt: now})
 
 	_, body := doReq(t, r, "GET", "/api/v1/patrol/records?check_result=abnormal", "")
 	if body["data"].(map[string]interface{})["total"].(float64) != 1 {

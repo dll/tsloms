@@ -30,12 +30,12 @@ func TestDevice_CRUD(t *testing.T) {
 	rg.GET("/devices/stats", DeviceStats)
 
 	// 新增
-	code, body := doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":101,"intersection":"主干道","network_code":5,"station_code":2,"lat":31.2,"lng":121.5,"online_status":true}`)
+	code, body := doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":"101","intersection":"主干道","network_code":5,"station_code":2,"lat":31.2,"lng":121.5,"online_status":true}`)
 	mustOK(t, code, body, "新增设备")
 	did := uint(body["data"].(map[string]interface{})["device"].(map[string]interface{})["id"].(float64))
 
 	// 重复 hw_id → 400
-	code, _ = doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":101}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":"101"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("重复 hw_id 应 400, got %d", code)
 	}
@@ -45,8 +45,8 @@ func TestDevice_CRUD(t *testing.T) {
 		t.Errorf("缺 hw_id 应 400, got %d", code)
 	}
 	// 列表筛选
-	model.DB.Create(&model.Device{HwID: 102, Intersection: "支路", OnlineStatus: false})
-	model.DB.Create(&model.Device{HwID: 103, Intersection: "干道二路", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "102", Intersection: "支路", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "103", Intersection: "干道二路", OnlineStatus: true})
 	qs := url.Values{}
 	qs.Set("intersection", "干道")
 	qs.Set("hw_id", "101")
@@ -118,7 +118,7 @@ func TestDevice_CRUD(t *testing.T) {
 
 // ==================== 故障 Fault ====================
 
-func seedFault(hw uint32, status string) model.FaultRecord {
+func seedFault(hw string, status string) model.FaultRecord {
 	now := time.Now()
 	f := model.FaultRecord{
 		DeviceHwID: hw, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
@@ -132,9 +132,9 @@ func TestFault_ListFilters(t *testing.T) {
 	r := covSetup(t)
 	rg := r.Group("/api/v1")
 	rg.GET("/faults", ListFaults)
-	seedFault(201, model.FaultStatusOccurred)
-	seedFault(201, model.FaultStatusConfirmed)
-	seedFault(202, model.FaultStatusResolved)
+	seedFault("201", model.FaultStatusOccurred)
+	seedFault("201", model.FaultStatusConfirmed)
+	seedFault("202", model.FaultStatusResolved)
 
 	for _, q := range []string{
 		"?hw_id=201", "?status=active", "?status=resolved", "?fault_type=lamp_off",
@@ -153,12 +153,12 @@ func TestFault_GetAndView(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.GET("/faults/:id", GetFault)
 	op := seedOperator("op_fault")
-	f := model.FaultRecord{DeviceHwID: 301, ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "major",
+	f := model.FaultRecord{DeviceHwID: "301", ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "major",
 		Status: model.FaultStatusOccurred, FirstSeen: time.Now(), LastSeen: time.Now(),
 		OwnerID: &op.ID, RepairerID: &op.ID}
 	model.DB.Create(&f)
 	// 关联设备
-	model.DB.Create(&model.Device{HwID: 301, Intersection: "故障路口"})
+	model.DB.Create(&model.Device{HwID: "301", Intersection: "故障路口"})
 	// 详情
 	code, body := doReq(t, r, "GET", "/api/v1/faults/"+uid(f.ID), "")
 	mustOK(t, code, body, "故障详情")
@@ -185,7 +185,7 @@ func TestFault_UpdateTransitions(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.PUT("/faults/:id", UpdateFault)
 	op := seedOperator("op_f2")
-	f := seedFault(401, model.FaultStatusOccurred)
+	f := seedFault("401", model.FaultStatusOccurred)
 
 	// 无效状态
 	code, _ := doReq(t, r, "PUT", "/api/v1/faults/"+uid(f.ID), `{"status":"bogus"}`)
@@ -231,7 +231,7 @@ func TestFault_DeleteProtection(t *testing.T) {
 	r := covSetup(t)
 	rg := r.Group("/api/v1")
 	rg.DELETE("/faults/:id", DeleteFault)
-	f := seedFault(501, model.FaultStatusOccurred)
+	f := seedFault("501", model.FaultStatusOccurred)
 	// 有关联未完成工单 → 拒绝
 	model.DB.Create(&model.WorkOrder{FaultID: f.ID, OrderNo: "WOx", Status: model.WorkOrderStatusPending})
 	code, _ := doReq(t, r, "DELETE", "/api/v1/faults/"+uid(f.ID), "")
@@ -258,7 +258,7 @@ func TestFault_Dispatch(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/faults/:id/dispatch", DispatchFault)
 	op := seedOperator("op_disp")
-	f := seedFault(601, model.FaultStatusConfirmed)
+	f := seedFault("601", model.FaultStatusConfirmed)
 	// 派单
 	code, body := doReq(t, r, "POST", "/api/v1/faults/"+uid(f.ID)+"/dispatch", `{"assignee_id":`+uid(op.ID)+`}`)
 	mustOK(t, code, body, "派单")
@@ -303,11 +303,11 @@ func TestWorkOrder_CRUD(t *testing.T) {
 	rg.DELETE("/work-orders/:id", DeleteWorkOrder)
 
 	op := seedOperator("op_wo")
-	f := seedFault(701, model.FaultStatusOccurred)
-	model.DB.Create(&model.Device{HwID: 701, Intersection: "工单路口"})
+	f := seedFault("701", model.FaultStatusOccurred)
+	model.DB.Create(&model.Device{HwID: "701", Intersection: "工单路口"})
 
 	// 创建（关联故障 + 指派运维）
-	code, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":701,"assignee_id":`+uid(op.ID)+`}`)
+	code, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":"701","assignee_id":`+uid(op.ID)+`}`)
 	mustOK(t, code, body, "创建工单")
 	wid := uint(body["data"].(map[string]interface{})["work_order"].(map[string]interface{})["id"].(float64))
 
@@ -346,23 +346,23 @@ func TestWorkOrder_Validation(t *testing.T) {
 	rg.DELETE("/work-orders/:id", DeleteWorkOrder)
 	rg.GET("/work-orders/:id", GetWorkOrder)
 
-	f := seedFault(801, model.FaultStatusOccurred)
+	f := seedFault("801", model.FaultStatusOccurred)
 	op := seedOperator("op_wo2")
 	vw := model.User{Username: "vw_wo", PasswordHash: "x", Role: model.RoleViewer}
 	model.DB.Create(&vw)
 
 	// 故障不存在
-	code, _ := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":99999,"device_hw_id":801}`)
+	code, _ := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":99999,"device_hw_id":"801"}`)
 	if code != http.StatusNotFound {
 		t.Errorf("故障不存在应 404, got %d", code)
 	}
 	// 处理人不存在
-	code, _ = doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":801,"assignee_id":99999}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":"801","assignee_id":99999}`)
 	if code != http.StatusNotFound {
 		t.Errorf("处理人不存在应 404, got %d", code)
 	}
 	// 处理人是 viewer
-	code, _ = doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":801,"assignee_id":`+uid(vw.ID)+`}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":"801","assignee_id":`+uid(vw.ID)+`}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("viewer 处理人应 400, got %d", code)
 	}
@@ -372,7 +372,7 @@ func TestWorkOrder_Validation(t *testing.T) {
 		t.Errorf("缺参数应 400, got %d", code)
 	}
 	// 正常创建
-	code, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":801,"assignee_id":`+uid(op.ID)+`}`)
+	code, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":"801","assignee_id":`+uid(op.ID)+`}`)
 	mustOK(t, code, body, "创建工单")
 	wid := uint(body["data"].(map[string]interface{})["work_order"].(map[string]interface{})["id"].(float64))
 
@@ -436,8 +436,8 @@ func TestWorkOrder_RejectReprocess(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/work-orders", CreateWorkOrder)
 	rg.PUT("/work-orders/:id/status", UpdateWorkOrderStatus)
-	f := seedFault(901, model.FaultStatusOccurred)
-	_, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":901}`)
+	f := seedFault("901", model.FaultStatusOccurred)
+	_, body := doReq(t, r, "POST", "/api/v1/work-orders", `{"fault_id":`+uid(f.ID)+`,"device_hw_id":"901"}`)
 	wid := uint(body["data"].(map[string]interface{})["work_order"].(map[string]interface{})["id"].(float64))
 	// 驳回
 	code, _ := doReq(t, r, "PUT", "/api/v1/work-orders/"+uid(wid)+"/status", `{"status":"rejected"}`)

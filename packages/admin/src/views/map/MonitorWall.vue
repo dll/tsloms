@@ -63,15 +63,15 @@ import { getDeviceMedia } from '@/api/media'
 
 // ---------------- 状态 ----------------
 const deviceOptions = ref<any[]>([])
-const mediaMap = ref<Record<number, any[]>>({}) // hw_id -> monitoring media list
-const selDeviceIds = ref<number[]>([])
+const mediaMap = ref<Record<string, any[]>>({}) // hw_id -> monitoring media list
+const selDeviceIds = ref<string[]>([])
 const gridSize = ref(4) // 1/4/9/16
 const started = ref(false)
 const isFullscreen = ref(false)
 
 interface Cell {
   key: string
-  hwId?: number
+  hwId?: string
   label: string
   url?: string
   playable: boolean
@@ -135,7 +135,7 @@ async function startPlay() {
   for (const hwId of selDeviceIds.value) {
     if (!mediaMap.value[hwId]) {
       try {
-        const res = await getDeviceMedia({ device_hw_id: String(hwId), media_type: 'monitoring', page_size: 5 })
+        const res = await getDeviceMedia({ device_hw_id: hwId, media_type: 'monitoring', page_size: 5 })
         mediaMap.value[hwId] = res.data?.list || []
       } catch { mediaMap.value[hwId] = [] }
     }

@@ -10,14 +10,14 @@ import (
 func TestBuildDeviceFacts_OfflineNoPackets(t *testing.T) {
 	model.InitTestDB()
 	inst := time.Now().AddDate(0, 0, -365)
-	dev := model.Device{HwID: 2001, Intersection: "离线路口", OnlineStatus: false, InstalledAt: &inst}
+	dev := model.Device{HwID: "2001", Intersection: "离线路口", OnlineStatus: false, InstalledAt: &inst}
 	model.DB.Create(&dev)
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 2001, FaultType: "lamp_off", CurrentR: 200, CurrentY: 50, CurrentG: 60})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 2001, FaultType: "abnormal_on", CurrentR: 250, CurrentY: 60, CurrentG: 70})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "2001", FaultType: "lamp_off", CurrentR: 200, CurrentY: 50, CurrentG: 60})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "2001", FaultType: "abnormal_on", CurrentR: 250, CurrentY: 60, CurrentG: 70})
 
 	f := BuildDeviceFacts(&dev)
-	if f.HwID != 2001 {
-		t.Errorf("HwID=%d", f.HwID)
+	if f.HwID != "2001" {
+		t.Errorf("HwID=%s", f.HwID)
 	}
 	if f.Online {
 		t.Error("应离线")
@@ -44,14 +44,14 @@ func TestBuildDeviceFacts_OfflineNoPackets(t *testing.T) {
 func TestBuildDeviceFacts_OnlineSomePackets(t *testing.T) {
 	model.InitTestDB()
 	inst := time.Now()
-	dev := model.Device{HwID: 2002, Intersection: "在线路口", OnlineStatus: true, InstalledAt: &inst}
+	dev := model.Device{HwID: "2002", Intersection: "在线路口", OnlineStatus: true, InstalledAt: &inst}
 	model.DB.Create(&dev)
 	// 2 条报文 → packetCount<5 → OfflineCount = (30-2)/6
 	now := time.Now()
-	model.DB.Create(&model.PacketLog{DeviceHwID: 2002, ParsedResult: "{\"current\":1}", ReceivedAt: now})
-	model.DB.Create(&model.PacketLog{DeviceHwID: 2002, ParsedResult: "{\"current\":2}", ReceivedAt: now})
+	model.DB.Create(&model.PacketLog{DeviceHwID: "2002", ParsedResult: "{\"current\":1}", ReceivedAt: now})
+	model.DB.Create(&model.PacketLog{DeviceHwID: "2002", ParsedResult: "{\"current\":2}", ReceivedAt: now})
 	// 未关闭的反馈 → HasMediaAnomaly
-	hw := uint32(2002)
+	hw := "2002"
 	model.DB.Create(&model.Feedback{DeviceHwID: &hw, Title: "异常", Status: "open"})
 
 	f := BuildDeviceFacts(&dev)
@@ -69,11 +69,11 @@ func TestBuildDeviceFacts_OnlineSomePackets(t *testing.T) {
 
 func TestRunRulePrediction_Idempotent(t *testing.T) {
 	model.InitTestDB()
-	dev := model.Device{HwID: 2003, Intersection: "预测路口", OnlineStatus: true}
+	dev := model.Device{HwID: "2003", Intersection: "预测路口", OnlineStatus: true}
 	model.DB.Create(&dev)
 	p1 := RunRulePrediction(&dev, "B20260816")
-	if p1.DeviceHwID != 2003 {
-		t.Errorf("DeviceHwID=%d", p1.DeviceHwID)
+	if p1.DeviceHwID != "2003" {
+		t.Errorf("DeviceHwID=%s", p1.DeviceHwID)
 	}
 	if p1.RiskLevel == "" {
 		t.Error("应有风险等级")
@@ -81,12 +81,12 @@ func TestRunRulePrediction_Idempotent(t *testing.T) {
 	// 幂等覆盖：同批次再跑一次，应只有 1 条
 	RunRulePrediction(&dev, "B20260816")
 	var cnt int64
-	model.DB.Model(&model.AIPrediction{}).Where("device_hw_id = ? AND batch_id = ?", 2003, "B20260816").Count(&cnt)
+	model.DB.Model(&model.AIPrediction{}).Where("device_hw_id = ? AND batch_id = ?", "2003", "B20260816").Count(&cnt)
 	if cnt != 1 {
 		t.Errorf("幂等覆盖失败: cnt=%d", cnt)
 	}
 	var rec model.AIPrediction
-	model.DB.Where("device_hw_id = ? AND batch_id = ?", 2003, "B20260816").First(&rec)
+	model.DB.Where("device_hw_id = ? AND batch_id = ?", "2003", "B20260816").First(&rec)
 	if rec.BatchID != "B20260816" || rec.HealthScore == 0 {
 		t.Errorf("预测记录异常: %+v", rec)
 	}

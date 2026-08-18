@@ -77,7 +77,7 @@ func ExportFaults(c *gin.Context) {
 		}
 		_ = writer.Write([]string{
 			strconv.FormatUint(uint64(f.ID), 10),
-			strconv.FormatUint(uint64(f.DeviceHwID), 10),
+			f.DeviceHwID,
 			strconv.Itoa(int(f.ErrCode)),
 			faultTypeCN[f.FaultType],
 			f.FaultLevel,

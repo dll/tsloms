@@ -7,6 +7,7 @@ import (
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tsloms/server/internal/model"
+	"github.com/tsloms/server/internal/recognition"
 )
 
 // buildCheckinFrame 构造一条合法的签到告警帧（带1条事件记录）
@@ -60,7 +61,7 @@ func TestMqttHandleCheckin_UpsertDevice(t *testing.T) {
 	h.HandleMessage(nil, msgStub("trafficLight/up/8001/U", payload))
 
 	var d model.Device
-	if err := model.DB.Where("hw_id = ?", 8001).First(&d).Error; err != nil {
+	if err := model.DB.Where("hw_id = ?", recognition.LedUUID(8001)).First(&d).Error; err != nil {
 		t.Fatalf("应创建设备: %v", err)
 	}
 	if !d.OnlineStatus {
@@ -68,7 +69,7 @@ func TestMqttHandleCheckin_UpsertDevice(t *testing.T) {
 	}
 	// 报文日志已记录
 	var pl int64
-	model.DB.Model(&model.PacketLog{}).Where("device_hw_id = ?", 8001).Count(&pl)
+	model.DB.Model(&model.PacketLog{}).Where("device_hw_id = ?", recognition.LedUUID(8001)).Count(&pl)
 	if pl < 1 {
 		t.Errorf("应记录报文日志, got %d", pl)
 	}
@@ -81,7 +82,7 @@ func TestMqttHandleAlarm_CriticalFault(t *testing.T) {
 	h.HandleMessage(nil, msgStub("trafficLight/up/8002/U", payload))
 
 	var f model.FaultRecord
-	if err := model.DB.Where("device_hw_id = ?", 8002).First(&f).Error; err != nil {
+	if err := model.DB.Where("device_hw_id = ?", recognition.LedUUID(8002)).First(&f).Error; err != nil {
 		t.Fatalf("应创建故障: %v", err)
 	}
 	if f.FaultLevel != "critical" {
@@ -114,7 +115,7 @@ func TestMqttHandlePowerOn(t *testing.T) {
 	payload := buildCheckinFrame(CmdPowerOn, 8003, 0)
 	h.HandleMessage(nil, msgStub("trafficLight/up/8003/U", payload))
 	var d model.Device
-	if err := model.DB.Where("hw_id = ?", 8003).First(&d).Error; err != nil {
+	if err := model.DB.Where("hw_id = ?", recognition.LedUUID(8003)).First(&d).Error; err != nil {
 		t.Fatalf("上电报备应创建设备: %v", err)
 	}
 }
@@ -192,7 +193,7 @@ func TestMqttHelpers(t *testing.T) {
 	h.HandleCheckin(&CmdFrame{Cmd: CmdCheckin, SwVer: 1, CmdSeq: 1}, nil, "trafficLight/up/8001/U")
 	h.HandlePowerOn(&CmdFrame{Cmd: CmdPowerOn, SwVer: 1, CmdSeq: 1}, nil, "trafficLight/up/8001/U")
 	// HandleAlarm 带记录但无 DB 事件
-	model.DB.Create(&model.Device{HwID: 8009})
+	model.DB.Create(&model.Device{HwID: recognition.LedUUID(8009)})
 	rec := EventRecord{LedHwID: 8009, ErrCode: -4}
 	h.HandleAlarm(&CmdFrame{Cmd: CmdAlarm, CmdSeq: 3}, &EventPak{Records: []EventRecord{rec}})
 	// upsertDevice nil-DB 安全
@@ -200,7 +201,7 @@ func TestMqttHelpers(t *testing.T) {
 	model.DB = nil
 	h.upsertDevice(rec, time.Now())
 	h.processFault(&rec)
-	h.createWorkOrder(&model.FaultRecord{ID: 1, DeviceHwID: 1})
-	h.logPacket(1, nil, 0, 0, "", true)
+	h.createWorkOrder(&model.FaultRecord{ID: 1, DeviceHwID: "1"})
+	h.logPacket("1", nil, 0, 0, "", true)
 	model.DB = oldDB
 }

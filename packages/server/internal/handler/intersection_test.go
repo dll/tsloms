@@ -25,12 +25,12 @@ func TestListIntersections_Aggregates(t *testing.T) {
 	lat1 := 31.2304
 	lng1 := 121.4737
 	// 路口A 两台设备，一台在线；路口B 一台设备
-	model.DB.Create(&model.Device{HwID: 1, Intersection: "人民路口", OnlineStatus: true, Lat: &lat1, Lng: &lng1})
-	model.DB.Create(&model.Device{HwID: 2, Intersection: "人民路口", OnlineStatus: false, Lat: &lat1, Lng: &lng1})
-	model.DB.Create(&model.Device{HwID: 3, Intersection: "中山路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1", Intersection: "人民路口", OnlineStatus: true, Lat: &lat1, Lng: &lng1})
+	model.DB.Create(&model.Device{HwID: "2", Intersection: "人民路口", OnlineStatus: false, Lat: &lat1, Lng: &lng1})
+	model.DB.Create(&model.Device{HwID: "3", Intersection: "中山路口", OnlineStatus: true})
 
 	// 设备1 有活跃故障 -> 路口A 故障数 1
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred})
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/intersections", nil))

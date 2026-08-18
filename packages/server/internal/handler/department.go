@@ -6,6 +6,19 @@ import (
 )
 
 // ListDepartments 部门列表（含各部门人数、子部门层级展开）。管理员可增删改，其余角色可读。
+// PublicDepartments GET /public/departments
+// 公开轻量部门列表（仅 id/name），供未登录用户自助注册选择归属部门，
+// 避免对外暴露部门人数/负责人等内部信息。
+func PublicDepartments(c *gin.Context) {
+	var depts []model.Department
+	model.DB.Order("id ASC").Find(&depts)
+	out := make([]gin.H, 0, len(depts))
+	for _, d := range depts {
+		out = append(out, gin.H{"id": d.ID, "name": d.Name})
+	}
+	ok(c, gin.H{"list": out, "total": len(out)})
+}
+
 func ListDepartments(c *gin.Context) {
 	var depts []model.Department
 	model.DB.Order("id ASC").Find(&depts)

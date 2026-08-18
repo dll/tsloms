@@ -12,13 +12,13 @@ func adviceSeed(t *testing.T) (uint, uint) {
 	model.InitTestDB()
 	op := model.User{Username: "op_adv", PasswordHash: "x", Role: model.RoleOperator}
 	model.DB.Create(&op)
-	model.DB.Create(&model.Device{HwID: 4001, Intersection: "建议路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "4001", Intersection: "建议路口", OnlineStatus: true})
 	now := time.Now()
-	f := model.FaultRecord{DeviceHwID: 4001, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
+	f := model.FaultRecord{DeviceHwID: "4001", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now, CurrentR: 300}
 	model.DB.Create(&f)
 	// 关联工单 + 历史领料
-	wo := model.WorkOrder{OrderNo: "WOadv", FaultID: f.ID, DeviceHwID: 4001, Status: model.WorkOrderStatusProcessing, Result: "更换灯珠"}
+	wo := model.WorkOrder{OrderNo: "WOadv", FaultID: f.ID, DeviceHwID: "4001", Status: model.WorkOrderStatusProcessing, Result: "更换灯珠"}
 	model.DB.Create(&wo)
 	woID := wo.ID
 	model.DB.Create(&model.MaterialStock{MaterialID: 1, MaterialName: "红灯灯珠", WorkOrderID: &woID, Type: model.StockTypeUse, Quantity: -1})
@@ -88,7 +88,7 @@ func TestAdviceHelpers(t *testing.T) {
 		t.Error("buildFaultRulePlan 空")
 	}
 	// buildCopilotRule（无故障/无备件分支）
-	wo := &model.WorkOrder{OrderNo: "W1", DeviceHwID: 1}
+	wo := &model.WorkOrder{OrderNo: "W1", DeviceHwID: "1"}
 	if p := buildCopilotRule(wo, nil, nil); p == "" {
 		t.Error("buildCopilotRule 空")
 	}
@@ -116,11 +116,11 @@ func TestAdviceHelpers(t *testing.T) {
 	}
 	// deviceBrief
 	model.InitTestDB()
-	model.DB.Create(&model.Device{HwID: 77, Intersection: "某路口"})
-	if deviceBrief(77) != "某路口" {
-		t.Errorf("deviceBrief=%q", deviceBrief(77))
+	model.DB.Create(&model.Device{HwID: "77", Intersection: "某路口"})
+	if deviceBrief("77") != "某路口" {
+		t.Errorf("deviceBrief=%q", deviceBrief("77"))
 	}
-	if deviceBrief(999) != "" {
+	if deviceBrief("999") != "" {
 		t.Error("deviceBrief 不存在设备应空")
 	}
 	// joinStr / joinUsed

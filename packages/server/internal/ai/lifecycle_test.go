@@ -107,12 +107,12 @@ func TestLifecycleTypeCount(t *testing.T) {
 }
 
 func TestStrOr(t *testing.T) {
-	var p *uint32
+	var p *string
 	if strOr(p, "-") != "-" {
 		t.Error("nil 指针应返回默认值")
 	}
-	v := uint32(7)
+	v := "7"
 	if strOr(&v, "-") != "7" {
-		t.Error("指针应返回数字")
+		t.Error("指针应返回字符串")
 	}
 }

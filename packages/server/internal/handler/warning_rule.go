@@ -42,7 +42,7 @@ func ListWarningRules(c *gin.Context) {
 type warningRuleRequest struct {
 	Name          string  `json:"name"`
 	CrossingID    *uint   `json:"crossing_id"`
-	DeviceHwID    *uint32 `json:"device_hw_id"`
+	DeviceHwID    *string `json:"device_hw_id"`
 	WarningCode   *int    `json:"warning_code"`
 	Level         string  `json:"level"`
 	EffectiveType string  `json:"effective_type"`

@@ -7,7 +7,7 @@ import (
 
 // DeviceFacts 单台设备的预测输入（规则引擎汇总）
 type DeviceFacts struct {
-	HwID            uint32
+	HwID            string
 	Intersection    string
 	AgeDays         int      // 灯龄(天)
 	Online          bool     // 当前是否在线
@@ -24,7 +24,7 @@ type DeviceFacts struct {
 
 // Prediction 单设备预测结果
 type Prediction struct {
-	DeviceHwID   uint32   `json:"device_hw_id"`
+	DeviceHwID   string   `json:"device_hw_id"`
 	Intersection string   `json:"intersection"`
 	HealthScore  int      `json:"health_score"` // 0-100
 	RiskLevel    string   `json:"risk_level"`   // low/medium/high/critical

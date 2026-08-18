@@ -91,10 +91,10 @@ func UploadDeviceMedia(c *gin.Context) {
 		}
 	}
 
-	// 解析 hwID：仅接受纯数字，避免路径穿越（sanitize，防 ../ 注入文件名）
-	hwIDUint, err := parseUintStrict(hwID)
-	if err != nil {
-		badRequest(c, "设备硬件ID不合法（须为数字）")
+	// 解析 hwID：uuid 字符串仅保留字母数字（sanitize，防 ../ 注入文件名）
+	hwIDSafe := sanitizeHwID(hwID)
+	if hwIDSafe == "" {
+		badRequest(c, "设备硬件ID不合法")
 		return
 	}
 
@@ -134,8 +134,8 @@ func UploadDeviceMedia(c *gin.Context) {
 		return
 	}
 
-	// 生成唯一文件名（纯数字 hwID + 时间戳 + 扩展名，无用户可控字符）
-	fname := fmt.Sprintf("%d_%d%s", hwIDUint, time.Now().UnixMilli(), ext)
+	// 生成唯一文件名（uuid hwID + 时间戳 + 扩展名，无用户可控字符）
+	fname := fmt.Sprintf("%s_%d%s", hwIDSafe, time.Now().UnixMilli(), ext)
 	fpath := filepath.Join(dir, fname)
 	if err := c.SaveUploadedFile(file, fpath); err != nil {
 		serverError(c, err)
@@ -146,7 +146,7 @@ func UploadDeviceMedia(c *gin.Context) {
 	rel := filepath.ToSlash(filepath.Join(mediaURLPrefix(), time.Now().Format("200601"), fname))
 
 	media := model.DeviceMedia{
-		DeviceHwID:    hwIDUint,
+		DeviceHwID:    hwIDSafe,
 		MediaType:     mediaType,
 		Category:      categoryOf(ext),
 		Title:         title,
@@ -176,7 +176,7 @@ func UploadDeviceMedia(c *gin.Context) {
 // body: device_hw_id, media_type(monitoring/timelapse), title, url, compatible_url, thumbnail, duration
 func CreateRTSPMedia(c *gin.Context) {
 	var req struct {
-		DeviceHwID    uint32 `json:"device_hw_id" binding:"required"`
+		DeviceHwID    string `json:"device_hw_id" binding:"required"`
 		MediaType     string `json:"media_type" binding:"required"`
 		Title         string `json:"title"`
 		URL           string `json:"url" binding:"required"`
@@ -312,6 +312,18 @@ func validStreamURL(s string) bool {
 		}
 	}
 	return false
+}
+
+// sanitizeHwID 清洗设备硬件ID：仅保留字母/数字（uuid 允许十六进制与字母），
+// 用于上传文件名前缀，杜绝路径穿越注入。
+func sanitizeHwID(s string) string {
+	var b strings.Builder
+	for _, ch := range s {
+		if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+			b.WriteRune(ch)
+		}
+	}
+	return b.String()
 }
 
 // parseUintStrict 严格解析非负整数：空字符串返回 0（无设备），非纯数字报错。

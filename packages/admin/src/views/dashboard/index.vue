@@ -482,7 +482,7 @@ async function initRankBar() {
     const limit = rangeDays.value === 7 ? 5 : 10
     const res = await getDeviceFaultRank({ limit, days: rangeDays.value })
     const rank = res.data.rank || []
-    const labels = rank.map((item: { device_hw_id: number }) => '#' + item.device_hw_id)
+    const labels = rank.map((item: { device_hw_id: string }) => '#' + item.device_hw_id)
     const counts = rank.map((item: { count: number }) => item.count)
     await nextTick()
     if (!rankBarRef.value) return

@@ -24,7 +24,7 @@ export interface FirmwarePackage {
 export interface FirmwareUpgrade {
   id: number
   firmware_id: number
-  device_hw_id: number
+  device_hw_id: string
   target_version: string
   status: string
   error_msg?: string
@@ -71,7 +71,7 @@ export function getFirmwareUpgrades(params: { page?: number; page_size?: number;
 }
 
 // 发起设备升级
-export function createFirmwareUpgrade(data: { device_hw_id: number; firmware_id: number }): Promise<ApiResponse> {
+export function createFirmwareUpgrade(data: { device_hw_id: string; firmware_id: number }): Promise<ApiResponse> {
   return request.post('/firmware-upgrades', data) as unknown as Promise<ApiResponse>
 }
 

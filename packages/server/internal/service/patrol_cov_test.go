@@ -15,7 +15,7 @@ func svcSeed(t *testing.T) {
 	model.InitTestDB()
 	op := model.User{Username: "op_svc", Role: model.RoleOperator, Status: model.UserStatusEnabled, PasswordHash: "x"}
 	model.DB.Create(&op)
-	model.DB.Create(&model.Device{HwID: 6001, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "6001", OnlineStatus: true})
 	// 低库存 + 缺货物料
 	model.DB.Create(&model.Material{Code: "L1", Name: "低库存灯珠", Status: "active", Stock: 2, Threshold: 5})
 	model.DB.Create(&model.Material{Code: "O1", Name: "缺货电源", Status: "active", Stock: 0, Threshold: 3})
@@ -54,7 +54,7 @@ func TestPatrol_CheckAlerts(t *testing.T) {
 	now := time.Now()
 	model.DB.Create(&model.WorkOrder{OrderNo: "WOov", Status: model.WorkOrderStatusPending, CreatedAt: now.Add(-48 * time.Hour)})
 	// 高风险设备
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 6001, BatchID: "B1", RiskLevel: "high", HealthScore: 40, PredictType: "x"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "6001", BatchID: "B1", RiskLevel: "high", HealthScore: 40, PredictType: "x"})
 	s := &ai.DailySnapshot{Date: "2026-08-16", OverdueOrders: 2,
 		HighRiskDevices: []ai.MaterialMin{{ID: 1, Name: "设备#6001"}}}
 	p.checkAlerts(s)
@@ -91,12 +91,12 @@ func TestOfflineCheck_RunOnce(t *testing.T) {
 	model.InitTestDB()
 	// 超时设备（在线 + last_checkin 很久前）→ 置离线
 	old := time.Now().Add(-30 * time.Minute)
-	model.DB.Create(&model.Device{HwID: 7001, OnlineStatus: true, LastCheckinAt: &old})
+	model.DB.Create(&model.Device{HwID: "7001", OnlineStatus: true, LastCheckinAt: &old})
 	// 未超时设备
 	recent := time.Now()
-	model.DB.Create(&model.Device{HwID: 7002, OnlineStatus: true, LastCheckinAt: &recent})
+	model.DB.Create(&model.Device{HwID: "7002", OnlineStatus: true, LastCheckinAt: &recent})
 	// 无签到设备（last_checkin NULL）不受影响
-	model.DB.Create(&model.Device{HwID: 7003, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "7003", OnlineStatus: true})
 
 	cfg := config.Load()
 	cfg.OfflineAfterMin = 6
@@ -104,8 +104,8 @@ func TestOfflineCheck_RunOnce(t *testing.T) {
 	o.runOnce()
 
 	var d1, d2 model.Device
-	model.DB.Where("hw_id = ?", 7001).First(&d1)
-	model.DB.Where("hw_id = ?", 7002).First(&d2)
+	model.DB.Where("hw_id = ?", "7001").First(&d1)
+	model.DB.Where("hw_id = ?", "7002").First(&d2)
 	if d1.OnlineStatus {
 		t.Error("超时设备应置离线")
 	}

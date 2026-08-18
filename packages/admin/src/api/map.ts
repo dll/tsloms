@@ -1,10 +1,15 @@
 import request from '@/utils/request'
 import type { ApiResponse } from '@/utils/request'
 
+// 路口详情聚合（点击卡片：设备/预警/故障/工单/维护列表）
+export function getCrossingDetail(id: number | string): Promise<ApiResponse> {
+  return request.get(`/map/crossing/${id}/detail`) as unknown as Promise<ApiResponse>
+}
+
 // 设备列表查询（地图需要全量带经纬度设备）
 export interface MapDevice {
   id?: number
-  hw_id?: number
+  hw_id?: string
   intersection?: string
   lat: number | null
   lng: number | null

@@ -23,9 +23,9 @@ func TestRegression_C1_RejectToPendingMerge(t *testing.T) {
 	rg.POST("/work-orders", CreateWorkOrder)
 	rg.PUT("/work-orders/:id/status", UpdateWorkOrderStatus)
 
-	f := seedFault(9501, model.FaultStatusOccurred)
+	f := seedFault("9501", model.FaultStatusOccurred)
 	_, body := doReq(t, r, "POST", "/api/v1/work-orders",
-		`{"fault_id":`+uid(f.ID)+`,"device_hw_id":9501}`)
+		`{"fault_id":`+uid(f.ID)+`,"device_hw_id":"9501"}`)
 	wid := uint(body["data"].(map[string]interface{})["work_order"].(map[string]interface{})["id"].(float64))
 
 	// rejected → 工单应为 rejected、closed_at 被填（模拟曾关闭）
@@ -71,20 +71,20 @@ func TestRegression_B1_ListWorkOrdersPreloadNames(t *testing.T) {
 	registerWorkOrderRoutes(r)
 
 	owner := seedOperator("b1_owner")
-	f1 := seedFault(9601, model.FaultStatusOccurred)
-	f2 := seedFault(9602, model.FaultStatusOccurred)
+	f1 := seedFault("9601", model.FaultStatusOccurred)
+	f2 := seedFault("9602", model.FaultStatusOccurred)
 	ghost := uint(88888)
 
 	mkWO := func(faultID uint, assignee *uint) uint {
 		wo := model.WorkOrder{OrderNo: model.NextOrderNo(model.DB), FaultID: faultID,
-			DeviceHwID: 1, Status: model.WorkOrderStatusPending, AssigneeID: assignee}
+			DeviceHwID: "1", Status: model.WorkOrderStatusPending, AssigneeID: assignee}
 		model.DB.Create(&wo)
 		return wo.ID
 	}
 	// 三条工单：有处理人、无处理人、处理人指向不存在用户
-	_ = mkWO(f1.ID, &owner.ID)                                      // assignee_name 应为 b1_owner
-	_ = mkWO(f2.ID, nil)                                            // 无处理人 → 空
-	_ = mkWO(seedFault(9603, model.FaultStatusOccurred).ID, &ghost) // ghost → 空
+	_ = mkWO(f1.ID, &owner.ID)                                        // assignee_name 应为 b1_owner
+	_ = mkWO(f2.ID, nil)                                              // 无处理人 → 空
+	_ = mkWO(seedFault("9603", model.FaultStatusOccurred).ID, &ghost) // ghost → 空
 
 	code, body := doReq(t, r, "GET", "/api/v1/work-orders?page_size=50", "")
 	if code != 200 {
@@ -149,15 +149,15 @@ func TestRegression_B1_ListFaultsPreloadNames(t *testing.T) {
 
 	owner := seedOperator("fault_owner")
 	repairer := seedOperator("fault_repairer")
-	f1 := model.FaultRecord{DeviceHwID: 9701, ErrCode: -1, FaultType: "lamp_off",
+	f1 := model.FaultRecord{DeviceHwID: "9701", ErrCode: -1, FaultType: "lamp_off",
 		FaultLevel: "critical", Status: model.FaultStatusOccurred,
 		OwnerID: &owner.ID, RepairerID: &repairer.ID}
 	model.DB.Create(&f1)
-	f2 := model.FaultRecord{DeviceHwID: 9702, ErrCode: -2, FaultType: "lamp_off",
+	f2 := model.FaultRecord{DeviceHwID: "9702", ErrCode: -2, FaultType: "lamp_off",
 		FaultLevel: "critical", Status: model.FaultStatusOccurred} // 无负责人/维修人
 	model.DB.Create(&f2)
 	ghost := uint(88887)
-	f3 := model.FaultRecord{DeviceHwID: 9703, ErrCode: -3, FaultType: "lamp_off",
+	f3 := model.FaultRecord{DeviceHwID: "9703", ErrCode: -3, FaultType: "lamp_off",
 		FaultLevel: "critical", Status: model.FaultStatusOccurred, OwnerID: &ghost}
 	model.DB.Create(&f3)
 
@@ -219,10 +219,10 @@ func TestRegression_B1_ActiveStatusFilter(t *testing.T) {
 	r := covSetup(t)
 	registerFaultListRoute(r)
 
-	seedFault(9801, model.FaultStatusOccurred)
-	seedFault(9802, model.FaultStatusConfirmed)
-	seedFault(9803, model.FaultStatusDispatched)
-	seedFault(9804, model.FaultStatusResolved)
+	seedFault("9801", model.FaultStatusOccurred)
+	seedFault("9802", model.FaultStatusConfirmed)
+	seedFault("9803", model.FaultStatusDispatched)
+	seedFault("9804", model.FaultStatusResolved)
 
 	// active 应命中前三条未解决，不含 resolved
 	code, body := doReq(t, r, "GET", "/api/v1/faults?status=active", "")

@@ -107,7 +107,7 @@ func TestCrossing_CRUD_AndDeviceBound(t *testing.T) {
 	}
 
 	// 新增设备并挂接该路口
-	_, body3 := doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":1001,"crossing_id":`+strconv.FormatUint(uint64(cid), 10)+`,"road_name":"测试路"}`)
+	_, body3 := doReq(t, r, "POST", "/api/v1/devices", `{"hw_id":"1001","crossing_id":`+strconv.FormatUint(uint64(cid), 10)+`,"road_name":"测试路"}`)
 	if body3["code"].(float64) != 0 {
 		t.Fatalf("新增设备失败: %v", body3)
 	}
@@ -143,7 +143,7 @@ func TestCrossing_CRUD_AndDeviceBound(t *testing.T) {
 
 func TestUpdateDevice_LocationPick_Fields(t *testing.T) {
 	r := p0CrossingEngine(t)
-	d := model.Device{HwID: 2001, Intersection: "原路口"}
+	d := model.Device{HwID: "2001", Intersection: "原路口"}
 	model.DB.Create(&d)
 
 	// 地图拾取：更新经纬度 + 挂接路口/道路
@@ -179,7 +179,7 @@ func TestUpdateDevice_LocationPick_Fields(t *testing.T) {
 func TestUpdateDevice_NoArea_KeepsOld(t *testing.T) {
 	r := p0CrossingEngine(t)
 	cid := uint(7)
-	d := model.Device{HwID: 3001, CrossingID: &cid}
+	d := model.Device{HwID: "3001", CrossingID: &cid}
 	model.DB.Create(&d)
 	// 只更新经纬度，不传区划字段（nil → 不改动）
 	_, body := doReq(t, r, "PUT", "/api/v1/devices/"+uid(d.ID), `{"lat":31.1,"lng":121.1}`)

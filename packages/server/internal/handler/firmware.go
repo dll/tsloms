@@ -337,7 +337,7 @@ func ListFirmwareUpgrades(c *gin.Context) {
 // body: device_hw_id, firmware_id
 func CreateFirmwareUpgrade(c *gin.Context) {
 	var req struct {
-		DeviceHwID uint32 `json:"device_hw_id" binding:"required"`
+		DeviceHwID string `json:"device_hw_id" binding:"required"`
 		FirmwareID uint   `json:"firmware_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -381,7 +381,7 @@ func CreateFirmwareUpgrade(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
-	recordOperation(c, model.OpCreate, fmt.Sprintf("firmware-upgrade/%d", rec.ID), fmt.Sprintf("发起设备 %d 固件升级到 %s", req.DeviceHwID, fw.Version))
+	recordOperation(c, model.OpCreate, fmt.Sprintf("firmware-upgrade/%d", rec.ID), fmt.Sprintf("发起设备 %s 固件升级到 %s", req.DeviceHwID, fw.Version))
 	ok(c, gin.H{"record": rec.ID, "message": "升级任务已创建"})
 }
 

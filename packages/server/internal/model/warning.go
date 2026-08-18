@@ -10,7 +10,7 @@ import "time"
 // 转工单后回填 WorkOrderID 并置 Status=transferred（已转）。
 type Warning struct {
 	ID            uint       `json:"id" gorm:"primaryKey"`
-	DeviceHwID    uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID    string     `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	CrossingID    *uint      `json:"crossing_id" gorm:"index;comment:路口ID(可空)"`
 	EquipmentUUID string     `json:"equipment_uuid" gorm:"size:64;comment:冗余设备/信号机地址码"`
 	WarningCode   int        `json:"warning_code" gorm:"index;comment:告警内容码(对齐识别引擎errCode -1~-14, 0=正常)"`
@@ -68,7 +68,7 @@ type WarningRule struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	Name          string    `json:"name" gorm:"size:64;comment:规则名称"`
 	CrossingID    *uint     `json:"crossing_id" gorm:"index;comment:路口ID(空=全部路口)"`
-	DeviceHwID    *uint32   `json:"device_hw_id" gorm:"index;comment:设备硬件ID(空=全部设备)"`
+	DeviceHwID    *string   `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid,空=全部设备)"`
 	WarningCode   *int      `json:"warning_code" gorm:"index;comment:告警内容码(空=全部告警)"`
 	Level         string    `json:"level" gorm:"size:16;comment:级别(空=全部级别)"`
 	EffectiveType string    `json:"effective_type" gorm:"size:16;default:permanent;comment:生效模式(permanent/period)"`

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tsloms/server/internal/model"
+	"github.com/tsloms/server/internal/recognition"
 )
 
 // ============================================================================
@@ -42,7 +43,7 @@ func TestRegression_B2_LastSeenAlwaysAdvances(t *testing.T) {
 
 	h.processFault(rec)
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 	firstLastSeen := f.LastSeen
 
 	// 模拟等一小段（>1s，避免同毫秒）后，上报一条电流/灯态完全相同的事件
@@ -50,11 +51,11 @@ func TestRegression_B2_LastSeenAlwaysAdvances(t *testing.T) {
 	rec2 := mkRec(9001, LEDErrROFF, int(StateR), 100, 100, 100) // 与首条完全一致
 	h.processFault(rec2)
 
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 
 	// 仍只有 1 条故障（去重窗口内未新建）
 	var count int64
-	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", rec.LedHwID).Count(&count)
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).Count(&count)
 	if count != 1 {
 		t.Fatalf("去重窗口内故障数 = %d, 期望 1", count)
 	}
@@ -83,7 +84,7 @@ func TestRegression_B2_MaterialFieldsUpdatedOnChange(t *testing.T) {
 	h.processFault(changed)
 
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 
 	if f.CurrentR != 250 || f.CurrentY != 180 || f.CurrentG != 90 {
 		t.Errorf("电流变化应更新: R=%d Y=%d G=%d, 期望 250/180/90", f.CurrentR, f.CurrentY, f.CurrentG)
@@ -104,7 +105,7 @@ func TestRegression_B2_LedStateUpdatedOnChange(t *testing.T) {
 	h.processFault(changed)
 
 	var f model.FaultRecord
-	model.DB.Where("device_hw_id = ?", rec.LedHwID).First(&f)
+	model.DB.Where("device_hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&f)
 	if f.LedState != int8(StateY) {
 		t.Errorf("灯态变化应更新: %d, 期望 %d", f.LedState, StateY)
 	}
@@ -124,7 +125,7 @@ func TestRegression_B3_SameFrameUpsertMerge(t *testing.T) {
 	h.HandleCheckin(&CmdFrame{Cmd: CmdCheckin, SwVer: 1, CmdSeq: 1}, eventPak, "trafficLight/up/8001/9101/U")
 
 	var devices []model.Device
-	model.DB.Where("hw_id = ?", recs[0].LedHwID).Find(&devices)
+	model.DB.Where("hw_id = ?", recognition.LedUUID(recs[0].LedHwID)).Find(&devices)
 	if len(devices) != 1 {
 		t.Fatalf("同帧同硬件ID应只创建 1 台设备, 实际 %d", len(devices))
 	}
@@ -148,19 +149,19 @@ func TestRegression_B3_SameFrameMergePreservesLastRecord(t *testing.T) {
 
 	// 设备只 upsert 一次
 	var dc int64
-	model.DB.Model(&model.Device{}).Where("hw_id = 9102").Count(&dc)
+	model.DB.Model(&model.Device{}).Where("hw_id = ?", recognition.LedUUID(9102)).Count(&dc)
 	if dc != 1 {
 		t.Errorf("同帧同设备应只 upsert 一次, 实际 %d", dc)
 	}
 	// 不同 errCode 各建一条故障记录（逐条研判，不去重合并）
 	var fcount int64
-	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = 9102").Count(&fcount)
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", recognition.LedUUID(9102)).Count(&fcount)
 	if fcount != 2 {
 		t.Errorf("不同 errCode 应逐条建故障, 实际 %d", fcount)
 	}
 	// 仅 critical 故障建单
 	var wo int64
-	model.DB.Model(&model.WorkOrder{}).Where("device_hw_id = 9102").Count(&wo)
+	model.DB.Model(&model.WorkOrder{}).Where("device_hw_id = ?", recognition.LedUUID(9102)).Count(&wo)
 	if wo != 1 {
 		t.Errorf("同帧内 critical 故障应建 1 个工单, 实际 %d", wo)
 	}
@@ -184,7 +185,7 @@ func TestRegression_B3_SameFrameLastRecordWinsVersion(t *testing.T) {
 	h.HandleCheckin(&CmdFrame{Cmd: CmdCheckin, SwVer: 1, CmdSeq: 1}, eventPak, "trafficLight/up/8001/9103/U")
 
 	var devices []model.Device
-	model.DB.Where("hw_id = ?", uint32(9103)).Find(&devices)
+	model.DB.Where("hw_id = ?", recognition.LedUUID(9103)).Find(&devices)
 	if len(devices) != 1 {
 		t.Fatalf("同帧同硬件ID应只创建 1 台设备, 实际 %d", len(devices))
 	}

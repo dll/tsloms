@@ -39,8 +39,8 @@ func mediaEngine(t *testing.T) *gin.Engine {
 
 func TestMedia_List(t *testing.T) {
 	r := mediaEngine(t)
-	model.DB.Create(&model.DeviceMedia{DeviceHwID: 11, MediaType: model.MediaEvidence, Category: model.MediaPhoto, Source: model.MediaSourceUpload})
-	model.DB.Create(&model.DeviceMedia{DeviceHwID: 22, MediaType: model.MediaMonitoring, Category: model.MediaVideo, Source: model.MediaSourceRTSP})
+	model.DB.Create(&model.DeviceMedia{DeviceHwID: "11", MediaType: model.MediaEvidence, Category: model.MediaPhoto, Source: model.MediaSourceUpload})
+	model.DB.Create(&model.DeviceMedia{DeviceHwID: "22", MediaType: model.MediaMonitoring, Category: model.MediaVideo, Source: model.MediaSourceRTSP})
 
 	for _, q := range []string{"", "?device_hw_id=11", "?media_type=evidence", "?source=upload"} {
 		code, body := doReq(t, r, "GET", "/api/v1/media"+q, "")
@@ -127,9 +127,9 @@ func TestMedia_Upload(t *testing.T) {
 
 func TestMedia_CreateRTSP(t *testing.T) {
 	r := mediaEngine(t)
-	model.DB.Create(&model.Device{HwID: 33, Intersection: "监控路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "33", Intersection: "监控路口", OnlineStatus: true})
 	// 成功（rtsp，无兼容地址 → warning）
-	code, body := doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":33,"media_type":"monitoring","title":"监控","url":"rtsp://192.168.1.1:554/stream"}`)
+	code, body := doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":"33","media_type":"monitoring","title":"监控","url":"rtsp://192.168.1.1:554/stream"}`)
 	mustOK(t, code, body, "RTSP登记")
 	// 缺参数
 	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{}`)
@@ -137,22 +137,22 @@ func TestMedia_CreateRTSP(t *testing.T) {
 		t.Errorf("缺参数应 400, got %d", code)
 	}
 	// 非法 media_type
-	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":33,"media_type":"evidence","url":"rtsp://x/stream"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":"33","media_type":"evidence","url":"rtsp://x/stream"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("非法media_type应 400, got %d", code)
 	}
 	// 非法 url
-	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":33,"media_type":"monitoring","url":"not-a-url"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":"33","media_type":"monitoring","url":"not-a-url"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("非法url应 400, got %d", code)
 	}
 	// 非法 compatible_url
-	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":33,"media_type":"monitoring","url":"rtsp://x/stream","compatible_url":"bad"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":"33","media_type":"monitoring","url":"rtsp://x/stream","compatible_url":"bad"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("非法compatible_url应 400, got %d", code)
 	}
 	// 设备不存在
-	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":999,"media_type":"monitoring","url":"rtsp://x/stream"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/media/streams", `{"device_hw_id":"999","media_type":"monitoring","url":"rtsp://x/stream"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("设备不存在应 400, got %d", code)
 	}
@@ -161,7 +161,7 @@ func TestMedia_CreateRTSP(t *testing.T) {
 func TestMedia_Delete(t *testing.T) {
 	r := mediaEngine(t)
 	// 上传的图片（可删文件）
-	m := model.DeviceMedia{DeviceHwID: 11, Source: model.MediaSourceUpload, URL: "/media/202601/a.jpg"}
+	m := model.DeviceMedia{DeviceHwID: "11", Source: model.MediaSourceUpload, URL: "/media/202601/a.jpg"}
 	model.DB.Create(&m)
 	code, _ := doReq(t, r, "DELETE", "/api/v1/media/"+uid(m.ID), "")
 	mustOK(t, code, map[string]interface{}{"code": float64(0)}, "删除媒体")

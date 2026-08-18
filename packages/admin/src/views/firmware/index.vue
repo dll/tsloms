@@ -323,7 +323,7 @@ function statusType(s: string) {
 // ===== 发起升级 =====
 const upgradeVisible = ref(false)
 const upgrading = ref(false)
-const upgradeForm = reactive<{ device_hw_id: number | null; firmware_id: number; targetVersion: string; description: string }>({
+const upgradeForm = reactive<{ device_hw_id: string | null; firmware_id: number; targetVersion: string; description: string }>({
   device_hw_id: null, firmware_id: 0, targetVersion: '', description: '',
 })
 const devLoading = ref(false)

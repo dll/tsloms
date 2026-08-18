@@ -33,7 +33,7 @@ func (FirmwarePackage) TableName() string {
 type FirmwareUpgradeRecord struct {
 	ID         uint       `json:"id" gorm:"primaryKey"`
 	FirmwareID uint       `json:"firmware_id" gorm:"index;comment:固件包ID"`
-	DeviceHwID uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID string     `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	TargetVer  string     `json:"target_version" gorm:"size:32;comment:目标固件版本"`
 	Status     string     `json:"status" gorm:"size:24;default:pending;comment:状态(pending/upgrading/success/failed)"`
 	ErrorMsg   string     `json:"error_msg" gorm:"size:500;comment:失败原因"`

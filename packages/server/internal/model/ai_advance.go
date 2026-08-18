@@ -31,7 +31,7 @@ type AIAdvice struct {
 	ID         uint      `json:"id" gorm:"primaryKey"`
 	BizType    string    `json:"biz_type" gorm:"size:24;index;comment:业务类型(fault/workorder)"`
 	BizID      uint      `json:"biz_id" gorm:"index;comment:关联业务ID"`
-	DeviceHwID uint32    `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID string    `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	Stage      string    `json:"stage" gorm:"size:24;comment:阶段(diagnose/dispatch/copilot/summary)"`
 	Priority   string    `json:"priority" gorm:"size:16;comment:建议优先级(P0/P1/P2)"`
 	Summary    string    `json:"summary" gorm:"type:text;comment:AI摘要/根因预判"`

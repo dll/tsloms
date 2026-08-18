@@ -205,10 +205,10 @@ func TestFirmware_Upgrades(t *testing.T) {
 	r := setupFirmwareEngine(t)
 	fw := seedFirmware("v2.0.0")
 	model.DB.Model(&model.FirmwarePackage{}).Where("id = ?", fw.ID).Update("published", true)
-	dev := model.Device{HwID: 42, OnlineStatus: true}
+	dev := model.Device{HwID: "42", OnlineStatus: true}
 	model.DB.Create(&dev)
 
-	code, body := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":42,"firmware_id":`+uid(fw.ID)+`}`)
+	code, body := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":"42","firmware_id":`+uid(fw.ID)+`}`)
 	if code != http.StatusOK {
 		t.Fatalf("创建升级失败 code=%d body=%v", code, body)
 	}
@@ -220,7 +220,7 @@ func TestFirmware_Upgrades(t *testing.T) {
 	if b2["data"].(map[string]interface{})["total"].(float64) != 1 {
 		t.Errorf("升级列表 total 期望 1, got %v", b2["data"].(map[string]interface{})["total"])
 	}
-	code3, _ := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":42,"firmware_id":`+uid(fw.ID)+`}`)
+	code3, _ := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":"42","firmware_id":`+uid(fw.ID)+`}`)
 	if code3 != http.StatusBadRequest {
 		t.Errorf("重复升级应 400, got %d", code3)
 	}
@@ -232,18 +232,18 @@ func TestFirmware_Upgrades(t *testing.T) {
 
 func TestFirmware_UpgradeValidation(t *testing.T) {
 	r := setupFirmwareEngine(t)
-	code, _ := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":999,"firmware_id":1}`)
+	code, _ := doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":"999","firmware_id":1}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("设备不存在应 400, got %d", code)
 	}
-	dev := model.Device{HwID: 55, OnlineStatus: true}
+	dev := model.Device{HwID: "55", OnlineStatus: true}
 	model.DB.Create(&dev)
-	code, _ = doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":55,"firmware_id":999}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":"55","firmware_id":999}`)
 	if code != http.StatusNotFound {
 		t.Errorf("固件不存在应 404, got %d", code)
 	}
 	fw := seedFirmware("v6.0.0")
-	code, _ = doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":55,"firmware_id":`+uid(fw.ID)+`}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/firmware-upgrades", `{"device_hw_id":"55","firmware_id":`+uid(fw.ID)+`}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("未发布固件应 400, got %d", code)
 	}

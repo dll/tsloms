@@ -20,7 +20,7 @@ type Material struct {
 	UnitPrice  float64   `json:"unit_price" gorm:"type:decimal(10,2);default:0;comment:单价(元)"`
 	Stock      int       `json:"stock" gorm:"default:0;comment:当前库存数量"`
 	Threshold  int       `json:"threshold" gorm:"default:0;comment:库存预警阈值"`
-	DeviceHwID *uint32   `json:"device_hw_id" gorm:"index;comment:绑定设备ID(可空,设备耗材才填)"`
+	DeviceHwID *string   `json:"device_hw_id" gorm:"size:64;index;comment:绑定设备ID(uuid,可空,设备耗材才填)"`
 	SupplierID *uint     `json:"supplier_id" gorm:"index;comment:默认供应商ID"`
 	Note       string    `json:"note" gorm:"type:text;comment:备注"`
 	Status     string    `json:"status" gorm:"size:16;default:active;comment:状态(active/disabled)"`
@@ -137,7 +137,7 @@ type RepairExpense struct {
 	ID          uint       `json:"id" gorm:"primaryKey"`
 	ExpenseNo   string     `json:"expense_no" gorm:"size:32;uniqueIndex;comment:费用单号(FE{yyyyMMdd}{seq})"`
 	WorkOrderID *uint      `json:"work_order_id" gorm:"index;comment:关联工单ID"`
-	DeviceHwID  uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID  string     `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	Type        string     `json:"type" gorm:"size:16;index;comment:费用类型(material/labor/traffic/other)"`
 	Amount      float64    `json:"amount" gorm:"type:decimal(12,2);default:0;comment:费用金额(元)"`
 	Description string     `json:"description" gorm:"size:255;comment:费用说明"`

@@ -7,7 +7,7 @@ import "time"
 // 生命周期状态机：occurred(发生) → confirmed(确认) → dispatched(已派单) → resolved(已解决)
 type FaultRecord struct {
 	ID           uint       `json:"id" gorm:"primaryKey"`
-	DeviceHwID   uint32     `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID   string     `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	ErrCode      int8       `json:"err_code" gorm:"comment:错误码(-1至-14)"`
 	FaultType    string     `json:"fault_type" gorm:"size:32;comment:故障类型分类"`
 	FaultLevel   string     `json:"fault_level" gorm:"size:16;comment:故障等级(critical/normal)"`

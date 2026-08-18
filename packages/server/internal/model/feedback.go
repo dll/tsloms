@@ -6,7 +6,7 @@ import "time"
 // 地图/移动端/后台提交的设备或路口问题反馈，可关联工单
 type Feedback struct {
 	ID           uint      `json:"id" gorm:"primaryKey"`
-	DeviceHwID   *uint32   `json:"device_hw_id" gorm:"index;comment:关联设备硬件ID(可空)"`
+	DeviceHwID   *string   `json:"device_hw_id" gorm:"size:64;index;comment:关联设备硬件ID(uuid,可空)"`
 	Intersection string    `json:"intersection" gorm:"size:128;comment:路口位置"`
 	Title        string    `json:"title" gorm:"size:128;comment:反馈标题"`
 	Content      string    `json:"content" gorm:"type:text;comment:反馈内容"`

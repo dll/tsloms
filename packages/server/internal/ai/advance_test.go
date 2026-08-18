@@ -21,14 +21,14 @@ func seedBasicData(t *testing.T) {
 		Unit: "米", UnitPrice: 3, Stock: 100, Threshold: 0, Status: "active"}) // 滞销
 
 	// 设备 + 故障
-	model.DB.Create(&model.Device{HwID: 1001, Intersection: "人民路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 1002, Intersection: "建设路口", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "1001", Intersection: "人民路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1002", Intersection: "建设路口", OnlineStatus: false})
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1001, ErrCode: -1, FaultType: "lamp_off",
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1001", ErrCode: -1, FaultType: "lamp_off",
 		FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 
 	// 工单 + 领料流水 + 费用
-	wo := model.WorkOrder{OrderNo: "WO202608150001", FaultID: 1, DeviceHwID: 1001,
+	wo := model.WorkOrder{OrderNo: "WO202608150001", FaultID: 1, DeviceHwID: "1001",
 		Status: model.WorkOrderStatusCompleted, CreatedAt: now.Add(-48 * time.Hour)}
 	model.DB.Create(&wo)
 	closed := now.Add(-24 * time.Hour)
@@ -40,9 +40,9 @@ func seedBasicData(t *testing.T) {
 		Quantity: 20, Price: 25, Amount: 500, RefType: "purchase", CreatedAt: now.Add(-48 * time.Hour)})
 
 	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE202608150001", WorkOrderID: &wo.ID,
-		DeviceHwID: 1001, Type: model.ExpenseTypeMaterial, Amount: 50, Confirmed: true, CreatedAt: now.Add(-24 * time.Hour)})
+		DeviceHwID: "1001", Type: model.ExpenseTypeMaterial, Amount: 50, Confirmed: true, CreatedAt: now.Add(-24 * time.Hour)})
 	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE202608150002",
-		DeviceHwID: 1001, Type: model.ExpenseTypeLabor, Amount: 120, Confirmed: false, CreatedAt: now.Add(-24 * time.Hour)})
+		DeviceHwID: "1001", Type: model.ExpenseTypeLabor, Amount: 120, Confirmed: false, CreatedAt: now.Add(-24 * time.Hour)})
 }
 
 func TestBuildInventorySnapshot(t *testing.T) {

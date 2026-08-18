@@ -34,8 +34,8 @@ func TestValidate_ConfidenceBoostsByAuxEvidence(t *testing.T) {
 	base := e.Validate().Confidence
 
 	e2 := newEval()
-	e2.AddEvidence(RuleEvidence{DeviceHwID: 1001, SourceType: model.EvSourceCitizen, RawData: "群众反映红灯长灭", CapturedAt: time.Now()})
-	e2.AddEvidence(RuleEvidence{DeviceHwID: 1001, SourceType: model.EvSourcePhotoEvidence, RawData: "手机举证照片", CapturedAt: time.Now()})
+	e2.AddEvidence(RuleEvidence{DeviceHwID: "1001", SourceType: model.EvSourceCitizen, RawData: "群众反映红灯长灭", CapturedAt: time.Now()})
+	e2.AddEvidence(RuleEvidence{DeviceHwID: "1001", SourceType: model.EvSourcePhotoEvidence, RawData: "手机举证照片", CapturedAt: time.Now()})
 	boosted := e2.Validate().Confidence
 	if boosted <= base {
 		t.Errorf("多源印证置信度 %v 应高于孤证 %v", boosted, base)
@@ -47,7 +47,7 @@ func TestValidate_ConflictingCurrentDowngradesToPending(t *testing.T) {
 	e := newEval()
 	// lamp_off(err -1) 但红灯电流正常高 → 明确否证，显著降级
 	r := uint16(500)
-	e.AddEvidence(RuleEvidence{DeviceHwID: 1001, SourceType: model.EvSourceCurrent, CurrentR: &r})
+	e.AddEvidence(RuleEvidence{DeviceHwID: "1001", SourceType: model.EvSourceCurrent, CurrentR: &r})
 	judge := e.Validate()
 	if judge.RecognitionStatus != model.RecognitionPendingReview {
 		t.Errorf("电流矛盾应降级待确认, got %s (conf=%v)", judge.RecognitionStatus, judge.Confidence)
@@ -61,7 +61,7 @@ func TestValidate_ConflictingCurrentDowngradesToPending(t *testing.T) {
 func TestValidate_CorroboratingCurrent(t *testing.T) {
 	e := newEval()
 	r := uint16(10)
-	e.AddEvidence(RuleEvidence{DeviceHwID: 1001, SourceType: model.EvSourceCurrent, CurrentR: &r})
+	e.AddEvidence(RuleEvidence{DeviceHwID: "1001", SourceType: model.EvSourceCurrent, CurrentR: &r})
 	judge := e.Validate()
 	if judge.RecognitionStatus != model.RecognitionConfirmed {
 		t.Errorf("电流印证应保持 confirmed, got %s", judge.RecognitionStatus)
@@ -120,7 +120,7 @@ func TestValidate_SafetyNeverFilterRealFault(t *testing.T) {
 		e := NewEvaluator(9999, ec, faultcode.StateR, 100, 100, 100)
 		// 注入三通道高电流（明确矛盾，关联灯色电流高 → 否证）
 		r, y, g := uint16(500), uint16(500), uint16(500)
-		e.AddEvidence(RuleEvidence{DeviceHwID: 9999, SourceType: model.EvSourceCurrent, CurrentR: &r, CurrentY: &y, CurrentG: &g})
+		e.AddEvidence(RuleEvidence{DeviceHwID: "9999", SourceType: model.EvSourceCurrent, CurrentR: &r, CurrentY: &y, CurrentG: &g})
 
 		judge := e.Validate()
 		if judge.RecognitionStatus == model.RecognitionFiltered {
@@ -136,7 +136,7 @@ func TestValidate_PartialChannelPowerLossPanic(t *testing.T) {
 	e := NewEvaluator(8888, faultcode.LEDErrPowerLoss, faultcode.StateNone, 100, 100, 100)
 	// 只提供红灯通道电流（文档声称“其它通道可不提供”），其余通道 nil；不得 panic
 	r := uint16(500)
-	e.AddEvidence(RuleEvidence{DeviceHwID: 8888, SourceType: model.EvSourceCurrent, CurrentR: &r})
+	e.AddEvidence(RuleEvidence{DeviceHwID: "8888", SourceType: model.EvSourceCurrent, CurrentR: &r})
 	judge := e.Validate()
 	if judge.Confidence <= 0 {
 		t.Errorf("单通道 power_loss 电流不应 panic 且应产出有效置信度, got conf=%v", judge.Confidence)
@@ -149,7 +149,7 @@ func TestValidate_FilteredOnlyViaManualReview(t *testing.T) {
 	// 最极端：基础置信度最低的已知码全灭类 + 最强矛盾电流证据，仍不落到 filtered
 	e := newEval() // LEDErrROFF base 0.98
 	r := uint16(500)
-	e.AddEvidence(RuleEvidence{DeviceHwID: 1001, SourceType: model.EvSourceCurrent, CurrentR: &r})
+	e.AddEvidence(RuleEvidence{DeviceHwID: "1001", SourceType: model.EvSourceCurrent, CurrentR: &r})
 	judge := e.Validate()
 	if judge.RecognitionStatus == model.RecognitionFiltered {
 		t.Fatal("自动分流不应误报过滤真实故障")

@@ -15,7 +15,7 @@ import (
 //   - 不带该参数 → 行为完全不变（向后兼容，返回全部）
 // ============================================================================
 
-func seedRecognitionFault(hw uint32, status, recogStatus string) model.FaultRecord {
+func seedRecognitionFault(hw string, status, recogStatus string) model.FaultRecord {
 	now := time.Now()
 	conf := 0.9
 	f := model.FaultRecord{
@@ -34,10 +34,10 @@ func TestB8_ListFaultsRecognitionStatusFilter(t *testing.T) {
 	rg.GET("/faults", ListFaults)
 
 	// 数据：3 条未解决(occurred/confirmed/dispatched)不同识别状态 + 1 条 resolved
-	seedRecognitionFault(501, model.FaultStatusOccurred, model.RecognitionConfirmed)
-	seedRecognitionFault(502, model.FaultStatusConfirmed, model.RecognitionConfirmed)
-	seedRecognitionFault(503, model.FaultStatusDispatched, model.RecognitionPendingReview)
-	seedRecognitionFault(504, model.FaultStatusResolved, model.RecognitionFiltered)
+	seedRecognitionFault("501", model.FaultStatusOccurred, model.RecognitionConfirmed)
+	seedRecognitionFault("502", model.FaultStatusConfirmed, model.RecognitionConfirmed)
+	seedRecognitionFault("503", model.FaultStatusDispatched, model.RecognitionPendingReview)
+	seedRecognitionFault("504", model.FaultStatusResolved, model.RecognitionFiltered)
 
 	// 1) 无参 → 返回全部 4 条（向后兼容不变）
 	code, body := doReq(t, r, "GET", "/api/v1/faults", "")
@@ -69,7 +69,7 @@ func TestB8_ListFaultsRecognitionStatusFilter(t *testing.T) {
 	if int(data["total"].(float64)) != 1 {
 		t.Errorf("pending_review 应命中 1 条, got %v", data["total"])
 	}
-	if data["list"].([]interface{})[0].(map[string]interface{})["device_hw_id"].(float64) != 503 {
+	if data["list"].([]interface{})[0].(map[string]interface{})["device_hw_id"].(string) != "503" {
 		t.Errorf("pending_review 命中设备应 503")
 	}
 
@@ -94,7 +94,7 @@ func TestB8_ListFaultViewIncludesRecognitionFields(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.GET("/faults/:id", GetFault)
 
-	f := seedRecognitionFault(505, model.FaultStatusOccurred, model.RecognitionConfirmed)
+	f := seedRecognitionFault("505", model.FaultStatusOccurred, model.RecognitionConfirmed)
 	code, body := doReq(t, r, "GET", "/api/v1/faults/"+uid(f.ID), "")
 	mustOK(t, code, body, "详情")
 	ft := body["data"].(map[string]interface{})["fault"].(map[string]interface{})
@@ -120,7 +120,7 @@ func TestB8_ReviewNormalNotAutoDispatch(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/faults/:id/review", ReviewFault)
 
-	f := seedRecognitionFault(506, model.FaultStatusOccurred, model.RecognitionPendingReview)
+	f := seedRecognitionFault("506", model.FaultStatusOccurred, model.RecognitionPendingReview)
 	conf := 0.6
 	f.FaultLevel = "normal"
 	f.Confidence = &conf
@@ -141,7 +141,7 @@ func TestB8_ReviewPendingCriticalDispatchOnce(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/faults/:id/review", ReviewFault)
 
-	f := seedRecognitionFault(507, model.FaultStatusOccurred, model.RecognitionPendingReview)
+	f := seedRecognitionFault("507", model.FaultStatusOccurred, model.RecognitionPendingReview)
 	conf := 0.6
 	f.FaultLevel = "critical"
 	f.Confidence = &conf
@@ -184,7 +184,7 @@ func TestM1_ConcurrentReviewDispatchOnce(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/faults/:id/review", ReviewFault)
 
-	f := seedRecognitionFault(508, model.FaultStatusOccurred, model.RecognitionPendingReview)
+	f := seedRecognitionFault("508", model.FaultStatusOccurred, model.RecognitionPendingReview)
 	conf := 0.6
 	f.FaultLevel = "critical"
 	f.Confidence = &conf

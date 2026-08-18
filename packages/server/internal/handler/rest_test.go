@@ -40,9 +40,9 @@ func getJSON(t *testing.T, r *gin.Engine, path string) (int, map[string]interfac
 
 func TestListDevices_PaginationAndFilter(t *testing.T) {
 	r := setupHandlerEngine(t)
-	model.DB.Create(&model.Device{HwID: 1, OnlineStatus: true, Intersection: "路口A"})
-	model.DB.Create(&model.Device{HwID: 2, OnlineStatus: false})
-	model.DB.Create(&model.Device{HwID: 3, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1", OnlineStatus: true, Intersection: "路口A"})
+	model.DB.Create(&model.Device{HwID: "2", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "3", OnlineStatus: true})
 
 	// 全量
 	code, body := getJSON(t, r, "/api/v1/devices")
@@ -72,9 +72,9 @@ func TestListDevices_PaginationAndFilter(t *testing.T) {
 
 func TestDeviceStats(t *testing.T) {
 	r := setupHandlerEngine(t)
-	model.DB.Create(&model.Device{HwID: 1, OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 2, OnlineStatus: false})
-	model.DB.Create(&model.Device{HwID: 3, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "1", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "2", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "3", OnlineStatus: true})
 
 	_, body := getJSON(t, r, "/api/v1/devices/stats")
 	data := body["data"].(map[string]interface{})
@@ -86,7 +86,7 @@ func TestDeviceStats(t *testing.T) {
 func TestListFaults_DateFilterBothParamNames(t *testing.T) {
 	r := setupHandlerEngine(t)
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 
 	// start_date（前端用名）
 	_, body := getJSON(t, r, "/api/v1/faults?start_date=2026-08-01&end_date=2026-08-30")
@@ -106,9 +106,9 @@ func TestListFaults_DateFilterBothParamNames(t *testing.T) {
 func TestFaultTypeStats_GroupsByType(t *testing.T) {
 	r := setupHandlerEngine(t)
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 2, ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 3, ErrCode: -8, FaultType: "timeout", FaultLevel: "normal", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "2", ErrCode: -4, FaultType: "abnormal_on", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "3", ErrCode: -8, FaultType: "timeout", FaultLevel: "normal", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 
 	code, body := getJSON(t, r, "/api/v1/dashboard/fault-type-stats")
 	if code != http.StatusOK {

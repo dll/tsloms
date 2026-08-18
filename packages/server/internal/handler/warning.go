@@ -60,9 +60,7 @@ func buildWarningQuery(c *gin.Context) *gorm.DB {
 		}
 	}
 	if hw := c.Query("device_hw_id"); hw != "" {
-		if v, err := strconv.ParseUint(hw, 10, 64); err == nil {
-			q = q.Where("device_hw_id = ?", v)
-		}
+		q = q.Where("device_hw_id = ?", hw)
 	}
 	if level := c.Query("level"); level != "" {
 		q = q.Where("level = ?", level)
@@ -250,7 +248,7 @@ func WarningToWorkOrder(c *gin.Context) {
 // createStandaloneWarningWorkOrder 为「无来源故障」的预警创建独立活跃工单。
 // 使用与既有工单相同的 NextOrderNo 与活跃唯一语义：FaultID=0（占位，不关联故障），
 // 保证不与既有故障工单去重逻辑冲突。
-func createStandaloneWarningWorkOrder(deviceHwID uint32, remark string) *model.WorkOrder {
+func createStandaloneWarningWorkOrder(deviceHwID string, remark string) *model.WorkOrder {
 	// 占位 fault_id=0；活跃唯一约束依赖 fault_active_scope。由于 fault_id=0 无唯一位，
 	// 多条此类工单允许存在（符合历史占位语义，不影响既有 fault 派单唯一）。
 	wo := &model.WorkOrder{
@@ -287,7 +285,7 @@ func ExportWarnings(c *gin.Context) {
 		w := &list[i]
 		_ = writer.Write([]string{
 			strconv.FormatUint(uint64(w.ID), 10),
-			strconv.FormatUint(uint64(w.DeviceHwID), 10),
+			w.DeviceHwID,
 			fmt.Sprintf("%v", nilUint(w.CrossingID)),
 			strconv.Itoa(w.WarningCode),
 			w.WarningLabel,

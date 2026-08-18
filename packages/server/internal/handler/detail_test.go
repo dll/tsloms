@@ -26,7 +26,7 @@ func detailEngine(t *testing.T) *gin.Engine {
 // seedDevice 创建设备（hw_id=1）
 func seedDevice(t *testing.T) {
 	t.Helper()
-	if err := model.DB.Create(&model.Device{HwID: 1, Intersection: "测试路口"}).Error; err != nil {
+	if err := model.DB.Create(&model.Device{HwID: "1", Intersection: "测试路口"}).Error; err != nil {
 		t.Fatalf("创建设备失败: %v", err)
 	}
 }

@@ -73,7 +73,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="金额(元)"><el-input-number v-model="editForm.amount" :min="0" :precision="2" style="width: 200px" /></el-form-item>
-        <el-form-item label="设备ID"><el-input-number v-model="editForm.device_hw_id" :min="0" style="width: 200px" /></el-form-item>
+        <el-form-item label="设备ID"><el-input v-model="editForm.device_hw_id" placeholder="可选（uuid）" style="width: 200px" /></el-form-item>
         <el-form-item label="关联工单"><el-input-number v-model="editForm.work_order_id" :min="0" placeholder="可选" style="width: 200px" /></el-form-item>
         <el-form-item label="发生日期"><el-date-picker v-model="editForm.work_date" type="date" value-format="YYYY-MM-DD" style="width: 200px" /></el-form-item>
         <el-form-item label="费用说明"><el-input v-model="editForm.description" placeholder="如：更换信号灯电源模块" /></el-form-item>

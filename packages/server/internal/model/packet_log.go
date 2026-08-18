@@ -6,7 +6,7 @@ import "time"
 // 记录设备上报的原始二进制报文及解析结果，用于审计和故障排查
 type PacketLog struct {
 	ID           uint      `json:"id" gorm:"primaryKey"`
-	DeviceHwID   uint32    `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID   string    `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	RawData      []byte    `json:"raw_data" gorm:"type:blob;comment:原始二进制报文"`
 	CmdType      uint8     `json:"cmd_type" gorm:"comment:命令类型"`
 	CmdSeq       uint16    `json:"cmd_seq" gorm:"comment:包序号"`

@@ -4,7 +4,7 @@ import type { ApiResponse } from '@/utils/request'
 // 故障级 AI 建议（确认/派单辅助）
 export interface FaultAdvice {
   fault_id: number
-  device_hw_id: number
+  device_hw_id: string
   summary: string
   priority: string
   priority_text: string
@@ -18,7 +18,7 @@ export interface FaultAdvice {
 // 工单级 AI 建议（AI 辅助）
 export interface WorkOrderAdvice {
   work_order_id: number
-  device_hw_id: number
+  device_hw_id: string
   root_cause: string
   steps: string[]
   parts: string[]
@@ -52,7 +52,7 @@ export function getDeviceAdvice(payload: Record<string, any>): Promise<ApiRespon
 // 建单 AI 辅助（基于关联故障推荐优先级/备件/步骤/维修人）
 export interface WorkOrderCreateAdvice {
   fault_id: number
-  device_hw_id: number
+  device_hw_id: string
   priority: string
   priority_text: string
   parts: string[]
@@ -166,7 +166,7 @@ interface AnomalyEvent {
   time: string
   kind: string
   level: 'critical' | 'major' | 'minor' | 'info'
-  device_hw_id: number
+  device_hw_id: string
   title: string
   detail: string
   biz_type: string

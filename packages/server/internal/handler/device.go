@@ -192,7 +192,7 @@ func UpdateDevice(c *gin.Context) {
 // CreateDevice 新增设备台账（运维/管理员）
 func CreateDevice(c *gin.Context) {
 	var req struct {
-		HwID         uint32   `json:"hw_id" binding:"required"`
+		HwID         string   `json:"hw_id" binding:"required"`
 		Intersection string   `json:"intersection"`
 		NetworkCode  int      `json:"network_code"`
 		StationCode  int      `json:"station_code"`

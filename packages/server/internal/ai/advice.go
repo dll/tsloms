@@ -18,7 +18,7 @@ import (
 // FaultAdvice 故障级 AI 建议
 type FaultAdvice struct {
 	FaultID      uint     `json:"fault_id"`
-	DeviceHwID   uint32   `json:"device_hw_id"`
+	DeviceHwID   string   `json:"device_hw_id"`
 	Summary      string   `json:"summary"`  // 故障摘要
 	Priority     string   `json:"priority"` // P0/P1/P2
 	PriorityText string   `json:"priority_text"`
@@ -32,7 +32,7 @@ type FaultAdvice struct {
 // WorkOrderAdvice 工单级 AI 建议（Copilot）
 type WorkOrderAdvice struct {
 	WorkOrderID uint     `json:"work_order_id"`
-	DeviceHwID  uint32   `json:"device_hw_id"`
+	DeviceHwID  string   `json:"device_hw_id"`
 	RootCause   string   `json:"root_cause"` // 根因预判
 	Steps       []string `json:"steps"`      // 处理步骤
 	Parts       []string `json:"parts"`      // 备件预领
@@ -122,14 +122,14 @@ func SuggestWorkOrderAdvice(userID uint, woID uint, stage string) (WorkOrderAdvi
 		ruleText = buildSummaryRule(&wo, &f, usedParts)
 		prompt = fmt.Sprintf(
 			"你是运维主管。基于以下工单信息，用中文生成一段 ≤150字维修小结（结果说明、处理内容、耗材用量、遗留问题）。\n"+
-				"工单#%s 设备#%d 关联故障：%s\n已领耗材：%s\n维修结果：%s",
+				"工单#%s 设备#%s 关联故障：%s\n已领耗材：%s\n维修结果：%s",
 			wo.OrderNo, wo.DeviceHwID, faultDesc, joinUsed(usedParts), wo.Result)
 		adv.Summary = ruleText
 		adv.Steps = []string{}
 	} else {
 		ruleText = buildCopilotRule(&wo, &f, parts)
 		prompt = fmt.Sprintf(
-			"你是交通信号灯运维专家。工单#%s 设备#%d（%s）关联故障：%s，当前%s。"+
+			"你是交通信号灯运维专家。工单#%s 设备#%s（%s）关联故障：%s，当前%s。"+
 				"请用中文输出：\n根因预判：...\n处理步骤：（逐条）\n建议备件：...\n\n设备历史耗材：%s",
 			wo.OrderNo, wo.DeviceHwID, dev, faultDesc, wo.Status, joinStr(parts))
 		adv.Summary = ruleText
@@ -170,7 +170,7 @@ func buildFaultRulePlan(f *model.FaultRecord) string {
 }
 
 func buildCopilotRule(wo *model.WorkOrder, f *model.FaultRecord, parts []string) string {
-	line := fmt.Sprintf("工单#%s 设备#%d 待处理。建议：核实故障复现情况，按预案排查；", wo.OrderNo, wo.DeviceHwID)
+	line := fmt.Sprintf("工单#%s 设备#%s 待处理。建议：核实故障复现情况，按预案排查；", wo.OrderNo, wo.DeviceHwID)
 	if f != nil && f.ErrCode != 0 {
 		line += fmt.Sprintf("重点检查故障码%d（%s）对应灯组；", f.ErrCode, f.FaultType)
 	}
@@ -204,7 +204,7 @@ func buildSummaryRule(wo *model.WorkOrder, f *model.FaultRecord, used []struct {
 
 // ---- 数据助手 ----
 
-func deviceBrief(hw uint32) string {
+func deviceBrief(hw string) string {
 	var d model.Device
 	if err := model.DB.Where("hw_id = ?", hw).First(&d).Error; err == nil && d.Intersection != "" {
 		return d.Intersection
@@ -213,7 +213,7 @@ func deviceBrief(hw uint32) string {
 }
 
 // recentPartsForDevice 该设备历史领用过的物料（去重，供备件推荐）
-func recentPartsForDevice(hw uint32) []string {
+func recentPartsForDevice(hw string) []string {
 	var rows []struct {
 		MaterialName string
 		N            int64
@@ -232,7 +232,7 @@ func recentPartsForDevice(hw uint32) []string {
 
 func buildFaultCtx(f *model.FaultRecord, dev string, parts []string) string {
 	return fmt.Sprintf(
-		"设备#%d（%s）故障码%d（%s），等级%s，状态%s，首次出现%s，电流 R=%d Y=%d G=%d。\n历史耗材：%s",
+		"设备#%s（%s）故障码%d（%s），等级%s，状态%s，首次出现%s，电流 R=%d Y=%d G=%d。\n历史耗材：%s",
 		f.DeviceHwID, dev, f.ErrCode, f.FaultType, f.FaultLevel, f.Status,
 		f.FirstSeen.Format("01-02 15:04"), f.CurrentR, f.CurrentY, f.CurrentG, joinStr(parts))
 }
@@ -268,7 +268,7 @@ func priorityText(p string) string {
 	}
 }
 
-func persistAdvice(userID uint, bizType string, bizID uint, hw uint32, stage, priority, content, source string, tokens int) {
+func persistAdvice(userID uint, bizType string, bizID uint, hw string, stage, priority, content, source string, tokens int) {
 	op := ""
 	if userID > 0 {
 		var u model.User

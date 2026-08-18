@@ -13,7 +13,7 @@ export interface FaultEvidence {
   id: number
   fault_id: number | null
   evaluation_id: string
-  device_hw_id: number
+  device_hw_id: string
   source_type: string
   err_code?: number | null
   led_state?: number | null
@@ -40,7 +40,7 @@ export function getFaultEvidence(id: number | string): Promise<ApiResponse<Fault
 
 // POST /evidence/ingest —— 预留外部数据源证据写入
 export interface IngestEvidencePayload {
-  device_hw_id: number
+  device_hw_id: string
   source_type: string
   err_code?: number | null
   led_state?: number | null
@@ -67,7 +67,7 @@ export function listEvidenceSources(): Promise<ApiResponse<{ list: string[] }>> 
 
 export interface FaultCase {
   id: number
-  device_hw_id: number
+  device_hw_id: string
   fault_type: string
   fault_level: string
   input_signature: string
@@ -96,7 +96,7 @@ export function listFaultCases(params: Record<string, any> = {}): Promise<ApiRes
 
 // POST /fault-cases —— 案例库新增/人工回标
 export interface CreateFaultCasePayload {
-  device_hw_id: number
+  device_hw_id: string
   input_signature?: string
   fault_type?: string
   fault_level?: string

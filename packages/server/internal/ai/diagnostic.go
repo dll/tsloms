@@ -147,9 +147,9 @@ func extractDiag(text, key string) string {
 	return strings.Join(buf, " ")
 }
 
-func strOr(p *uint32, def string) string {
+func strOr(p *string, def string) string {
 	if p != nil {
-		return fmt.Sprintf("%d", *p)
+		return *p
 	}
 	return def
 }

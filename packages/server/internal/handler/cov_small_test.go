@@ -13,7 +13,7 @@ import (
 
 // ==================== 反馈 Feedback ====================
 
-func seedDev(hw uint32, inter string) {
+func seedDev(hw string, inter string) {
 	model.DB.Create(&model.Device{HwID: hw, Intersection: inter, OnlineStatus: true})
 }
 
@@ -23,10 +23,10 @@ func TestFeedback_CreateAndList(t *testing.T) {
 	rg.GET("/feedbacks", ListFeedbacks)
 	rg.POST("/feedbacks", CreateFeedback)
 	rg.PUT("/feedbacks/:id", UpdateFeedbackStatus)
-	seedDev(11, "路口甲")
+	seedDev("11", "路口甲")
 
 	// 创建
-	code, body := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":11,"title":"灯不亮","content":"南侧"}`)
+	code, body := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":"11","title":"灯不亮","content":"南侧"}`)
 	mustOK(t, code, body, "创建反馈")
 	// 创建时自动带出路口
 	fb := body["data"].(map[string]interface{})["feedback"].(map[string]interface{})
@@ -56,17 +56,17 @@ func TestFeedback_Validation(t *testing.T) {
 	rr := r.Group("/api/v1")
 	rr.POST("/feedbacks", CreateFeedback)
 	// 缺标题
-	code, _ := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":1}`)
+	code, _ := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":"1"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("缺标题应 400, got %d", code)
 	}
 	// hw==0
-	code, _ = doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":0,"title":"x"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":"0","title":"x"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("hw 0 应 400, got %d", code)
 	}
 	// 设备不存在
-	code, _ = doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":999,"title":"x"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":"999","title":"x"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("设备不存在应 400, got %d", code)
 	}
@@ -77,8 +77,8 @@ func TestFeedback_UpdateStatus(t *testing.T) {
 	rg := r.Group("/api/v1")
 	rg.POST("/feedbacks", CreateFeedback)
 	rg.PUT("/feedbacks/:id", UpdateFeedbackStatus)
-	seedDev(12, "路口乙")
-	_, body := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":12,"title":"闪烁"}`)
+	seedDev("12", "路口乙")
+	_, body := doReq(t, r, "POST", "/api/v1/feedbacks", `{"device_hw_id":"12","title":"闪烁"}`)
 	id := uint(body["data"].(map[string]interface{})["feedback"].(map[string]interface{})["id"].(float64))
 
 	// 有效状态
@@ -231,7 +231,7 @@ func TestDispatchReference(t *testing.T) {
 	r := covSetup(t)
 	rg := r.Group("/api/v1")
 	rg.GET("/dispatch", DispatchReference)
-	seedDev(7, "路口丙")
+	seedDev("7", "路口丙")
 	// 缺参数
 	code, _ := doReq(t, r, "GET", "/api/v1/dispatch", "")
 	if code != http.StatusBadRequest {
@@ -240,7 +240,7 @@ func TestDispatchReference(t *testing.T) {
 	// 正常
 	code, body := doReq(t, r, "GET", "/api/v1/dispatch?device_hw_id=7", "")
 	mustOK(t, code, body, "派单参考")
-	if body["data"].(map[string]interface{})["device_hw_id"].(float64) != 7 {
+	if body["data"].(map[string]interface{})["device_hw_id"] != "7" {
 		t.Errorf("device_hw_id=%v", body["data"].(map[string]interface{})["device_hw_id"])
 	}
 	// 非法数字回退（fmt.Sscanf 解析失败→0）

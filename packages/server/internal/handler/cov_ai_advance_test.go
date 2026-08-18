@@ -37,15 +37,15 @@ func seedAiAdvance(t *testing.T) (uint, uint) {
 	t.Helper()
 	op := model.User{Username: "op_adv", PasswordHash: "x", Role: model.RoleOperator}
 	model.DB.Create(&op)
-	model.DB.Create(&model.Device{HwID: 9001, Intersection: "分析路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "9001", Intersection: "分析路口", OnlineStatus: true})
 	model.DB.Create(&model.Material{Code: "M9", Name: "分析灯珠", Category: "灯泡", Stock: 3, Threshold: 5, UnitPrice: 60, Status: "active"})
 	now := time.Now()
 	model.DB.Create(&model.MaterialStock{MaterialID: 1, MaterialName: "分析灯珠", Type: model.StockTypeIn, Quantity: 5, CreatedAt: now})
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE9", Type: "material", Amount: 2000, DeviceHwID: 9001, CreatedAt: now})
-	f := model.FaultRecord{DeviceHwID: 9001, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE9", Type: "material", Amount: 2000, DeviceHwID: "9001", CreatedAt: now})
+	f := model.FaultRecord{DeviceHwID: "9001", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now}
 	model.DB.Create(&f)
-	wo := model.WorkOrder{OrderNo: "WOadv9", FaultID: f.ID, DeviceHwID: 9001, Status: model.WorkOrderStatusProcessing}
+	wo := model.WorkOrder{OrderNo: "WOadv9", FaultID: f.ID, DeviceHwID: "9001", Status: model.WorkOrderStatusProcessing}
 	model.DB.Create(&wo)
 	return f.ID, wo.ID
 }

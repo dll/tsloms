@@ -52,7 +52,7 @@ func (c *CaseRecorder) SeedRecord(e *recognition.Evaluator, judge model.FaultRec
 
 	// 防重复：同特征同设备已存在则直接返回，不重复写样本
 	var existing model.FaultCase
-	err := c.db.Where("input_signature = ? AND device_hw_id = ?", signature, e.DeviceHwID).First(&existing).Error
+	err := c.db.Where("input_signature = ? AND device_hw_id = ?", signature, recognition.LedUUID(e.DeviceHwID)).First(&existing).Error
 	if err == nil {
 		return &existing, nil
 	}
@@ -63,7 +63,7 @@ func (c *CaseRecorder) SeedRecord(e *recognition.Evaluator, judge model.FaultRec
 	cs := model.FaultCase{
 		FaultType:          judge.FaultType,
 		FaultLevel:         judge.FaultLevel,
-		DeviceHwID:         e.DeviceHwID,
+		DeviceHwID:         recognition.LedUUID(e.DeviceHwID),
 		InputSignature:     signature,
 		EvidenceSummary:    summary,
 		ExpectedResult:     expected,

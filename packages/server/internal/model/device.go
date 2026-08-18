@@ -7,7 +7,7 @@ import "time"
 // 路口维度：intersection 为路口名称，lat/lng 为设备经纬度（用于地图打点）
 type Device struct {
 	ID           uint   `json:"id" gorm:"primaryKey"`
-	HwID         uint32 `json:"hw_id" gorm:"uniqueIndex;comment:设备硬件ID(出厂唯一)"`
+	HwID         string `json:"hw_id" gorm:"size:64;uniqueIndex;comment:设备硬件ID(uuid字符串,出厂唯一)"`
 	Intersection string `json:"intersection" gorm:"size:128;index;comment:路口位置描述"`
 	// P0-4 路口/行政区划挂接：均可空，只增不删，未挂接线旧设备不受影响
 	CrossingID    *uint      `json:"crossing_id" gorm:"index;comment:所属路口ID(crossings.id,可空)"`

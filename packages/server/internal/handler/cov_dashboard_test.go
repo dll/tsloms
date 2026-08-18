@@ -28,10 +28,10 @@ func dashboardEngine(t *testing.T) *gin.Engine {
 func dashboardSeed(t *testing.T) {
 	t.Helper()
 	now := time.Now()
-	model.DB.Create(&model.Device{HwID: 1, Intersection: "甲路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 2, Intersection: "乙路口", OnlineStatus: false})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 1, FaultType: "lamp_off", Status: model.FaultStatusResolved, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.Device{HwID: "1", Intersection: "甲路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "2", Intersection: "乙路口", OnlineStatus: false})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1", FaultType: "lamp_off", FaultLevel: "critical", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "1", FaultType: "lamp_off", Status: model.FaultStatusResolved, FirstSeen: now, LastSeen: now})
 	// 已完成工单（闭环）
 	created := now.Add(-48 * time.Hour)
 	closed := now.Add(-24 * time.Hour)
@@ -39,8 +39,8 @@ func dashboardSeed(t *testing.T) {
 	model.DB.Create(&model.WorkOrder{OrderNo: "WOd2", Status: model.WorkOrderStatusProcessing, CreatedAt: now.Add(-72 * time.Hour)})
 	model.DB.Create(&model.WorkOrder{OrderNo: "WOd3", Status: model.WorkOrderStatusCompleted, CreatedAt: created, ClosedAt: &closed})
 	// AI 预测 + 用量
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 1, BatchID: "B2026081601", RiskLevel: "high", HealthScore: 40, PredictType: "x"})
-	model.DB.Create(&model.AIPrediction{DeviceHwID: 2, BatchID: "B2026081601", RiskLevel: "low", HealthScore: 90, PredictType: "x"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "1", BatchID: "B2026081601", RiskLevel: "high", HealthScore: 40, PredictType: "x"})
+	model.DB.Create(&model.AIPrediction{DeviceHwID: "2", BatchID: "B2026081601", RiskLevel: "low", HealthScore: 90, PredictType: "x"})
 	model.DB.Create(&model.AIUsage{UserID: 0, Action: "predict", Tokens: 50})
 }
 

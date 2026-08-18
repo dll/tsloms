@@ -170,6 +170,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/register", handler.Register)
 		api.GET("/auth/captcha", handler.GetCaptcha)
 		api.GET("/health", handler.Health)
+		// 公开部门列表（仅 id/name，供注册页未登录态选择归属部门，避免暴露部门人数等内部数据）
+		api.GET("/public/departments", handler.PublicDepartments)
 		// 地图瓦片代理（无鉴权，供 Cesium 图片加载使用）
 		api.GET("/proxy/baidu", handler.BaiduTileProxy)
 		api.GET("/proxy/gaode", handler.GaodeTileProxy)
@@ -221,6 +223,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// ---- P0-5 地图分级聚合（新增，向后兼容；/map 前端原有设备打点不变） ----
 			auth.GET("/map/crossing-data", handler.GetCrossingMapData)
 			auth.GET("/map/road-data", handler.GetRoadMapData)
+			// 路口详情聚合（点击卡片：设备/预警/故障/工单/维护列表）
+			auth.GET("/map/crossing/:id/detail", handler.CrossingDetail)
 			// 高德 POI 地名搜索代理（走服务器端 AMAP_WEB_KEY；未配置时前端降级本地搜索）
 			auth.GET("/proxy/amap/place", handler.AmapPlaceSearch)
 			// 检测器接入（真实硬件 / CSV 导入 / Mock 模拟）：状态 + Mock 发送 + CSV 回放

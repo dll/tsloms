@@ -8,7 +8,7 @@ type FaultCase struct {
 	ID                 uint      `json:"id" gorm:"primaryKey"`
 	FaultType          string    `json:"fault_type" gorm:"size:32;index;comment:标准故障类型"`
 	FaultLevel         string    `json:"fault_level" gorm:"size:16;comment:标准故障等级"`
-	DeviceHwID         uint32    `json:"device_hw_id" gorm:"index;comment:关联设备硬件ID"`
+	DeviceHwID         string    `json:"device_hw_id" gorm:"size:64;index;comment:关联设备硬件ID(uuid字符串)"`
 	InputSignature     string    `json:"input_signature" gorm:"size:128;comment:输入证据指纹(特征组合签名,用于检索召回)"`
 	EvidenceSummary    string    `json:"evidence_summary" gorm:"type:text;comment:证据摘要(text)"`
 	ExpectedResult     string    `json:"expected_result" gorm:"size:32;comment:回标真值:真实故障类型/等级"`

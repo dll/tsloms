@@ -29,7 +29,7 @@ func newGinEngine(t *testing.T) *gin.Engine {
 func seedFaultAndOrder(t *testing.T) uint {
 	t.Helper()
 	fault := model.FaultRecord{
-		DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off",
+		DeviceHwID: "1", ErrCode: -1, FaultType: "lamp_off",
 		FaultLevel: "critical", Status: model.FaultStatusOccurred,
 	}
 	if err := model.DB.Create(&fault).Error; err != nil {
@@ -37,7 +37,7 @@ func seedFaultAndOrder(t *testing.T) uint {
 	}
 	wo := model.WorkOrder{
 		OrderNo: model.NextOrderNo(model.DB), FaultID: fault.ID,
-		DeviceHwID: 1, Status: model.WorkOrderStatusPending,
+		DeviceHwID: "1", Status: model.WorkOrderStatusPending,
 	}
 	if err := model.DB.Create(&wo).Error; err != nil {
 		t.Fatalf("创建工单失败: %v", err)

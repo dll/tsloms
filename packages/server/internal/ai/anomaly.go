@@ -21,7 +21,7 @@ type AnomalyEvent struct {
 	Time     string `json:"time"`  // 事件发生时间 (ISO)
 	Kind     string `json:"kind"`  // packet_alarm / packet_invalid / fault / workorder_overdue / device_offline
 	Level    string `json:"level"` // critical / major / minor / info
-	DeviceHw uint32 `json:"device_hw_id"`
+	DeviceHw string `json:"device_hw_id"`
 	Title    string `json:"title"`
 	Detail   string `json:"detail"`
 	BizType  string `json:"biz_type"` // 关联业务类型: fault / workorder / device / packet

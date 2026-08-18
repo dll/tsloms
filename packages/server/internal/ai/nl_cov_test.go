@@ -18,12 +18,12 @@ func nlSeed(t *testing.T) {
 	vw := model.User{Username: "vw_nl", PasswordHash: "x", Role: model.RoleViewer}
 	model.DB.Create(&vw)
 	vwNlID = vw.ID
-	model.DB.Create(&model.Device{HwID: 5001, Intersection: "人民路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 5002, Intersection: "建设路口", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "00001389", Intersection: "人民路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "0000138A", Intersection: "建设路口", OnlineStatus: false})
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 5001, FaultType: "lamp_off", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
-	model.DB.Create(&model.WorkOrder{OrderNo: "WOnl1", DeviceHwID: 5001, Status: model.WorkOrderStatusPending, CreatedAt: now.Add(-30 * time.Hour)})
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FEnl", Type: "material", Amount: 500, DeviceHwID: 5001, CreatedAt: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "00001389", FaultType: "lamp_off", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.WorkOrder{OrderNo: "WOnl1", DeviceHwID: "00001389", Status: model.WorkOrderStatusPending, CreatedAt: now.Add(-30 * time.Hour)})
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FEnl", Type: "material", Amount: 500, DeviceHwID: "00001389", CreatedAt: now})
 }
 
 func TestInterpretNL_QueryTools(t *testing.T) {

@@ -270,14 +270,14 @@ func runDeviceStatus(userID uint, it NLIntent) NLAnswer {
 	var list []model.Device
 	q := model.DB
 	if hw > 0 {
-		q = q.Where("hw_id = ?", hw)
+		q = q.Where("hw_id = ?", hwIDStr(hw))
 	} else {
 		term := it.Params["hw_id"]
 		if term == "" {
 			term = it.Params["device"]
 		}
 		if term != "" {
-			q = q.Where("intersection LIKE ? OR CAST(hw_id AS TEXT) LIKE ?", "%"+term+"%", "%"+term+"%")
+			q = q.Where("intersection LIKE ? OR hw_id LIKE ?", "%"+term+"%", "%"+term+"%")
 		} else {
 			q = q.Limit(5)
 		}
@@ -304,7 +304,7 @@ func runDeviceStatus(userID uint, it NLIntent) NLAnswer {
 		}
 		intersection := d.Intersection
 		if intersection == "" {
-			intersection = fmt.Sprintf("设备#%d", d.HwID)
+			intersection = fmt.Sprintf("设备#%s", d.HwID)
 		}
 		data = append(data, map[string]any{"hw_id": d.HwID, "intersection": intersection, "online": d.OnlineStatus, "last_checkin": last, "watched": d.IsWatched})
 		reply += fmt.Sprintf("「%s」%s%s（最后签到 %s）；", intersection, st, watch, last)
@@ -447,7 +447,7 @@ func runCreateFault(userID uint, it NLIntent, raw string) NLAnswer {
 	var device *model.Device
 	if hw > 0 {
 		var d model.Device
-		if err := model.DB.Where("hw_id = ?", hw).First(&d).Error; err == nil {
+		if err := model.DB.Where("hw_id = ?", hwIDStr(hw)).First(&d).Error; err == nil {
 			device = &d
 		}
 	}
@@ -494,7 +494,7 @@ func runCreateFault(userID uint, it NLIntent, raw string) NLAnswer {
 	if err := model.DB.Create(&f).Error; err != nil {
 		return NLAnswer{Reply: "创建故障单失败：" + err.Error(), Intent: "command", Tool: "create_fault", Source: "规则"}
 	}
-	reply := fmt.Sprintf("已创建故障单 #%d（设备#%d，%s，等级%s）", f.ID, device.HwID, faultType, level)
+	reply := fmt.Sprintf("已创建故障单 #%d（设备#%s，%s，等级%s）", f.ID, device.HwID, faultType, level)
 	if desc != "" {
 		reply += "。描述：" + desc
 	}
@@ -512,7 +512,7 @@ func runCreateWorkOrder(userID uint, it NLIntent, raw string) NLAnswer {
 	}
 	if hw > 0 {
 		var d model.Device
-		if err := model.DB.Where("hw_id = ?", hw).First(&d).Error; err == nil {
+		if err := model.DB.Where("hw_id = ?", hwIDStr(hw)).First(&d).Error; err == nil {
 			device = &d
 		}
 	}
@@ -549,7 +549,7 @@ func runCreateWorkOrder(userID uint, it NLIntent, raw string) NLAnswer {
 	if err := model.DB.Create(&wo).Error; err != nil {
 		return NLAnswer{Reply: "创建工单失败：" + err.Error(), Intent: "command", Tool: "create_workorder", Source: "规则"}
 	}
-	reply := fmt.Sprintf("已创建工单 %s（设备#%d，%s，待处理）", wo.OrderNo, device.HwID, device.Intersection)
+	reply := fmt.Sprintf("已创建工单 %s（设备#%s，%s，待处理）", wo.OrderNo, device.HwID, device.Intersection)
 	return NLAnswer{Reply: reply, Intent: "command", Tool: "create_workorder", Data: map[string]any{"work_order_id": wo.ID, "order_no": wo.OrderNo, "device_hw_id": device.HwID, "intersection": device.Intersection}, Source: "规则", DidWrite: true, CreatedID: wo.ID}
 }
 
@@ -670,6 +670,10 @@ func parseHwID(s string) uint32 {
 	}
 	return v
 }
+
+// hwIDStr 设备硬件 ID(uint32) → 存储用 uuid 字符串（大写十六进制 8 位补零）。
+// 与 recognition.LedUUID 保持同一格式，确保 AI 兜底查询能命中字符串化的 hw_id。
+func hwIDStr(v uint32) string { return fmt.Sprintf("%08X", v) }
 
 func extractIntersection(text string) string {
 	// 简单提取“xxx路口/xxx交叉口”模式（rune 安全，支持中文全角分隔符）

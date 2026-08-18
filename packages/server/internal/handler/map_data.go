@@ -78,8 +78,8 @@ func computeCrossingPoly(x *model.Crossing) crossingPoly {
 	p.DeviceTotal = len(devices)
 
 	// 活跃故障设备集合
-	faultSet := map[uint32]bool{}
-	var hwIDs []uint32
+	faultSet := map[string]bool{}
+	var hwIDs []string
 	for _, d := range devices {
 		hwIDs = append(hwIDs, d.HwID)
 	}
@@ -199,4 +199,102 @@ func GetRoadMapData(c *gin.Context) {
 // CrossingIdsAppend 追加路口 ID（辅助）
 func (r *roadAgg) CrossingIdsAppend(id uint) {
 	r.Crossings = append(r.Crossings, id)
+}
+
+// CrossingDetail GET /map/crossing/:id/detail
+// 返回单个路口的聚合详情，供前端路口点击卡片展示：
+// 设备列表 / 预警列表 / 故障列表 / 工单列表 / 维护(巡检记录)列表 —— 数据链路闭环。
+func CrossingDetail(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "路口ID无效")
+		return
+	}
+	var x model.Crossing
+	if err := model.DB.First(&x, id).Error; err != nil {
+		notFound(c, "路口不存在")
+		return
+	}
+
+	// 1) 设备列表（按 crossing_id）
+	var devices []model.Device
+	model.DB.Where("crossing_id = ?", id).Order("hw_id ASC").Limit(200).Find(&devices)
+	hwIDs := make([]string, 0, len(devices))
+	for _, d := range devices {
+		hwIDs = append(hwIDs, d.HwID)
+	}
+
+	devList := make([]gin.H, 0, len(devices))
+	for i := range devices {
+		d := &devices[i]
+		devList = append(devList, gin.H{
+			"id": d.ID, "hw_id": d.HwID, "intersection": d.Intersection,
+			"func": d.Func, "orientation": d.Orientation, "batch": d.Batch,
+			"online_status": d.OnlineStatus, "lat": d.Lat, "lng": d.Lng,
+		})
+	}
+
+	// 2) 预警列表（按 crossing_id）
+	var warnings []model.Warning
+	model.DB.Where("crossing_id = ?", id).Order("occurred_at DESC").Limit(50).Find(&warnings)
+	warnList := make([]gin.H, 0, len(warnings))
+	for i := range warnings {
+		w := &warnings[i]
+		warnList = append(warnList, gin.H{
+			"id": w.ID, "device_hw_id": w.DeviceHwID, "warning_label": w.WarningLabel,
+			"level": w.Level, "deal_state": w.DealState, "occurred_at": w.OccurredAt,
+		})
+	}
+
+	// 3) 故障 / 4) 工单 / 5) 维护：按设备 hw_id IN 批量查
+	var faultList, woList, patrolList []gin.H
+	if len(hwIDs) > 0 {
+		var faults []model.FaultRecord
+		model.DB.Where("device_hw_id IN ?", hwIDs).Order("last_seen DESC").Limit(50).Find(&faults)
+		for i := range faults {
+			f := &faults[i]
+			conf := 0.0
+			if f.Confidence != nil {
+				conf = *f.Confidence
+			}
+			woid := uint(0)
+			if f.WorkOrderID != nil {
+				woid = *f.WorkOrderID
+			}
+			faultList = append(faultList, gin.H{
+				"id": f.ID, "device_hw_id": f.DeviceHwID, "err_code": f.ErrCode,
+				"fault_type": f.FaultType, "fault_level": f.FaultLevel, "status": f.Status,
+				"confidence": conf, "work_order_id": woid, "first_seen": f.FirstSeen, "last_seen": f.LastSeen,
+			})
+		}
+
+		var wos []model.WorkOrder
+		model.DB.Where("device_hw_id IN ?", hwIDs).Order("created_at DESC").Limit(50).Find(&wos)
+		for i := range wos {
+			w := &wos[i]
+			woList = append(woList, gin.H{
+				"id": w.ID, "order_no": w.OrderNo, "device_hw_id": w.DeviceHwID,
+				"status": w.Status, "fault_id": w.FaultID, "created_at": w.CreatedAt, "result": w.Result,
+			})
+		}
+
+		var patrols []model.PatrolRecord
+		model.DB.Where("device_hw_id IN ?", hwIDs).Order("patrol_at DESC").Limit(50).Find(&patrols)
+		for i := range patrols {
+			p := &patrols[i]
+			patrolList = append(patrolList, gin.H{
+				"id": p.ID, "device_hw_id": p.DeviceHwID, "patrol_type": p.PatrolType,
+				"check_result": p.CheckResult, "patrol_by": p.PatrolBy, "patrol_at": p.PatrolAt,
+			})
+		}
+	}
+
+	ok(c, gin.H{
+		"crossing":    gin.H{"id": x.ID, "name": x.Name, "lat": x.Lat, "lng": x.Lng},
+		"devices":     devList,
+		"warnings":    warnList,
+		"faults":      faultList,
+		"work_orders": woList,
+		"patrols":     patrolList,
+	})
 }

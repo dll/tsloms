@@ -39,17 +39,17 @@ func TestWarningRuleMatches_CodeNotMatch(t *testing.T) {
 }
 
 func TestWarningRuleMatches_DeviceHw(t *testing.T) {
-	hw := uint32(42)
+	hw := "42"
 	rule := &WarningRule{
 		EffectiveType: RuleEffectivePermanent,
 		Action:        RuleActionIgnore,
 		Enabled:       true,
 		DeviceHwID:    &hw,
 	}
-	if rule.Matches(&Warning{DeviceHwID: 41}) {
+	if rule.Matches(&Warning{DeviceHwID: "41"}) {
 		t.Error("设备不同不应匹配")
 	}
-	if !rule.Matches(&Warning{DeviceHwID: 42}) {
+	if !rule.Matches(&Warning{DeviceHwID: "42"}) {
 		t.Error("设备相同应匹配")
 	}
 }
@@ -111,8 +111,8 @@ func TestComputeCrossingStatus(t *testing.T) {
 func TestCreateStandaloneSeverity_NoConflict(t *testing.T) {
 	db := InitTestDB()
 	// 多条无来源故障预警工单（fault_id=0）应可并存（占位，不参与 fault 活跃唯一）
-	wo1 := &WorkOrder{OrderNo: "WO_SA_1", FaultID: 0, DeviceHwID: 1, Status: WorkOrderStatusPending, FaultActiveScope: nil}
-	wo2 := &WorkOrder{OrderNo: "WO_SA_2", FaultID: 0, DeviceHwID: 1, Status: WorkOrderStatusPending, FaultActiveScope: nil}
+	wo1 := &WorkOrder{OrderNo: "WO_SA_1", FaultID: 0, DeviceHwID: "1", Status: WorkOrderStatusPending, FaultActiveScope: nil}
+	wo2 := &WorkOrder{OrderNo: "WO_SA_2", FaultID: 0, DeviceHwID: "1", Status: WorkOrderStatusPending, FaultActiveScope: nil}
 	if err := db.Create(wo1).Error; err != nil {
 		t.Fatalf("创建占位工单1失败: %v", err)
 	}

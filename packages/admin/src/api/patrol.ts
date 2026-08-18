@@ -27,7 +27,7 @@ export interface PatrolRecord {
   id: number
   task_id?: number | null
   device_id?: number
-  device_hw_id?: number
+  device_hw_id?: string
   crossing_id?: number | null
   crossing_name?: string
   intersection?: string

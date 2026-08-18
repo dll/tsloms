@@ -9,7 +9,7 @@ type FaultEvidence struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
 	FaultID       *uint     `json:"fault_id" gorm:"index;comment:关联故障记录ID(被过滤的证据可为空)"`
 	EvaluationID  string    `json:"evaluation_id" gorm:"size:40;index;comment:研判批次号(一次研判一组证据同批次)"`
-	DeviceHwID    uint32    `json:"device_hw_id" gorm:"index:idx_evi_hw_time;comment:设备硬件ID"`
+	DeviceHwID    string    `json:"device_hw_id" gorm:"size:64;index:idx_evi_hw_time;comment:设备硬件ID(uuid字符串)"`
 	SourceType    string    `json:"source_type" gorm:"size:24;index;comment:证据来源(firmware/current/led_state/citizen/photo_evidence/video_monitor)"`
 	ErrCode       *int8     `json:"err_code" gorm:"comment:固件错误码(firmware类证据带)"`
 	LedState      *int8     `json:"led_state" gorm:"comment:灯组状态(firmware类)"`

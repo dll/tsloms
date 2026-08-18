@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -41,11 +42,11 @@ func TestComputCrossingPoly_Healthy_Fault_Offline(t *testing.T) {
 
 	// 4 台设备：2 正常在线，1 有活跃故障，1 离线
 	for i := 0; i < 4; i++ {
-		model.DB.Create(&model.Device{HwID: uint32(7000 + i), CrossingID: &x.ID, OnlineStatus: i < 3})
+		model.DB.Create(&model.Device{HwID: fmt.Sprintf("%d", 7000+i), CrossingID: &x.ID, OnlineStatus: i < 3})
 	}
 	// 一台设备带活跃故障
 	model.DB.Create(&model.FaultRecord{
-		DeviceHwID: 7000, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
+		DeviceHwID: "7000", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: model.FaultStatusOccurred,
 	})
 
@@ -76,7 +77,7 @@ func TestGetCrossingMapData(t *testing.T) {
 
 	x := model.Crossing{Name: "路口A", RoadName: "长江中路"}
 	model.DB.Create(&x)
-	model.DB.Create(&model.Device{HwID: 8001, CrossingID: &x.ID, OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "8001", CrossingID: &x.ID, OnlineStatus: true})
 
 	code, body := doReq(t, r, "GET", "/api/v1/map/crossing-data", "")
 	if code != http.StatusOK || body["code"].(float64) != 0 {
@@ -106,7 +107,7 @@ func TestGetRoadMapData(t *testing.T) {
 		ids = append(ids, x.ID)
 	}
 	for _, id := range ids {
-		model.DB.Create(&model.Device{HwID: uint32(9000 + id), CrossingID: &id, OnlineStatus: true})
+		model.DB.Create(&model.Device{HwID: fmt.Sprintf("%d", 9000+id), CrossingID: &id, OnlineStatus: true})
 	}
 	code, body := doReq(t, r, "GET", "/api/v1/map/road-data", "")
 	if code != http.StatusOK || body["code"].(float64) != 0 {

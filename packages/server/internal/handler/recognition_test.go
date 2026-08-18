@@ -26,10 +26,10 @@ func TestFaultEvidenceList(t *testing.T) {
 	r := covSetup(t)
 	registerRecognitionRoutes(r)
 
-	f := seedFault(4001, model.FaultStatusOccurred)
+	f := seedFault("4001", model.FaultStatusOccurred)
 	// 落一条主信号证据
 	ev := model.FaultEvidence{
-		FaultID: &f.ID, EvaluationID: "batch-1", DeviceHwID: 4001,
+		FaultID: &f.ID, EvaluationID: "batch-1", DeviceHwID: "4001",
 		SourceType: model.EvSourceFirmware, CapturedAt: now(),
 	}
 	model.DB.Create(&ev)
@@ -49,7 +49,7 @@ func TestEvidenceIngest(t *testing.T) {
 	registerRecognitionRoutes(r)
 
 	code, body := doReq(t, r, "POST", "/api/v1/evidence/ingest",
-		`{"device_hw_id":4002,"source_type":"citizen","raw_data":"群众反映红灯不亮"}`)
+		`{"device_hw_id":"4002","source_type":"citizen","raw_data":"群众反映红灯不亮"}`)
 	mustOK(t, code, body, "注入群众反映证据")
 	ev := body["data"].(map[string]interface{})["evidence"].(map[string]interface{})
 	if ev["source_type"] != "citizen" {
@@ -57,7 +57,7 @@ func TestEvidenceIngest(t *testing.T) {
 	}
 
 	// 非法 source_type → 400
-	code, _ = doReq(t, r, "POST", "/api/v1/evidence/ingest", `{"device_hw_id":4002,"source_type":"bad"}`)
+	code, _ = doReq(t, r, "POST", "/api/v1/evidence/ingest", `{"device_hw_id":"4002","source_type":"bad"}`)
 	if code != http.StatusBadRequest {
 		t.Errorf("非法 source_type 应 400, got %d", code)
 	}
@@ -86,7 +86,7 @@ func TestFaultCasesCRUD(t *testing.T) {
 
 	// 人工回标一条案例
 	code, body := doReq(t, r, "POST", "/api/v1/fault-cases",
-		`{"device_hw_id":4003,"fault_type":"lamp_off","fault_level":"critical","expected_result":"lamp_off","judged_result":"lamp_off"}`)
+		`{"device_hw_id":"4003","fault_type":"lamp_off","fault_level":"critical","expected_result":"lamp_off","judged_result":"lamp_off"}`)
 	mustOK(t, code, body, "人工回标案例")
 	if body["data"].(map[string]interface{})["case"] == nil {
 		t.Error("应返回回标案例")
@@ -121,7 +121,7 @@ func TestReviewFault(t *testing.T) {
 	registerRecognitionRoutes(r)
 
 	// 造一条待确认的 critical 故障（模拟引擎判 pending_review 未派单）
-	f := seedFault(4004, model.FaultStatusOccurred)
+	f := seedFault("4004", model.FaultStatusOccurred)
 	high := 0.6
 	f.FaultLevel = "critical"
 	f.RecognitionStatus = model.RecognitionPendingReview
@@ -146,7 +146,7 @@ func TestReviewFault(t *testing.T) {
 func TestReviewFault_MarkFalsePositive(t *testing.T) {
 	r := covSetup(t)
 	registerRecognitionRoutes(r)
-	f := seedFault(4005, model.FaultStatusOccurred)
+	f := seedFault("4005", model.FaultStatusOccurred)
 	f.RecognitionStatus = model.RecognitionPendingReview
 	f.FaultLevel = "critical"
 	model.DB.Save(&f)

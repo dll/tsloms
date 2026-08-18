@@ -15,11 +15,11 @@ func decisionSeed(t *testing.T) {
 	op := model.User{Username: "op_dc", PasswordHash: "x", Role: model.RoleOperator}
 	model.DB.Create(&op)
 	// 设备（1 在线 1 离线）
-	model.DB.Create(&model.Device{HwID: 3001, Intersection: "在线路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 3002, Intersection: "离线路口", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "3001", Intersection: "在线路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "3002", Intersection: "离线路口", OnlineStatus: false})
 	// 故障
 	now := time.Now()
-	model.DB.Create(&model.FaultRecord{DeviceHwID: 3001, FaultType: "lamp_off", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
+	model.DB.Create(&model.FaultRecord{DeviceHwID: "3001", FaultType: "lamp_off", Status: model.FaultStatusOccurred, FirstSeen: now, LastSeen: now})
 	// 工单：2 个未完成（负载不均）+ 1 完成
 	model.DB.Create(&model.WorkOrder{OrderNo: "WOd1", Status: model.WorkOrderStatusPending, AssigneeID: &op.ID, CreatedAt: now.Add(-72 * time.Hour)})
 	model.DB.Create(&model.WorkOrder{OrderNo: "WOd2", Status: model.WorkOrderStatusPending, AssigneeID: &op.ID, CreatedAt: now.Add(-72 * time.Hour)})
@@ -59,7 +59,7 @@ func TestBuildDecisions(t *testing.T) {
 	model.DB.Create(&m1)
 	model.DB.Create(&model.MaterialStock{MaterialID: m1.ID, MaterialName: "红灯灯珠", Type: model.StockTypeUse, Quantity: -10, CreatedAt: time.Now()})
 	// 维修费用按类型 + 设备
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE1", Type: "材料费", Amount: 8000, DeviceHwID: 3001, CreatedAt: time.Now()})
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE1", Type: "材料费", Amount: 8000, DeviceHwID: "3001", CreatedAt: time.Now()})
 
 	d, err := BuildDecisions()
 	if err != nil {

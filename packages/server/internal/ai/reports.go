@@ -113,7 +113,7 @@ func BuildDailySnapshot() (*DailySnapshot, error) {
 			Order("health_score ASC").Limit(5).Find(&preds)
 		for _, p := range preds {
 			s.HighRiskDevices = append(s.HighRiskDevices, MaterialMin{
-				ID: uint(p.DeviceHwID), Name: fmt.Sprintf("设备#%d", p.DeviceHwID),
+				ID: 0, Name: fmt.Sprintf("设备#%s", p.DeviceHwID),
 				Code: p.Intersection, Stock: p.HealthScore, Threshold: 0,
 				Use30: 0, LastUse: p.PredictType,
 			})
@@ -263,7 +263,7 @@ func buildFaultReportData() (string, string) {
 	d["type_dist"] = types
 	// 高发设备
 	var top []struct {
-		DeviceHwID uint32
+		DeviceHwID string
 		Count      int64
 	}
 	model.DB.Model(&model.FaultRecord{}).Where("first_seen >= ?", time.Now().AddDate(0, 0, -30)).
@@ -336,7 +336,7 @@ func buildDeviceReportData() (string, string) {
 	d["offline"] = total - online
 	// 高故障设备（近30天）
 	var top []struct {
-		DeviceHwID uint32
+		DeviceHwID string
 		Count      int64
 	}
 	model.DB.Model(&model.FaultRecord{}).Where("first_seen >= ?", time.Now().AddDate(0, 0, -30)).
@@ -395,7 +395,7 @@ func joinFaults(items []struct {
 }
 
 func joinDevices(items []struct {
-	DeviceHwID uint32
+	DeviceHwID string
 	Count      int64
 }) string {
 	out := ""
@@ -406,7 +406,7 @@ func joinDevices(items []struct {
 		if i > 0 {
 			out += "、"
 		}
-		out += fmt.Sprintf("#%d(%d)", t.DeviceHwID, t.Count)
+		out += fmt.Sprintf("#%s(%d)", t.DeviceHwID, t.Count)
 	}
 	return out
 }

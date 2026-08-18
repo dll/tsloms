@@ -55,8 +55,8 @@ func TestListOperationLogs_ReturnsAudit(t *testing.T) {
 
 func TestListPacketLogs_FilterByValid(t *testing.T) {
 	db := model.InitTestDB()
-	db.Create(&model.PacketLog{DeviceHwID: 1, CmdType: 0x00, CmdSeq: 1, Valid: true})
-	db.Create(&model.PacketLog{DeviceHwID: 2, CmdType: 0x01, CmdSeq: 2, Valid: false})
+	db.Create(&model.PacketLog{DeviceHwID: "1", CmdType: 0x00, CmdSeq: 1, Valid: true})
+	db.Create(&model.PacketLog{DeviceHwID: "2", CmdType: 0x01, CmdSeq: 2, Valid: false})
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

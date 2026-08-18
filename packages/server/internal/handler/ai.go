@@ -208,7 +208,7 @@ func RunPredictionByIntersection(c *gin.Context) {
 		p := ai.RunRulePrediction(&d, batchID)
 		key := p.Intersection
 		if key == "" {
-			key = fmt.Sprintf("#%d", p.DeviceHwID)
+			key = fmt.Sprintf("#%s", p.DeviceHwID)
 		}
 		g, exist := groups[key]
 		if !exist {
@@ -303,7 +303,7 @@ func EnhancePredictionPlan(c *gin.Context) {
 	uid := userIDFromCtx(c)
 	client := ai.NewLLMClient(nil)
 	prompt := fmt.Sprintf(
-		"你是交通信号灯运维专家。设备#%d（路口：%s）健康分%d/100，风险等级%s，"+
+		"你是交通信号灯运维专家。设备#%s（路口：%s）健康分%d/100，风险等级%s，"+
 			"预测故障类型：%s，剩余寿命约%d天。风险因子：%s。\n"+
 			"请用中文给出 ≤200字的具体应对预案，包括：检修优先级、排查步骤、需准备的备件、预计耗时。",
 		pred.DeviceHwID, pred.Intersection, pred.HealthScore, ai.RiskLabel(pred.RiskLevel),
@@ -343,13 +343,13 @@ func DiagnoseFeedbackAPI(c *gin.Context) {
 
 // BuildLifecycleAPI AI 全流程溯源：设备生命周期时间线 + LLM画像
 func BuildLifecycleAPI(c *gin.Context) {
-	hw, err := strconv.ParseUint(c.Param("hwid"), 10, 32)
-	if err != nil {
+	hw := c.Param("hwid")
+	if hw == "" {
 		badRequest(c, "设备ID无效")
 		return
 	}
 	var dev model.Device
-	if err := model.DB.Where("hw_id = ?", uint32(hw)).First(&dev).Error; err != nil {
+	if err := model.DB.Where("hw_id = ?", hw).First(&dev).Error; err != nil {
 		notFound(c, "设备不存在")
 		return
 	}

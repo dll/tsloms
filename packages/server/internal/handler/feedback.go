@@ -55,7 +55,7 @@ func ListFeedbacks(c *gin.Context) {
 // CreateFeedback 提交问题反馈（地图/移动/后台）
 func CreateFeedback(c *gin.Context) {
 	var req struct {
-		DeviceHwID   *uint32 `json:"device_hw_id" binding:"required"`
+		DeviceHwID   *string `json:"device_hw_id" binding:"required"`
 		Intersection string  `json:"intersection"`
 		Title        string  `json:"title" binding:"required"`
 		Content      string  `json:"content"`
@@ -67,7 +67,7 @@ func CreateFeedback(c *gin.Context) {
 		badRequest(c, "请填写反馈标题并关联设备")
 		return
 	}
-	if req.DeviceHwID == nil || *req.DeviceHwID == 0 {
+	if req.DeviceHwID == nil || *req.DeviceHwID == "" {
 		badRequest(c, "请关联设备（所有问题都应关联到设备）")
 		return
 	}

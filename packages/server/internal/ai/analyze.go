@@ -213,7 +213,7 @@ type CostSnapshot struct {
 }
 
 type DeviceCost struct {
-	DeviceHwID uint32  `json:"device_hw_id"`
+	DeviceHwID string  `json:"device_hw_id"`
 	Total      float64 `json:"total"`
 	Count      int64   `json:"count"`
 }
@@ -358,7 +358,7 @@ func buildCostRuleInsight(s *CostSnapshot) string {
 	if len(s.TopDevices) > 0 {
 		strong := ""
 		for _, d := range s.TopDevices[:min(3, len(s.TopDevices))] {
-			strong += fmt.Sprintf("#%d(%.2f) ", d.DeviceHwID, d.Total)
+			strong += fmt.Sprintf("#%s(%.2f) ", d.DeviceHwID, d.Total)
 		}
 		lines = append(lines, "高成本设备 TOP："+strong+"，建议优先核查其高频故障根因。")
 	}

@@ -30,8 +30,8 @@ func intersectExpenseEngine(t *testing.T) *gin.Engine {
 
 func TestIntersection_Rename(t *testing.T) {
 	r := intersectExpenseEngine(t)
-	model.DB.Create(&model.Device{HwID: 1, Intersection: "旧路口", OnlineStatus: true})
-	model.DB.Create(&model.Device{HwID: 2, Intersection: "旧路口", OnlineStatus: false})
+	model.DB.Create(&model.Device{HwID: "1", Intersection: "旧路口", OnlineStatus: true})
+	model.DB.Create(&model.Device{HwID: "2", Intersection: "旧路口", OnlineStatus: false})
 	// 成功重命名
 	code, body := doReq(t, r, "PUT", "/api/v1/intersections/rename", `{"old":"旧路口","new":"新路口"}`)
 	mustOK(t, code, body, "重命名")
@@ -52,7 +52,7 @@ func TestIntersection_Rename(t *testing.T) {
 
 func TestIntersection_LocationAndClear(t *testing.T) {
 	r := intersectExpenseEngine(t)
-	model.DB.Create(&model.Device{HwID: 3, Intersection: "定位路口"})
+	model.DB.Create(&model.Device{HwID: "3", Intersection: "定位路口"})
 	// 设经纬度
 	code, _ := doReq(t, r, "PUT", "/api/v1/intersections/location", `{"intersection":"定位路口","lat":31.2,"lng":121.5}`)
 	mustOK(t, code, map[string]interface{}{"code": float64(0)}, "设经纬度")
@@ -78,9 +78,9 @@ func TestIntersection_LocationAndClear(t *testing.T) {
 
 func TestExpense_ListAndStats(t *testing.T) {
 	r := intersectExpenseEngine(t)
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE1", Type: model.ExpenseTypeMaterial, Amount: 100, DeviceHwID: 1, CreatedAt: now()})
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE2", Type: model.ExpenseTypeLabor, Amount: 200, DeviceHwID: 1, Confirmed: true, CreatedAt: now()})
-	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE3", Type: model.ExpenseTypeTraffic, Amount: 50, DeviceHwID: 2, CreatedAt: now()})
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE1", Type: model.ExpenseTypeMaterial, Amount: 100, DeviceHwID: "1", CreatedAt: now()})
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE2", Type: model.ExpenseTypeLabor, Amount: 200, DeviceHwID: "1", Confirmed: true, CreatedAt: now()})
+	model.DB.Create(&model.RepairExpense{ExpenseNo: "FE3", Type: model.ExpenseTypeTraffic, Amount: 50, DeviceHwID: "2", CreatedAt: now()})
 
 	// 列表 + 筛选
 	for _, q := range []string{"", "?device_hw_id=1", "?work_order_id=1", "?type=material", "?from=2026-08-01", "?from=2026-08-01&to=2026-08-30", "?confirmed=true"} {
@@ -100,7 +100,7 @@ func TestExpense_ListAndStats(t *testing.T) {
 
 func TestExpense_Save(t *testing.T) {
 	r := intersectExpenseEngine(t)
-	wo := model.WorkOrder{OrderNo: "WOexp", DeviceHwID: 7, Status: model.WorkOrderStatusPending}
+	wo := model.WorkOrder{OrderNo: "WOexp", DeviceHwID: "7", Status: model.WorkOrderStatusPending}
 	model.DB.Create(&wo)
 	// 新增
 	code, body := doReq(t, r, "POST", "/api/v1/expenses", `{"type":"material","amount":150,"work_order_id":`+uid(wo.ID)+`,"work_date":"2026-08-01"}`)

@@ -55,7 +55,7 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 			zap.Error(err),
 		)
 		// 记录无效报文日志
-		h.logPacket(0, payload, 0, 0, "", false)
+		h.logPacket("", payload, 0, 0, "", false)
 		return
 	}
 
@@ -76,9 +76,9 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 	parsedResult := h.buildParsedResult(frame, eventPak)
 
 	// 提取设备硬件 ID（从第一条事件记录，或 0 表示无事件数据）
-	var deviceHwID uint32
+	var deviceHwID string
 	if eventPak != nil && len(eventPak.Records) > 0 {
-		deviceHwID = eventPak.Records[0].LedHwID
+		deviceHwID = recognition.LedUUID(eventPak.Records[0].LedHwID)
 	}
 
 	// 记录报文日志
@@ -207,12 +207,12 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 	}
 
 	var device model.Device
-	result := model.DB.Where("hw_id = ?", rec.LedHwID).First(&device)
+	result := model.DB.Where("hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&device)
 
 	if result.Error != nil {
 		// 设备不存在，创建新设备
 		device = model.Device{
-			HwID:          rec.LedHwID,
+			HwID:          recognition.LedUUID(rec.LedHwID),
 			SwVersion:     rec.SwVer,
 			ConfVersion:   rec.ConfVer,
 			OnlineStatus:  true,
@@ -281,7 +281,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 	var existing model.FaultRecord
 	result := model.DB.Where(
 		"device_hw_id = ? AND err_code = ? AND status IN ?",
-		rec.LedHwID, rec.ErrCode,
+		recognition.LedUUID(rec.LedHwID), rec.ErrCode,
 		[]string{model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched},
 	).First(&existing)
 
@@ -314,7 +314,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 				model.DB.Model(&existing).Updates(updGrade)
 				// critical 自动派单（M1 原子防重，内部回填 work_order_id/confirmed）
 				if existing.FaultLevel == "critical" && judge.FaultLevel == "critical" {
-					model.EnsureActiveWorkOrder(model.DB, existing.ID, rec.LedHwID)
+					model.EnsureActiveWorkOrder(model.DB, existing.ID, recognition.LedUUID(rec.LedHwID))
 					dispatchIf = true
 				}
 				h.logger.Info("待确认故障自动升级确认",
@@ -347,7 +347,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 
 	// 创建新故障记录（研判结果落库）
 	fault := model.FaultRecord{
-		DeviceHwID:        rec.LedHwID,
+		DeviceHwID:        recognition.LedUUID(rec.LedHwID),
 		ErrCode:           rec.ErrCode,
 		FaultType:         judge.FaultType,
 		FaultLevel:        judge.FaultLevel,
@@ -463,7 +463,7 @@ func (h *Handler) createWarningFromFault(fault *model.FaultRecord, judge model.F
 	h.logger.Info("已生成预警",
 		zap.Uint("warningId", w.ID),
 		zap.Uint("faultId", fault.ID),
-		zap.Uint32("hwId", fault.DeviceHwID),
+		zap.String("hwId", fault.DeviceHwID),
 		zap.Int8("errCode", fault.ErrCode),
 	)
 }
@@ -480,7 +480,7 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 	if wo == nil {
 		h.logger.Error("自动生成工单失败或已存在",
 			zap.Uint("faultId", fault.ID),
-			zap.Uint32("hwId", fault.DeviceHwID),
+			zap.String("hwId", fault.DeviceHwID),
 		)
 		return
 	}
@@ -489,7 +489,7 @@ func (h *Handler) createWorkOrder(fault *model.FaultRecord) {
 		zap.String("orderNo", wo.OrderNo),
 		zap.Uint("orderId", wo.ID),
 		zap.Uint("faultId", fault.ID),
-		zap.Uint32("hwId", fault.DeviceHwID),
+		zap.String("hwId", fault.DeviceHwID),
 	)
 }
 
@@ -590,9 +590,9 @@ func buildDownTopic(uplinkTopic string, cmdSeq uint16) string {
 	return down
 }
 
-// topicHwID 从设备上行 Topic 提取硬件 ID
+// topicHwID 从设备上行 Topic 提取硬件 ID（协议层 uint32，仅用于日志溯源）。
 // 上行 Topic 格式：{prefix}/{网络号}/{站点号}/{硬件ID}/U，硬件ID 位于倒数第 2 段。
-// 无法解析时返回 0（无意义），仅用于日志溯源，不影响业务。
+// 无法解析时返回 0（无意义），不影响业务。
 func topicHwID(uplinkTopic string) uint32 {
 	segments := strings.Split(uplinkTopic, "/")
 	// 需至少有 {prefix}/{net}/{station}/{hwid}/{U} 五段，hwid 在倒数第 2 段
@@ -638,7 +638,7 @@ func (h *Handler) sendTimeSyncAck(frame *CmdFrame, uplinkTopic string) {
 }
 
 // logPacket 记录报文日志到数据库
-func (h *Handler) logPacket(deviceHwID uint32, rawData []byte, cmdType uint8, cmdSeq uint16, parsedResult string, valid bool) {
+func (h *Handler) logPacket(deviceHwID string, rawData []byte, cmdType uint8, cmdSeq uint16, parsedResult string, valid bool) {
 	if model.DB == nil {
 		return
 	}
@@ -655,7 +655,7 @@ func (h *Handler) logPacket(deviceHwID uint32, rawData []byte, cmdType uint8, cm
 
 	if err := model.DB.Create(&log).Error; err != nil {
 		h.logger.Error("记录报文日志失败",
-			zap.Uint32("hwId", deviceHwID),
+			zap.String("hwId", deviceHwID),
 			zap.Error(err),
 		)
 	}
@@ -664,17 +664,19 @@ func (h *Handler) logPacket(deviceHwID uint32, rawData []byte, cmdType uint8, cm
 // injectAuxEvidence 检索并注入该设备在近时间窗内的辅助证据（群众反映/手机举证/视频监控/电流异常）。
 // 本阶段：真实视频分析/AI 视觉不实现（P1/P2），此处从 DeviceMedia/Feedback 已落库记录中
 // 汇入已归一化的佐证信号，作为多源交叉验证的输入；无记录则不注入（不阻塞规则主通道）。
+// hwID 为协议帧 uint32，查询台账时转 uuid 字符串。
 func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) {
+	hwUUID := recognition.LedUUID(hwID)
 	windowStart := now.Add(-24 * time.Hour) // 检索窗口：近 24h 的辅助证据
 
 	// 群众反映（Feedback）—— 辅助证据
 	var feedbacks []model.Feedback
-	model.DB.Where("device_hw_id = ? AND created_at >= ?", hwID, windowStart).Find(&feedbacks)
+	model.DB.Where("device_hw_id = ? AND created_at >= ?", hwUUID, windowStart).Find(&feedbacks)
 	for i := range feedbacks {
 		fb := &feedbacks[i]
 		fid := fb.ID
 		eval.AddEvidence(recognition.RuleEvidence{
-			DeviceHwID:    hwID,
+			DeviceHwID:    hwUUID,
 			SourceType:    model.EvSourceCitizen,
 			RawData:       "反馈#" + fb.Title + " | " + fb.Content,
 			CapturedAt:    fb.CreatedAt,
@@ -686,7 +688,7 @@ func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) 
 	// 手机举证 / 视频监控媒体（DeviceMedia）—— 辅助证据
 	var medias []model.DeviceMedia
 	model.DB.Where("device_hw_id = ? AND media_type IN ? AND created_at >= ?",
-		hwID, []string{model.MediaEvidence, model.MediaMonitoring, model.MediaTimelapse}, windowStart).Find(&medias)
+		hwUUID, []string{model.MediaEvidence, model.MediaMonitoring, model.MediaTimelapse}, windowStart).Find(&medias)
 	for i := range medias {
 		md := &medias[i]
 		mid := md.ID
@@ -695,7 +697,7 @@ func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) 
 			src = model.EvSourceVideoMonitor
 		}
 		eval.AddEvidence(recognition.RuleEvidence{
-			DeviceHwID: hwID,
+			DeviceHwID: hwUUID,
 			SourceType: src,
 			RawData:    "媒体#" + md.Title + " | " + md.URL,
 			CapturedAt: md.CreatedAt,
@@ -721,7 +723,7 @@ func (h *Handler) persistEvidence(eval *recognition.Evaluator, fault *model.Faul
 	curY := rec.CurrentY
 	curG := rec.CurrentG
 	primaryEv := recognition.RuleEvidence{
-		DeviceHwID:    rec.LedHwID,
+		DeviceHwID:    recognition.LedUUID(rec.LedHwID),
 		SourceType:    model.EvSourceFirmware,
 		ErrCode:       &errCode,
 		LedState:      &led,
@@ -739,8 +741,8 @@ func (h *Handler) persistEvidence(eval *recognition.Evaluator, fault *model.Faul
 	// 注入的辅助证据
 	for i := range eval.Evidence() {
 		ev := eval.Evidence()[i]
-		if ev.DeviceHwID == 0 {
-			ev.DeviceHwID = rec.LedHwID
+		if ev.DeviceHwID == "" {
+			ev.DeviceHwID = recognition.LedUUID(rec.LedHwID)
 		}
 		recs = append(recs, &ev)
 	}

@@ -36,6 +36,13 @@ const router = createRouter({
       component: () => import('@/views/login/index.vue'),
     },
     {
+      // 用户自助注册（对外开放）：独立路由，未登录可访问；登录态访问直接回仪表盘
+      path: '/register',
+      name: 'Register',
+      component: () => import('@/views/register/index.vue'),
+      meta: { registerOnly: true },
+    },
+    {
       path: '/',
       name: 'Layout',
       component: () => import('@/views/layout/index.vue'),
@@ -99,6 +106,10 @@ router.beforeEach(async (to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.path === '/login' && token) {
+    return { path: '/dashboard' }
+  }
+  // 登录态访问注册页 → 回仪表盘（已注册用户无需再注册）
+  if (to.path === '/register' && token) {
     return { path: '/dashboard' }
   }
   // 已登录：确保模块路由已注册（首次导航前完成，避免 dashboard 未注册导致循环重定向）

@@ -35,7 +35,7 @@ import (
 // patrolSelfCheckSnapshot 单台设备自检快照
 type patrolSelfCheckSnapshot struct {
 	DeviceID   uint     `json:"device_id"`
-	HwID       uint32   `json:"hw_id"`
+	HwID       string   `json:"hw_id"`
 	Online     bool     `json:"online"`
 	ErrCode    int8     `json:"err_code"`
 	FaultType  string   `json:"fault_type"`
@@ -121,14 +121,14 @@ func filterHighRiskAIDevices(candidates []model.Device) []model.Device {
 	if len(candidates) == 0 {
 		return nil
 	}
-	hwSet := map[uint32]bool{}
+	hwSet := map[string]bool{}
 	for _, d := range candidates {
 		hwSet[d.HwID] = true
 	}
 	var preds []model.AIPrediction
 	model.DB.Where("device_hw_id IN ? AND risk_level IN ?", hwSet, []string{"high", "critical"}).
 		Select("device_hw_id").Distinct().Find(&preds)
-	riskHW := map[uint32]bool{}
+	riskHW := map[string]bool{}
 	for _, p := range preds {
 		riskHW[p.DeviceHwID] = true
 	}
@@ -178,7 +178,7 @@ func (s *PatrolTaskService) RunTask(taskID uint, patrolBy string) (created int, 
 			continue
 		}
 		if err := model.DB.Create(rec).Error; err != nil {
-			s.logger.Warn("巡检记录落库失败", zap.Error(err), zap.Uint32("hw", d.HwID))
+			s.logger.Warn("巡检记录落库失败", zap.Error(err), zap.String("hw", d.HwID))
 			continue
 		}
 		created++
@@ -270,7 +270,7 @@ func (s *PatrolTaskService) collectSelfCheck(d *model.Device) patrolSelfCheckSna
 }
 
 // hasActiveFault 判断设备是否存在活跃故障（未解决）。
-func (s *PatrolTaskService) hasActiveFault(hwID uint32) bool {
+func (s *PatrolTaskService) hasActiveFault(hwID string) bool {
 	var cnt int64
 	model.DB.Model(&model.FaultRecord{}).
 		Where("device_hw_id = ? AND status IN ?",
@@ -299,7 +299,7 @@ func (s *PatrolTaskService) Ranking(dimension string, limit int) ([]model.Patrol
 	if dimension == "device" {
 		// 按设备：device_hw_id 原生列映射到具类型字段
 		var rows []struct {
-			DeviceHwID uint32
+			DeviceHwID string
 			Cnt        int
 			Abnormal   int
 			LastAt     string
@@ -313,7 +313,7 @@ func (s *PatrolTaskService) Ranking(dimension string, limit int) ([]model.Patrol
 			return nil, err
 		}
 		for _, r := range rows {
-			out = append(out, buildRankingItem(fmt.Sprintf("%d", r.DeviceHwID), r.Cnt, r.Abnormal, r.LastAt))
+			out = append(out, buildRankingItem(r.DeviceHwID, r.Cnt, r.Abnormal, r.LastAt))
 		}
 		return out, nil
 	}
@@ -479,9 +479,7 @@ func (s *PatrolTaskService) ListRecords(page, pageSize uint, f map[string]string
 		}
 	}
 	if v := f["device_hw_id"]; v != "" {
-		if hw, err := parseUint(v); err == nil {
-			q = q.Where("device_hw_id = ?", hw)
-		}
+		q = q.Where("device_hw_id = ?", v)
 	}
 	if v := f["check_result"]; v != "" {
 		q = q.Where("check_result = ?", v)

@@ -85,7 +85,7 @@ func SaveMaterial(c *gin.Context) {
 		UnitPrice  float64 `json:"unit_price"`
 		Stock      int     `json:"stock"`
 		Threshold  int     `json:"threshold"`
-		DeviceHwID *uint32 `json:"device_hw_id"`
+		DeviceHwID *string `json:"device_hw_id"`
 		SupplierID *uint   `json:"supplier_id"`
 		Note       string  `json:"note"`
 		Status     string  `json:"status"`

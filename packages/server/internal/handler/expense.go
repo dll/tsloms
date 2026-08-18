@@ -33,11 +33,11 @@ func ExpenseStats(c *gin.Context) {
 
 	// 按费用的工单查找对应故障状态/设备：设备累计维修成本 TOP
 	type row struct {
-		DeviceHwID uint32
+		DeviceHwID string
 		Sum        float64
 	}
 	var topDev []row
-	model.DB.Model(&model.RepairExpense{}).Where("device_hw_id > 0").
+	model.DB.Model(&model.RepairExpense{}).Where("device_hw_id <> ''").
 		Select("device_hw_id, SUM(amount) AS sum").
 		Group("device_hw_id").Order("sum DESC").Limit(10).Scan(&topDev)
 
@@ -91,7 +91,7 @@ func SaveRepairExpense(c *gin.Context) {
 		ID          *uint   `json:"id"`
 		Type        string  `json:"type" binding:"required"`
 		Amount      float64 `json:"amount" binding:"required"`
-		DeviceHwID  uint32  `json:"device_hw_id"`
+		DeviceHwID  string  `json:"device_hw_id"`
 		WorkOrderID *uint   `json:"work_order_id"`
 		Description string  `json:"description"`
 		WorkDate    *string `json:"work_date"` // yyyy-MM-dd
@@ -135,7 +135,7 @@ func SaveRepairExpense(c *gin.Context) {
 			badRequest(c, "关联工单不存在")
 			return
 		}
-		if req.DeviceHwID == 0 {
+		if req.DeviceHwID == "" {
 			req.DeviceHwID = wo.DeviceHwID
 		}
 	}

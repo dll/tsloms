@@ -117,7 +117,7 @@
           <el-col :span="12"><el-form-item label="预警阈值"><el-input-number v-model="editForm.threshold" :min="0" style="width: 100%" /></el-form-item></el-col>
         </el-row>
         <el-form-item label="绑定设备">
-          <el-input-number v-model="editForm.device_hw_id" :min="0" placeholder="可选，设备耗材填写" style="width: 100%" />
+          <el-input v-model="editForm.device_hw_id" placeholder="可选，设备耗材填写（uuid）" style="width: 100%" />
         </el-form-item>
         <el-form-item label="默认供应商">
           <el-select v-model="editForm.supplier_id" placeholder="选择供应商" clearable filterable style="width: 100%">

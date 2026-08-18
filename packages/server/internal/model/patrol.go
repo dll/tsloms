@@ -58,7 +58,7 @@ type PatrolRecord struct {
 	ID              uint      `json:"id" gorm:"primaryKey"`
 	TaskID          *uint     `json:"task_id" gorm:"index;comment:巡检任务ID"`
 	DeviceID        *uint     `json:"device_id" gorm:"index;comment:设备表ID(可空)"`
-	DeviceHwID      uint32    `json:"device_hw_id" gorm:"index;comment:设备硬件ID"`
+	DeviceHwID      string    `json:"device_hw_id" gorm:"size:64;index;comment:设备硬件ID(uuid字符串)"`
 	CrossingID      *uint     `json:"crossing_id" gorm:"index;comment:路口ID"`
 	PatrolType      string    `json:"patrol_type" gorm:"size:16;index;comment:巡检类型(area/street/random/selfcheck/ai)"`
 	CheckResult     string    `json:"check_result" gorm:"size:16;index;comment:自检判定(normal/abnormal)"`

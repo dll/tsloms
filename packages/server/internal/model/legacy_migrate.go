@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -41,6 +42,9 @@ func MigrateLegacyDeviceMaterials(db *gorm.DB) error {
 		return err
 	}
 
+	// 旧表 device_hw_id 为 uint32，迁移时转成 uuid 字符串（大写十六进制，与协议帧转换一致）
+	toUUID := func(v uint32) string { return fmt.Sprintf("%08X", v) }
+
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for _, r := range rows {
 			code := r.PartNo
@@ -55,7 +59,7 @@ func MigrateLegacyDeviceMaterials(db *gorm.DB) error {
 			err := tx.Where("code = ?", code).First(&exists).Error
 			if err == nil {
 				if exists.DeviceHwID == nil && r.DeviceHwID > 0 {
-					hw := r.DeviceHwID
+					hw := toUUID(r.DeviceHwID)
 					if err := tx.Model(&exists).Update("device_hw_id", &hw).Error; err != nil {
 						return err
 					}
@@ -77,9 +81,9 @@ func MigrateLegacyDeviceMaterials(db *gorm.DB) error {
 				cat = "线缆"
 			}
 
-			var hwPtr *uint32
+			var hwPtr *string
 			if r.DeviceHwID > 0 {
-				hw := r.DeviceHwID
+				hw := toUUID(r.DeviceHwID)
 				hwPtr = &hw
 			}
 			m := Material{

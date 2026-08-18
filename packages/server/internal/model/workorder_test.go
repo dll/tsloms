@@ -83,7 +83,7 @@ func TestEnsureActiveWorkOrder_SingleReuse(t *testing.T) {
 
 	// 准备一个故障记录
 	now := time.Now()
-	f := FaultRecord{DeviceHwID: 1, ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
+	f := FaultRecord{DeviceHwID: "1", ErrCode: -1, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: FaultStatusOccurred, FirstSeen: now, LastSeen: now, RecognitionStatus: RecognitionConfirmed}
 	if err := db.Create(&f).Error; err != nil {
 		t.Fatalf("建故障失败: %v", err)
@@ -125,7 +125,7 @@ func TestEnsureActiveWorkOrder_SingleReuse(t *testing.T) {
 func TestEnsureActiveWorkOrder_HistoricalDoesNotBlockReDispatch(t *testing.T) {
 	db := InitTestDB()
 	now := time.Now()
-	f := FaultRecord{DeviceHwID: 2, ErrCode: -2, FaultType: "power_loss", FaultLevel: "critical",
+	f := FaultRecord{DeviceHwID: "2", ErrCode: -2, FaultType: "power_loss", FaultLevel: "critical",
 		Status: FaultStatusConfirmed, FirstSeen: now, LastSeen: now, RecognitionStatus: RecognitionConfirmed}
 	db.Create(&f)
 
@@ -161,7 +161,7 @@ func TestEnsureActiveWorkOrder_HistoricalDoesNotBlockReDispatch(t *testing.T) {
 func TestEnsureActiveWorkOrder_ConcurrentConverges(t *testing.T) {
 	db := InitTestDB()
 	now := time.Now()
-	f := FaultRecord{DeviceHwID: 3, ErrCode: -3, FaultType: "lamp_off", FaultLevel: "critical",
+	f := FaultRecord{DeviceHwID: "3", ErrCode: -3, FaultType: "lamp_off", FaultLevel: "critical",
 		Status: FaultStatusOccurred, FirstSeen: now, LastSeen: now, RecognitionStatus: RecognitionConfirmed}
 	db.Create(&f)
 

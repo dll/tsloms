@@ -27,7 +27,7 @@ func ListIntersections(c *gin.Context) {
 	agg := map[string]*Agg{}
 
 	// 查询活跃故障按设备分组（一次取回）
-	faultDevices := map[uint32]bool{}
+	faultDevices := map[string]bool{}
 	var faults []model.FaultRecord
 	model.DB.Select("device_hw_id").Where("status IN ?", []string{
 		model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched,

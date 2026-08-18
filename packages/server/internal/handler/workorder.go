@@ -216,7 +216,7 @@ func GetWorkOrder(c *gin.Context) {
 func CreateWorkOrder(c *gin.Context) {
 	var req struct {
 		FaultID    uint   `json:"fault_id" binding:"required"`
-		DeviceHwID uint32 `json:"device_hw_id" binding:"required"`
+		DeviceHwID string `json:"device_hw_id" binding:"required"`
 		AssigneeID *uint  `json:"assignee_id"`
 	}
 

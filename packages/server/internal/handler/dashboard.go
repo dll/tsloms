@@ -139,7 +139,7 @@ func DeviceFaultRank(c *gin.Context) {
 	startTime := time.Now().AddDate(0, 0, -days)
 
 	type RankResult struct {
-		DeviceHwID uint32 `json:"device_hw_id"`
+		DeviceHwID string `json:"device_hw_id"`
 		Count      int64  `json:"count"`
 	}
 

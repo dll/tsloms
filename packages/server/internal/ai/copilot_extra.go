@@ -27,7 +27,7 @@ type DeviceCopilotAdvice struct {
 // WorkOrderCreateAdvice 建单 Copilot（基于关联故障）
 type WorkOrderCreateAdvice struct {
 	FaultID      uint     `json:"fault_id"`
-	DeviceHwID   uint32   `json:"device_hw_id"`
+	DeviceHwID   string   `json:"device_hw_id"`
 	Priority     string   `json:"priority"` // P0/P1/P2
 	PriorityText string   `json:"priority_text"`
 	Parts        []string `json:"parts"`         // 建议预领备件
@@ -48,10 +48,7 @@ type PurchaseCopilotAdvice struct {
 
 // SuggestDeviceCopilot 设备 Copilot：依据提交的设备字段给出填写与配置建议
 func SuggestDeviceCopilot(userID uint, input map[string]any) (DeviceCopilotAdvice, error) {
-	hw := uint32(0)
-	if v, ok := fieldUint32(input, "hw_id"); ok {
-		hw = v
-	}
+	hw := fieldStr(input, "hw_id")
 	intersection := fieldStr(input, "intersection")
 	swVer, _ := fieldUint32(input, "sw_version")
 	confVer, _ := fieldUint32(input, "conf_version")
@@ -60,11 +57,11 @@ func SuggestDeviceCopilot(userID uint, input map[string]any) (DeviceCopilotAdvic
 
 	// 规则兜底：基础校验
 	adv := DeviceCopilotAdvice{Source: "规则"}
-	if hw == 0 {
+	if hw == "" {
 		adv.Summary = "设备硬件 ID（hw_id）为空，请填写出厂唯一硬件编号后保存。"
 		adv.Issues = append(adv.Issues, "hw_id 不能为空（唯一）。")
 	} else {
-		adv.Summary = fmt.Sprintf("设备 #%d%s%s", hw, ifStr(intersection != "", "（"+intersection+"）", ""), ifStr(swVer > 0, "，固件版本位域 "+fmt.Sprint(swVer), ""))
+		adv.Summary = fmt.Sprintf("设备 #%s%s%s", hw, ifStr(intersection != "", "（"+intersection+"）", ""), ifStr(swVer > 0, "，固件版本位域 "+fmt.Sprint(swVer), ""))
 		if intersection == "" {
 			adv.Issues = append(adv.Issues, "建议填写路口位置描述，便于地图定位与按路口检索。")
 		}
@@ -129,7 +126,7 @@ func SuggestWorkOrderCreate(userID uint, faultID uint) (WorkOrderCreateAdvice, e
 		adv.Steps = append(adv.Steps, "携带常用备件现场处置，必要时更换后复测")
 	}
 	adv.Steps = append(adv.Steps, "完成后在工单内填写维修结果并闭环")
-	adv.Summary = fmt.Sprintf("设备 #%d 故障码 %d（%s），等级 %s，建议按 %s 建单处理。",
+	adv.Summary = fmt.Sprintf("设备 #%s 故障码 %d（%s），等级 %s，建议按 %s 建单处理。",
 		f.DeviceHwID, f.ErrCode, f.FaultType, f.FaultLevel, adv.Priority)
 	if adv.Priority == "P0" {
 		adv.RepairerHint = "紧急故障，建议指派空闲运维立即处理。"
@@ -141,7 +138,7 @@ func SuggestWorkOrderCreate(userID uint, faultID uint) (WorkOrderCreateAdvice, e
 	if model.DB != nil {
 		client := NewLLMClient(nil)
 		prompt := fmt.Sprintf(
-			"你是交通信号灯运维主管。基于故障：设备#%d，故障码%d（%s），等级%s。请输出建单建议：\n"+
+			"你是交通信号灯运维主管。基于故障：设备#%s，故障码%d（%s），等级%s。请输出建单建议：\n"+
 				"优先级：P0/P1/P2\n处理步骤：（请以『处理步骤：』开头，每行一条，用数字序号）\n预领备件：（用顿号分隔）\n推荐维修人员：...",
 			f.DeviceHwID, f.ErrCode, f.FaultType, f.FaultLevel)
 		if text, tk, err := client.Ask(userID, "advice_wo_create", prompt); err == nil {

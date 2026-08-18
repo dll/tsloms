@@ -4,7 +4,7 @@ import type { ApiResponse } from '@/utils/request'
 // 问题反馈
 export interface Feedback {
   id: number
-  device_hw_id?: number
+  device_hw_id?: string
   intersection?: string
   title: string
   content?: string
@@ -31,7 +31,7 @@ export function getFeedbacks(params: {
 }
 
 // 提交反馈（地图/后台）——关联设备必填
-export function createFeedback(data: { device_hw_id: number; intersection?: string; title: string; content?: string; reporter?: string; contact?: string }): Promise<ApiResponse> {
+export function createFeedback(data: { device_hw_id: string; intersection?: string; title: string; content?: string; reporter?: string; contact?: string }): Promise<ApiResponse> {
   return request.post('/feedbacks', data) as unknown as Promise<ApiResponse>
 }
 
