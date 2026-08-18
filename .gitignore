@@ -83,3 +83,6 @@ packages/server.pre-*/
 
 # 参考项目副本 c/（与 a/ 同类参考，暂不纳入）
 c/
+
+# 构建产物
+*.exe
