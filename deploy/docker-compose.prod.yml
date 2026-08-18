@@ -1,11 +1,11 @@
 version: '3.8'
 
 # TSLOMS 生产环境 Docker Compose（仅基础设施：MySQL、Redis、EMQX；后端经 systemd 运行）
-# 安全基线（P0-03 整改）：
-#   - 所有端口仅绑定 127.0.0.1，不对公网暴露
+# 安全基线（P0-03/P0-08 整改）：
+#   - MySQL/Redis/EMQX Dashboard 仅绑定 127.0.0.1，不对公网暴露
+#   - EMQX 1883 需对外供信号灯检测器接入（公网 tcp://<host>:1883），故绑定 0.0.0.0 且强制 built_in_database 认证
 #   - 容器内新增应用专用数据库用户 tsloms（非 root），仅授予 tsloms 库权限
 #   - Redis 启用密码认证
-#   - EMQX 启用认证（admin 密码、MQTT 用户由 .env 提供）；内网 Dashboard 仅本机可访问
 
 services:
   mysql:
@@ -13,7 +13,8 @@ services:
     container_name: tsloms-mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 未设置}
+      # 与 .env.example 保持一致：root 用 DB_ROOT_PASSWORD，应用账号用 DB_USER/DB_APP_PASSWORD
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD 未设置}
       MYSQL_DATABASE: tsloms
       MYSQL_USER: ${DB_USER:-tsloms}
       MYSQL_PASSWORD: ${DB_APP_PASSWORD:?DB_APP_PASSWORD 未设置}
@@ -28,7 +29,8 @@ services:
     image: redis:7.0
     container_name: tsloms-redis
     restart: always
-    command: ["redis-server", "--requirepass", "${REDIS_PASS:?REDIS_PASS 未设置}", "--bind", "127.0.0.1"]
+    # 注意：容器内必须 bind 0.0.0.0（否则宿主端口映射收不到），认证靠 requirepass 保护
+    command: ["redis-server", "--requirepass", "${REDIS_PASS:?REDIS_PASS 未设置}", "--bind", "0.0.0.0"]
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -48,7 +50,7 @@ services:
       EMQX_AUTHENTICATION__1__USERNAME: ${MQTT_USERNAME:-tsloms}
       EMQX_AUTHENTICATION__1__PASSWORD: ${MQTT_PASSWORD:?MQTT_PASSWORD 未设置}
     ports:
-      - "127.0.0.1:1883:1883"    # MQTT TCP（仅本机）
+      - "0.0.0.0:1883:1883"    # MQTT TCP（对外供检测器接入，已启用认证）
       - "127.0.0.1:18083:18083"  # EMQX Dashboard（仅本机）
     volumes:
       - emqx_data:/opt/emqx/data
