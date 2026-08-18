@@ -48,7 +48,23 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server cmd/server/main.go
 
       # ---------- 上传与部署 ----------
-      - name: 上传产物并部署（SSH + tar 管道）
+      - name: 打包构建产物
+        run: |
+          mkdir -p deploy/stage
+          tar czf deploy/stage/dist.tar.gz -C packages/admin dist
+          tar czf deploy/stage/server.tar.gz -C packages/server server
+          ls -lh deploy/stage/
+
+      - name: 上传产物（scp）
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            deploy/stage/dist.tar.gz deploy/stage/server.tar.gz \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/tsloms/deploy/stage/
+
+      - name: 备份当前版本（SSH）
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -56,47 +72,20 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
           insecure: true
-          command_timeout: 10m
           script: |
             set -e
             APP=${{ env.DEPLOY_APP_DIR }}
-            STAGE=$APP/deploy/stage
             ADMIN=$APP/packages/admin
             SERVER=$APP/packages/server
-
-            mkdir -p $STAGE/packages/admin/dist $STAGE/packages/server
-            rm -rf $STAGE/*
-
-            echo "backup start"
+            TMP=$APP/deploy/stage
+            mkdir -p $TMP
             TS=$(date +%Y%m%d%H%M%S)
             mkdir -p $APP/deploy/backups
             cp -r $ADMIN/dist $APP/deploy/backups/dist-$TS 2>/dev/null || true
             cp $SERVER/server $APP/deploy/backups/server-$TS 2>/dev/null || true
             echo "backup done: $TS"
 
-      - name: 上传前端 dist
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: 22
-          insecure: true
-          source: "packages/admin/dist/*"
-          target: /opt/tsloms/deploy/stage/packages/admin/dist
-
-      - name: 上传后端二进制
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: 22
-          insecure: true
-          source: "packages/server/server"
-          target: /opt/tsloms/deploy/stage/packages/server/
-
-      - name: 替换旧版本并重启（SSH）
+      - name: 解压并替换、重启（SSH）
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -107,22 +96,27 @@ jobs:
           script: |
             set -e
             APP=${{ env.DEPLOY_APP_DIR }}
-            STAGE=$APP/deploy/stage
+            TMP=$APP/deploy/stage
             ADMIN=$APP/packages/admin
             SERVER=$APP/packages/server
 
+            # 解压
+            tar xzf $TMP/dist.tar.gz -C $TMP
+            tar xzf $TMP/server.tar.gz -C $TMP
+            ls -lh $TMP/ | head
+
             # 替换前端（先清空再拷入，避免残留旧 chunk）
             rm -rf $ADMIN/dist
-            mv $STAGE/packages/admin/dist $ADMIN/dist
+            mv $TMP/dist $ADMIN/dist
             chown -R tsloms:tsloms $ADMIN/dist 2>/dev/null || true
 
             # 替换后端二进制
-            chmod +x $STAGE/packages/server/server
-            mv $STAGE/packages/server/server $SERVER/server
+            chmod +x $TMP/server
+            mv $TMP/server $SERVER/server
             chown tsloms:tsloms $SERVER/server 2>/dev/null || true
 
             # 清理暂存
-            rm -rf $STAGE
+            rm -rf $TMP
 
             # 重启并验证
             systemctl restart tsloms-server
