@@ -55,6 +55,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
+          insecure: true
           command_timeout: 10m
           script: |
             set -e
@@ -80,6 +81,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
+          insecure: true
           source: "packages/admin/dist/*"
           target: /opt/tsloms/deploy/stage/packages/admin/dist
 
@@ -90,6 +92,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
+          insecure: true
           source: "packages/server/server"
           target: /opt/tsloms/deploy/stage/packages/server/
 
@@ -100,6 +103,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
+          insecure: true
           script: |
             set -e
             APP=${{ env.DEPLOY_APP_DIR }}
