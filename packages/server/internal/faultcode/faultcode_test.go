@@ -7,7 +7,7 @@ func TestFaultTypeFromErrCode(t *testing.T) {
 		code int8
 		want string
 	}{
-		{LEDErrOK, "unknown"},            // 0 正常
+		{LEDErrOK, "unknown"},           // 0 正常
 		{LEDErrROFF, "lamp_off"},        // -1
 		{LEDErrYOFF, "lamp_off"},        // -2
 		{LEDErrGOFF, "lamp_off"},        // -3
