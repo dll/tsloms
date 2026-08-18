@@ -67,9 +67,9 @@ function initMap() {
   coordLat.value = fmt(ilat); coordLng.value = fmt(ilng)
 
   if (!viewer) {
+    // 默认高德卫星瓦片（高德路网 style=8 已被上游降级为 1x1 占位图不可用，卫星 style=6 可用，故默认影像）
     viewer = new Cesium.Viewer(el, {
-      // 默认高德路网瓦片（中国网络可用，与 CesiumMap 一致）；OSM 作备选
-      imageryProvider: new (GaodeImageryProvider as any)(),
+      imageryProvider: new (GaodeImageryProvider as any)({ style: 6 }),
       baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
       navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
       infoBox: false, selectionIndicator: false,

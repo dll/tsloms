@@ -240,7 +240,7 @@ let viewer: Cesium.Viewer | null = null
 let resizeHandler: () => void = () => {}
 
 const sceneMode = ref(2) // 默认 2D
-const baseLayer = ref('gaode') // 默认高德
+const baseLayer = ref('satellite') // 默认高德卫星（高德路网 style=8 已被上游降级为1x1占位图不可用，卫星 style=6 可用）
 const searchKw = ref('')
 const panelOpen = ref(true)
 const isFullscreen = ref(false)
