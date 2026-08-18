@@ -1,0 +1,107 @@
+name: CD - 生产自动部署
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'deploy/**'
+      - '.github/workflows/cd.yml'
+  workflow_dispatch:
+
+env:
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  DEPLOY_APP_DIR: /opt/tsloms
+
+jobs:
+  deploy:
+    name: 构建并部署到生产
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- 前端构建 ----------
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: packages/admin/package-lock.json
+
+      - name: 构建管理后台
+        working-directory: packages/admin
+        run: |
+          npm config set registry https://registry.npmmirror.com
+          npm ci
+          npm run build
+
+      # ---------- 后端构建 ----------
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/server/go.mod
+          cache: true
+
+      - name: 构建服务端（linux/amd64）
+        working-directory: packages/server
+        run: |
+          go env -w GOPROXY="https://goproxy.cn,direct"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o server cmd/server/main.go
+
+      # ---------- 上传与部署 ----------
+      - name: 上传产物并部署
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          strip_components: 0
+          source: |
+            packages/admin/dist/
+            packages/server/server
+          target: ${{ env.DEPLOY_APP_DIR }}/deploy/stage/
+
+      - name: 备份旧版本并替换（SSH）
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            APP=${{ env.DEPLOY_APP_DIR }}
+            STAGE=$APP/deploy/stage
+            ADMIN=$APP/packages/admin
+            SERVER=$APP/packages/server
+
+            # 备份
+            mkdir -p $APP/deploy/backups
+            TS=$(date +%Y%m%d%H%M%S)
+            cp -r $ADMIN/dist $APP/deploy/backups/dist-$TS 2>/dev/null || true
+            cp $SERVER/server $APP/deploy/backups/server-$TS 2>/dev/null || true
+
+            # 替换前端（先清空再拷入，避免残留旧 chunk）
+            rm -rf $ADMIN/dist
+            mv $STAGE/packages/admin/dist $ADMIN/dist
+            chown -R tsloms:tsloms $ADMIN/dist 2>/dev/null || true
+
+            # 替换后端二进制
+            chmod +x $STAGE/packages/server/server
+            mv $STAGE/packages/server/server $SERVER/server
+            chown tsloms:tsloms $SERVER/server 2>/dev/null || true
+
+            # 清理暂存
+            rm -rf $STAGE
+
+            # 重启并验证
+            systemctl restart tsloms-server
+            sleep 4
+            systemctl is-active tsloms-server
+
+      - name: 健康检查（生产 API）
+        run: |
+          sleep 3
+          curl -fsS "http://${{ env.DEPLOY_HOST }}:8092/tsloms/health" || exit 1
+          curl -fsS -o /dev/null "http://${{ env.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
+          echo "部署完成，前端与 API 均正常"

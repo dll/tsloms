@@ -1,0 +1,53 @@
+name: CO - 生产持续运维巡检
+
+on:
+  schedule:
+    # 每 10 分钟巡检一次
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+env:
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+jobs:
+  health-check:
+    name: 健康巡检（API + 前端 + MQTT 端口）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检查 API 健康
+        id: api
+        run: |
+          if curl -fsS --max-time 15 "http://${{ env.DEPLOY_HOST }}:8092/tsloms/health"; then
+            echo "api=ok"
+          else
+            echo "api=fail"
+            exit 1
+          fi
+
+      - name: 检查前端可达
+        run: |
+          curl -fsS --max-time 15 -o /dev/null "http://${{ env.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
+
+      - name: 检查 MQTT 端口
+        run: |
+          (echo > /dev/tcp/${{ env.DEPLOY_HOST }}/1883) 2>/dev/null || { echo "MQTT 1883 端口不可达"; exit 1; }
+
+      - name: 巡检失败 - 创建告警 issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+            const exists = issues.some(i => i.title.includes('生产环境巡检失败'));
+            if (!exists) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[告警] 生产环境巡检失败 ${new Date().toISOString()}`,
+                body: `生产环境巡检失败：\n- 时间：${new Date().toISOString()}\n- 主机：${{ env.DEPLOY_HOST }}\n\n请检查服务状态：\n\`ssh root@${{ env.DEPLOY_HOST }}\` 后执行 \`systemctl status tsloms-server\` 和 \`journalctl -u tsloms-server -n 50\`。`,
+              });
+            }
