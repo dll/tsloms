@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tsloms/server/internal/faultcode"
 	"github.com/tsloms/server/internal/model"
 )
 
@@ -40,6 +41,7 @@ func DemoStatus(c *gin.Context) {
 		"running":      devCnt > 0,
 		"devices":      devCnt,
 		"intersection": demoIntersectionCount(),
+		"warnings":     demoWarningCount(),
 		"hw_range":     fmt.Sprintf("%d-%d", demoHwStart, demoHwEnd),
 	})
 }
@@ -90,6 +92,7 @@ func DemoStart(c *gin.Context) {
 	var demoErrs = []int8{-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -14}
 	createdFaults := 0
 	createdOrders := 0
+	createdWarnings := 0
 	for i := 0; i < body.N*2; i++ {
 		hw := demoHWID(i)
 		errCode := demoErrs[rand.Intn(len(demoErrs))]
@@ -125,6 +128,34 @@ func DemoStart(c *gin.Context) {
 		if err := model.DB.Create(&wo).Error; err == nil {
 			createdOrders++
 		}
+
+		// 5) 每条确认故障生成一条对应演示预警（闭合链路：故障→预警→转工单/忽略），
+		//    复用真实预警字段映射（critical→严重，label=故障类别，source=fault，关联fault_id）
+		wLevel := model.WarningLevelWarning
+		if fault.FaultLevel == "critical" {
+			wLevel = model.WarningLevelCritical
+		}
+		w := &model.Warning{
+			DeviceHwID:   hw,
+			WarningCode:  int(errCode),
+			WarningLabel: faultcode.FaultTypeFromErrCode(errCode),
+			Level:        wLevel,
+			Source:       model.WarningSourceFault,
+			DealState:    model.WarningDealUnhandled,
+			Status:       model.WarningUntransferred,
+			FaultID:      &fault.ID,
+			OccurredAt:   now,
+			Remark:       "系统演示生成：故障已确认（" + fault.FaultType + "）",
+		}
+		// 演示设备的路口归属
+		var ddev model.Device
+		if model.DB.Where("hw_id = ?", hw).First(&ddev).Error == nil {
+			w.CrossingID = ddev.CrossingID
+			w.EquipmentUUID = ddev.Intersection
+		}
+		if err := model.DB.Create(w).Error; err == nil {
+			createdWarnings++
+		}
 	}
 
 	ok(c, gin.H{
@@ -133,6 +164,7 @@ func DemoStart(c *gin.Context) {
 		"devices":       createdDevices,
 		"faults":        createdFaults,
 		"work_orders":   createdOrders,
+		"warnings":      createdWarnings,
 	})
 }
 
@@ -145,10 +177,22 @@ func DemoEnd(c *gin.Context) {
 	// 2) 删除演示段设备的故障
 	faultDeleted := model.DB.Where("device_hw_id LIKE ?", demoHWPrefix+"%").
 		Delete(&model.FaultRecord{}).RowsAffected
-	// 3) 删除演示段设备
+	// 3) 删除演示段设备关联的预警（通过 fault_id 关联的演示故障 + device_hw_id 前缀，双保险）
+	var demoFaultIDs []uint
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id LIKE ?", demoHWPrefix+"%").
+		Pluck("id", &demoFaultIDs)
+	q := model.DB
+	if len(demoFaultIDs) > 0 {
+		q = q.Where("fault_id IN ?", demoFaultIDs)
+		q = q.Or("device_hw_id LIKE ?", demoHWPrefix+"%")
+	} else {
+		q = q.Where("device_hw_id LIKE ?", demoHWPrefix+"%")
+	}
+	warningDeleted := q.Delete(&model.Warning{}).RowsAffected
+	// 4) 删除演示段设备
 	deviceDeleted := model.DB.Where("hw_id LIKE ?", demoHWPrefix+"%").
 		Delete(&model.Device{}).RowsAffected
-	// 4) 删除演示路口（名称带 [演示]）
+	// 5) 删除演示路口（名称带 [演示]）
 	intersectionDeleted := model.DB.Where("name LIKE ?", "%"+demoMark+"%").
 		Delete(&model.Crossing{}).RowsAffected
 
@@ -158,6 +202,7 @@ func DemoEnd(c *gin.Context) {
 		"devices":       deviceDeleted,
 		"faults":        faultDeleted,
 		"work_orders":   orderDeleted,
+		"warnings":      warningDeleted,
 	})
 }
 
@@ -171,6 +216,13 @@ func demoDeviceCount() int64 {
 func demoIntersectionCount() int64 {
 	var n int64
 	model.DB.Model(&model.Crossing{}).Where("name LIKE ?", "%"+demoMark+"%").Count(&n)
+	return n
+}
+
+// demoWarningCount 统计演示段设备关联的预警数
+func demoWarningCount() int64 {
+	var n int64
+	model.DB.Model(&model.Warning{}).Where("device_hw_id LIKE ?", demoHWPrefix+"%").Count(&n)
 	return n
 }
 

@@ -80,7 +80,10 @@ const coreModules: ModuleDef[] = [
   },
   {
     key: 'demo', title: '系统演示', icon: Monitor, path: '/demo', core: true,
-    routes: [{ path: '/demo', name: 'Demo', component: () => import('@/views/demo/index.vue'), title: '系统演示（全流程）' , perm: 'demo:use' }],
+    routes: [
+      { path: '/demo', name: 'Demo', component: () => import('@/views/demo/index.vue'), title: '系统演示（全流程）', perm: 'demo:use' },
+      { path: '/demo/sitemap', name: 'Sitemap', component: () => import('@/views/demo/sitemap.vue'), title: '网站地图（系统导览）', perm: 'demo:use' },
+    ],
   },
   {
     key: 'map', title: '地图大屏', icon: MapLocation, path: '/map', core: true,

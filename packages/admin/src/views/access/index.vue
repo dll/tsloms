@@ -243,11 +243,13 @@ onMounted(() => { loadStatus(); loadDevice() })
 .ov-item.warn .ov-icon { color: #E6A23C; }
 .ov-icon { font-size: 18px; color: #409EFF; }
 .ov-label { margin: 0; font-size: 13px; color: #909399; }
-.ov-val { margin: 2px 0 0; font-size: 16px; color: #303133; }
-.ov-val.small { font-size: 13px; }
+.ov-val { margin: 2px 0 0; font-size: 18px; font-weight: 600; color: #303133; }
+.ov-val.small { font-size: 13px; font-weight: 500; }
 .ov-sub { margin: 2px 0 0; font-size: 13px; color: #909399; line-height: 1.4; }
-.block-title { margin: 12px 0 8px; color: #303133; }
+.block-title { margin: 12px 0 8px; font-weight: 600; color: #303133; }
 .csv-msg { margin-left: 8px; }
 .mock-result { margin-bottom: 12px; }
-.tab-label { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
+.tab-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #409EFF; }
+.el-tabs--border-card :deep(.el-tabs__item.is-active .tab-label) { color: #409EFF; }
+.el-tabs--border-card :deep(.el-tabs__item .tab-label) { color: #606266; }
 </style>
