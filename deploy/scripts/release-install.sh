@@ -55,7 +55,10 @@ else
   ( cd "${STAGING_DIR}" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败，丢弃。" >&2; exit 1; }
 
   echo "[1] 结构完整性与可执行性校验"
-  test -x "${STAGING_DIR}/server"            || { echo "ERROR: 缺失可执行 server" >&2; exit 1; }
+  test -f "${STAGING_DIR}/server"            || { echo "ERROR: 缺失 server" >&2; exit 1; }
+  # GitHub Artifact 下载通常不保留 Unix 执行位，落位前按制品约定恢复权限。
+  chmod +x "${STAGING_DIR}/server"
+  test -x "${STAGING_DIR}/server"            || { echo "ERROR: server 无法设置为可执行" >&2; exit 1; }
   test -f "${STAGING_DIR}/admin/dist/index.html" || { echo "ERROR: 缺失 admin/dist/index.html" >&2; exit 1; }
   test "$(tr -d '\r\n' < "${STAGING_DIR}/version.txt" 2>/dev/null)" = "${RELEASE_SHA}" \
     || { echo "ERROR: version.txt 与 RELEASE_SHA 不一致" >&2; exit 1; }
