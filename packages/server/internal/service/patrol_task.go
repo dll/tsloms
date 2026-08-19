@@ -125,8 +125,12 @@ func filterHighRiskAIDevices(candidates []model.Device) []model.Device {
 	for _, d := range candidates {
 		hwSet[d.HwID] = true
 	}
+	hwIDs := make([]string, 0, len(hwSet))
+	for hw := range hwSet {
+		hwIDs = append(hwIDs, hw)
+	}
 	var preds []model.AIPrediction
-	model.DB.Where("device_hw_id IN ? AND risk_level IN ?", hwSet, []string{"high", "critical"}).
+	model.DB.Where("device_hw_id IN ? AND risk_level IN ?", hwIDs, []string{"high", "critical"}).
 		Select("device_hw_id").Distinct().Find(&preds)
 	riskHW := map[string]bool{}
 	for _, p := range preds {
