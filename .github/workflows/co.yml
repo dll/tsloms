@@ -42,7 +42,7 @@ jobs:
 
       - name: 巡检失败 - 创建/去重告警 issue
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
             const TITLE = '[告警] 生产环境巡检失败';
@@ -74,7 +74,7 @@ jobs:
 
       - name: 巡检恢复 - 关闭旧告警 issue
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
             const TITLE = '[告警] 生产环境巡检失败';
@@ -105,3 +105,30 @@ jobs:
                 });
               }
             }
+
+  deep-probe:
+    name: 深度巡检（DB/Redis/备份/主机/MQTT 认证）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: 生成探针脚本 base64
+        id: probe
+        shell: bash
+        run: |
+          echo "PROBE_B64=$(base64 -w0 deploy/scripts/probe-deep.sh)" >> "$GITHUB_ENV"
+
+      - name: 服务器本机深度探针
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          port: 22
+          script: |
+            set -e
+            echo "${{ env.PROBE_B64 }}" | base64 -d > /tmp/probe-deep.sh
+            chmod +x /tmp/probe-deep.sh
+            bash /tmp/probe-deep.sh || exit 1
+            rm -f /tmp/probe-deep.sh

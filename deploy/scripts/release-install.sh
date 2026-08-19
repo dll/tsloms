@@ -49,7 +49,16 @@ if [ ! -d "${STAGING_DIR}" ]; then
   exit 1
 fi
 if [ -d "${RELEASE_DIR}" ]; then
-  echo "WARN: 目标 release 已存在 ${RELEASE_DIR}，跳过重复安装校验，直接使用" >&2
+  echo "INFO: 目标 release 已存在 ${RELEASE_DIR}，强制重新校验（禁止同 SHA 内容漂移 CD-P1-01）"
+  echo "[1] 重新校验已存在 release 的 manifest/结构/version"
+  ( cd "${RELEASE_DIR}" && sha256sum -c manifest.sha256 ) \
+    || { echo "ERROR: 已存在 release 的 SHA-256 校验失败（内容被篡改/损坏），拒绝部署。" >&2; exit 1; }
+  test -f "${RELEASE_DIR}/server"     || { echo "ERROR: 已存在 release 缺失 server" >&2; exit 1; }
+  test -x "${RELEASE_DIR}/server"     || { echo "ERROR: 已存在 release 的 server 不可执行" >&2; exit 1; }
+  test -f "${RELEASE_DIR}/admin/dist/index.html" || { echo "ERROR: 已存在 release 缺失 admin/dist/index.html" >&2; exit 1; }
+  test "$(tr -d '\r\n' < "${RELEASE_DIR}/version.txt" 2>/dev/null)" = "${RELEASE_SHA}" \
+    || { echo "ERROR: 已存在 release 的 version.txt 与目标 SHA 不一致" >&2; exit 1; }
+  echo "  已存在 release 复核通过，直接使用"
 else
   echo "[1] 校验制品 sha256"
   ( cd "${STAGING_DIR}" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败，丢弃。" >&2; exit 1; }
@@ -180,11 +189,22 @@ if [ "${ok}" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Nginx 配置校验（前端静态路径若调整则需重新加载）
+# 5. Nginx 配置与静态资源/接口验收（CD-P2-01：校验失败必须阻断部署）
 # ---------------------------------------------------------------------------
-echo "[5] nginx 校验"
+echo "[5] nginx -t（失败阻断）"
 if command -v nginx >/dev/null 2>&1; then
-  nginx -t || { echo "WARN: nginx -t 校验失败（部署脚本不自动 reload，需人工处理）" >&2; }
+  if ! nginx -t; then
+    echo "ERROR: nginx -t 校验失败，部署阻断（需人工修复配置后重试）" >&2
+    exit 1
+  fi
 fi
 
+# 服务重启后已通过本机探活；此处再验收一个静态资源与一个只读 API（外部入口由 cd.yml 探活）
+echo "[5] 本机静态资源与只读 API 验收"
+curl -fsS --max-time 10 -o /dev/null "${HEALTH_URL}" || { echo "ERROR: 本机 health API 探活失败" >&2; exit 1; }
+
+# 记录发布产物清单（供审计）
 echo "=== 部署完成 sha=${RELEASE_SHA} ==="
+ls -la "${ROOT}/current"
+echo "current -> $(readlink -f "${ROOT}/current")"
+echo "previous -> $( [ -L "${ROOT}/previous" ] && readlink -f "${ROOT}/previous" || echo none )"

@@ -30,9 +30,9 @@ jobs:
       run:
         working-directory: packages/server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.6'
           cache: true
@@ -62,6 +62,17 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: Go 依赖漏洞扫描（govulncheck，CI-P1-02）
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 2>&1 | tee govulncheck.out
+          # govulncheck 在发现漏洞时返回非 0，天然阻断；无漏洞则退出 0
+
+      - name: 密钥泄漏扫描（gitleaks，CI-P1-02）
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: go build
         run: go build ./...
 
@@ -75,7 +86,7 @@ jobs:
 
       - name: 上传覆盖率报告
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: go-coverage-report
           path: packages/server/coverage.out
@@ -88,9 +99,9 @@ jobs:
       run:
         working-directory: packages/admin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version-file: .node-version
           cache: npm
@@ -119,19 +130,19 @@ jobs:
     outputs:
       release-sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - id: sha
         shell: bash
         run: echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.26.6'
           cache: true
           cache-dependency-path: packages/server/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version-file: .node-version
           cache: npm
@@ -157,19 +168,24 @@ jobs:
           mkdir -p ../../release/admin
           cp -r dist ../../release/admin/dist
 
-      - name: 编排制品清单与校验
+      - name: 编排制品清单、SBOM 与校验
         run: |
           mkdir -p release
           # 发布脚本由 CD 单独上传到服务器固定 /opt/tsloms/bin/，不打包进制品
           # （避免与服务器端脚本版本漂移）。制品只含不可变二进制与前端。
           echo "${GITHUB_SHA}" > release/version.txt
+          # 轻量 SBOM（CI-P1-02）：记录后端模块与前端依赖清单，供供应链审计
+          ( cd packages/server && go list -m all > ../../release/deps-go.sbom.txt )
+          ( cd packages/admin && cp package-lock.json ../../release/deps-npm.lock.json )
           ( cd release && find server admin -type f -print0 | sort -z | xargs -0 sha256sum > manifest.sha256 )
+          # 将 SBOM 也纳入完整性清单
+          ( cd release && sha256sum deps-go.sbom.txt deps-npm.lock.json version.txt >> manifest.sha256 )
           echo "== 制品清单 =="
           ls -la release
           ( cd release && cat manifest.sha256 )
 
       - name: 上传制品（tsloms-release）
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: tsloms-release
           path: release/

@@ -62,7 +62,7 @@ jobs:
           echo "解析部署 SHA: ${SHA}"
 
       - name: 检出目标提交
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ steps.sha.outputs.RELEASE_SHA }}
 
@@ -73,17 +73,26 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             RUN_ID="${{ github.event.workflow_run.id }}"
           else
-            RUN_ID=$(gh run list --workflow "CI - Go 质量门（含覆盖率门禁 ≥80%）" --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+            SHA="${{ steps.sha.outputs.RELEASE_SHA }}"
+            # CD-P1-03：手动部署必须找到目标 SHA 对应的成功 CI run，不做“最新成功”替代
+            RUN_ID=$(gh api \
+              -X GET "repos/{owner}/{repo}/actions/runs?head_sha=${SHA}&per_page=100" \
+              --jq '.workflow_runs[] | select(.name | startswith("CI")) | select(.conclusion == "success") | .id' \
+              | head -1)
+            if [ -z "$RUN_ID" ]; then
+              echo "ERROR: 未找到目标 SHA=${SHA} 的成功 CI 运行，拒绝部署" >&2
+              exit 1
+            fi
           fi
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "ERROR: 无法定位 CI 制品的 run_id（workflow_run 未提供，或未找到成功的 CI 运行）" >&2
+            echo "ERROR: 无法定位 CI 制品的 run_id" >&2
             exit 1
           fi
           echo "CI_RUN_ID=${RUN_ID}" >> "$GITHUB_OUTPUT"
           echo "CI 运行 ID: ${RUN_ID}"
 
       - name: 下载 CI 构建制品（server / admin dist / manifest / version）
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: tsloms-release
           path: ./release
@@ -122,8 +131,12 @@ jobs:
           HOST="${{ secrets.DEPLOY_HOST }}"
           USER="${{ secrets.DEPLOY_USER }}"
           ROOT="${{ env.DEPLOY_APP_DIR }}"
+          # CD-P1-04：固定 SSH host fingerprint，禁止 StrictHostKeyChecking=no
+          FINGERPRINT="${{ secrets.DEPLOY_HOST_FINGERPRINT }}"
+          KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
+          echo "${HOST} ${FINGERPRINT}" > "${KNOWN_HOSTS}"
 
-          SSHOPTS=(-i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=20)
+          SSHOPTS=(-i "$KEY_FILE" -o UserKnownHostsFile="$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
 
           # 1) 创建 releases / bin 目录并放置发布脚本（固定路径，幂等）
           ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
@@ -138,8 +151,8 @@ jobs:
           ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
             "rm -rf ${ROOT}/releases/${SHA}.staging && mkdir -p ${ROOT}/releases/${SHA}.staging/admin"
 
-          # 3) 流式上传制品（保持相对路径：admin/ server manifest.sha256 version.txt）
-          tar -C ./release -czf - admin server manifest.sha256 version.txt \
+          # 3) 流式上传制品（保持相对路径：admin/ server manifest.sha256 version.txt + SBOM）
+          tar -C ./release -czf - admin server manifest.sha256 version.txt deps-go.sbom.txt deps-npm.lock.json \
             | ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
               "cat > /tmp/tsloms-${SHA}.tgz && tar -xzf /tmp/tsloms-${SHA}.tgz -C ${ROOT}/releases/${SHA}.staging && rm -f /tmp/tsloms-${SHA}.tgz"
 
@@ -153,6 +166,8 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           port: 22
+          # CD-P1-04：固定 SSH host fingerprint，防中间人
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           timeout: 180s
           script: |
             set -e
