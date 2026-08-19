@@ -85,6 +85,11 @@ systemd 单元 `ExecStart=/opt/tsloms/current/server`，nginx 前端/媒体分�
   `deploy/systemd/tsloms-server.service`（`User=tsloms`、`/etc/tsloms/tsloms.env`，P0-03）；
   已归档 `tsloms-server.prod-fitted.service`（root/旧 .env）**禁止**再部署到生产。详见 `deploy/systemd/README.md`。
 
+## 备份恢复 / 故障演练 / 最小权限（P0-04）
+
+生产运维的部署用户最小权限、SSH 禁 root、sudoers 白名单、数据库备份恢复演练（mysqldump|zstd、
+恢复步骤、RTO/RPO）与故障注入演练清单，详见 **`runbook-备份恢复与故障演练.md`**。
+
 ## 注意事项
 
 - 生产 SSH 私钥、数据库密码、JWT 等一律走 Secrets / `/etc/tsloms/tsloms.env`（0600），
