@@ -36,10 +36,10 @@ echo "[0] 校验发布参数"
 if [ -z "${RELEASE_SHA}" ]; then
   echo "ERROR: 缺失 RELEASE_SHA（必须为 40 位提交 SHA）" >&2; exit 1
 fi
-case "${RELEASE_SHA}" in
-  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-  *) echo "ERROR: RELEASE_SHA 非 40 位十六进制: ${RELEASE_SHA}" >&2; exit 1 ;;
-esac
+if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: RELEASE_SHA 非 40 位十六进制: ${RELEASE_SHA}" >&2
+  exit 1
+fi
 
 echo "[0] releases 目录检查"
 mkdir -p "${ROOT}/releases" "${ROOT}/backups/db" "${ROOT}/shared/media"
