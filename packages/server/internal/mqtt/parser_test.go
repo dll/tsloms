@@ -195,3 +195,35 @@ func TestMakeAckCmd(t *testing.T) {
 		t.Error("ack 帧应被识别为回应帧")
 	}
 }
+
+func TestBuildTimeSyncAck(t *testing.T) {
+	epoch := uint32(1787055200)
+	frame := BuildTimeSyncAck(CmdCheckin, 0x01020304, 7, epoch)
+	// 应标记为回应帧
+	if !IsAckFrame(frame[1]) {
+		t.Errorf("cmd 应为 ack, got %02X", frame[1])
+	}
+	// userVal = epoch seconds
+	if got := binary.BigEndian.Uint32(frame[12:16]); got != epoch {
+		t.Errorf("userVal = %d, 期望 %d", got, epoch)
+	}
+	// 校验和正确
+	var sum uint16
+	for _, b := range frame {
+		sum += uint16(b)
+	}
+	if uint8(sum) != CmdChecksumValid {
+		t.Errorf("校验和错误 %02X", uint8(sum))
+	}
+	// swVer 与 cmdSeq
+	if got := binary.BigEndian.Uint32(frame[4:8]); got != 0x01020304 {
+		t.Errorf("swVer = %08X", got)
+	}
+	if got := binary.BigEndian.Uint16(frame[8:10]); got != 7 {
+		t.Errorf("cmdSeq = %d, 期望 7", got)
+	}
+	// 无数据部分
+	if got := binary.BigEndian.Uint16(frame[10:12]); got != 0 {
+		t.Errorf("datLen 应为 0, got %d", got)
+	}
+}

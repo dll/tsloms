@@ -141,7 +141,7 @@
         </el-form>
         <div v-if="mockResult" class="mock-result">
           <el-alert type="success" :closable="false"
-            :title="`已投递：${mockResult.data?.cmd} #${mockResult.data?.hw_id} → ${mockResult.data?.topic}`" />
+                    :title="`已投递：${mockResult.data?.cmd} #${mockResult.data?.hw_id} → ${mockResult.data?.topic}`" />
         </div>
         <div class="block-title">故障码速查（errCode）</div>
         <el-table :data="faultOptions.slice(1)" size="small" border style="max-width:560px">

@@ -34,7 +34,7 @@
         <el-table-column label="操作" min-width="240" align="center">
           <template #default="{ row }">
             <el-button v-if="row.state === 'pending'" link type="primary" size="small" @click="handleStartTrial(row)">开始试用</el-button>
-            <el-button v-if="row.state === 'trial'" link type="warning" size="small" @click="handleUnlock(row)" >直接解锁</el-button>
+            <el-button v-if="row.state === 'trial'" link type="warning" size="small" @click="handleUnlock(row)">直接解锁</el-button>
             <el-button v-if="row.state === 'expired'" link type="danger" size="small" @click="handleUnlock(row)">授权解锁</el-button>
             <el-button v-if="row.state === 'trial' || row.state === 'expired'" link type="info" size="small" @click="handleCodeUnlock(row)">输入授权码</el-button>
             <el-tag v-if="row.state === 'unlocked'" type="success" size="small" effect="plain">已解锁{{ row.unlock_type === 'author' ? '（授权码）' : '' }}</el-tag>
