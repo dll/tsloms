@@ -44,7 +44,6 @@ import * as Cesium from 'cesium'
 import { getCrossings } from '@/api/warning'      // 复用 crossings 接口
 import { getAreasTree } from '@/api/warning'       // 复用 areas 接口
 import { getAllDevices } from '@/api/map'          // 复用设备（含路口名）
-import GaodeImageryProvider from '@/views/map/GaodeImagery.js'
 
 const props = defineProps<{ modelValue: boolean; title?: string; initialLat?: number | null; initialLng?: number | null }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'pick', lat: number, lng: number): void }>()
@@ -91,9 +90,16 @@ async function initMap() {
       navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
       infoBox: false, selectionIndicator: false,
     } as any)
-    // Cesium 1.144 不再稳定兼容 Viewer.imageryProvider 构造参数，创建后显式加入同源图层。
+    // 使用 Cesium 官方 UrlTemplate provider 访问同源代理，避免自定义 ImageryProvider
+    // 在不同 Cesium 版本中因 loadImage 内部 API 变化而只显示蓝色地球。
     viewer.imageryLayers.removeAll()
-    viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)({ style: 6 }))
+    viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+      url: '/tsloms/api/v1/proxy/gaode?x={x}&y={y}&z={z}&style=6',
+      tilingScheme: new Cesium.WebMercatorTilingScheme({ numberOfLevelZeroTilesX: 2, numberOfLevelZeroTilesY: 2 }),
+      minimumLevel: 0,
+      maximumLevel: 18,
+      credit: '高德地图',
+    }))
     // 点击地图选点
     inputHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
     inputHandler.setInputAction((e: any) => {

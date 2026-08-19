@@ -2,13 +2,20 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
+import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync } from 'fs'
 import { bundleBudgetPlugin } from './build/bundle-budget.mjs'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 // Cesium 静态资源目录（Build/Cesium 下的 Assets/Widgets/Workers/ThirdParty）
 const CESIUM_DIR = resolve(__dirname, 'node_modules/cesium/Build/Cesium')
+const PACKAGE_VERSION = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
+const [VERSION_MAJOR, VERSION_MINOR] = PACKAGE_VERSION.split('.')
+// CI 构建号保证每次流水线产物可区分；主次版本仍由 package.json 明确维护。
+const BUILD_NUMBER = process.env.GITHUB_RUN_NUMBER || process.env.BUILD_NUMBER || ''
+const APP_VERSION = BUILD_NUMBER ? `${VERSION_MAJOR}.${VERSION_MINOR}.${BUILD_NUMBER}` : PACKAGE_VERSION
+const BUILD_COMMIT = process.env.GITHUB_SHA || 'local'
+const BUILD_TIME = new Date().toISOString()
 
 // 递归拷贝目录
 function copyDir(src, dest) {
@@ -35,6 +42,12 @@ function copyCesiumAssets() {
     writeBundle(_config) {
       const dest = resolve(__dirname, outDir, 'cesium')
       copyDir(CESIUM_DIR, dest)
+      writeFileSync(resolve(__dirname, outDir, 'version.json'), JSON.stringify({
+        version: APP_VERSION,
+        commit: BUILD_COMMIT,
+        build: BUILD_NUMBER || 'local',
+        built_at: BUILD_TIME,
+      }, null, 2) + '\n')
     },
   }
 }
@@ -49,6 +62,10 @@ export default defineConfig({
   define: {
     // Cesium 全局：让 Cesium 的 worker 使用我们拷贝的静态资源
     CESIUM_BASE_URL: JSON.stringify('/tsloms/admin/cesium/'),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(APP_VERSION),
+    'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(BUILD_COMMIT),
+    'import.meta.env.VITE_BUILD_NUMBER': JSON.stringify(BUILD_NUMBER || 'local'),
+    'import.meta.env.VITE_BUILD_TIME': JSON.stringify(BUILD_TIME),
   },
   resolve: {
     alias: {

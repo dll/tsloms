@@ -45,6 +45,31 @@
         </el-card>
       </el-tab-pane>
 
+      <!-- 系统关于：用于确认当前前端制品及生产部署版本 -->
+      <el-tab-pane label="关于" name="about">
+        <el-card shadow="never" class="about-card">
+          <template #header><span>关于 TSLOMS</span></template>
+          <div class="about-brand">
+            <div class="about-logo">TS</div>
+            <div>
+              <h2>TSLOMS 交通信号灯运维系统</h2>
+              <p>面向交通信号灯检测、故障研判、维修工单和运维数据分析的一体化后台系统。</p>
+            </div>
+          </div>
+          <el-descriptions :column="2" border class="about-descriptions">
+            <el-descriptions-item label="系统版本"><el-tag type="primary">{{ APP_VERSION }}</el-tag></el-descriptions-item>
+            <el-descriptions-item label="构建编号">{{ BUILD_NUMBER }}</el-descriptions-item>
+            <el-descriptions-item label="构建提交" :span="2"><code>{{ BUILD_COMMIT }}</code></el-descriptions-item>
+            <el-descriptions-item label="构建时间" :span="2">{{ BUILD_TIME || '本地开发构建' }}</el-descriptions-item>
+          </el-descriptions>
+          <h3 class="about-title">技术栈</h3>
+          <div class="tech-tags">
+            <el-tag v-for="tech in techStack" :key="tech" effect="plain">{{ tech }}</el-tag>
+          </div>
+          <p class="copyright">© 2026 TSLOMS 项目组 · 保留所有权利</p>
+        </el-card>
+      </el-tab-pane>
+
       <!-- 用户管理（仅“用户-管理”权限） -->
       <el-tab-pane v-if="authStore.hasPerm('user:manage')" label="用户管理" name="users">
         <el-card shadow="never">
@@ -332,9 +357,11 @@ import { updateMyPhone } from '@/api/auth'
 import { getUsers, createUser, updateUser, resetUserPassword, deleteUser, type UserItem } from '@/api/user'
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment, type DepartmentItem } from '@/api/department'
 import { listPermissions, listRoles, createRole, updateRole, deleteRole, getUserPermissions, setUserPermissions, type RoleItem } from '@/api/rbac'
+import { APP_VERSION, BUILD_COMMIT, BUILD_NUMBER, BUILD_TIME } from '@/config/version'
 
 const authStore = useAuthStore()
 const activeTab = ref('profile')
+const techStack = ['Vue 3', 'TypeScript', 'Vite', 'Element Plus', 'ECharts', 'Cesium', 'Go 1.22+', 'Gin', 'GORM', 'MySQL 8', 'Redis 7', 'EMQX 5', 'Docker']
 
 const roleLabel = computed(() => {
   const role = authStore.user?.role
@@ -730,6 +757,16 @@ onMounted(async () => {
 
 <style scoped>
 .settings-page { max-width: 960px; }
+.about-card { max-width: 860px; }
+.about-brand { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+.about-logo { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 14px; color: #fff; background: linear-gradient(135deg, #2563eb, #14b8a6); font-size: 22px; font-weight: 700; }
+.about-brand h2 { margin: 0; color: #1f2937; font-size: 20px; font-weight: 600; }
+.about-brand p { margin: 6px 0 0; color: #64748b; font-size: 13px; }
+.about-descriptions :deep(.el-descriptions__label), .about-descriptions :deep(.el-descriptions__content) { font-size: 13px; }
+.about-descriptions code { color: #475569; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+.about-title { margin: 24px 0 12px; color: #334155; font-size: 15px; font-weight: 600; }
+.tech-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.copyright { margin: 28px 0 0; color: #94a3b8; font-size: 12px; }
 .info-card { margin-bottom: 20px; }
 .form-card { border-radius: 4px; }
 .user-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }

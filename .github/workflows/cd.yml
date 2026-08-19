@@ -112,7 +112,7 @@ jobs:
           echo "制品内容："
           ls -la "$SRC" || true
           find "$SRC" -maxdepth 3 -type f | sort
-          for f in server admin/dist/index.html manifest.sha256 version.txt; do
+          for f in server admin/dist/index.html admin/dist/version.json manifest.sha256 version.txt; do
             if [ ! -f "$SRC/$f" ]; then
               echo "ERROR: 缺少制品文件 $f" >&2
               exit 1
@@ -188,4 +188,8 @@ jobs:
           BASE_URL="${DEPLOY_BASE_URL:-http://${DEPLOY_HOST}:8092}"
           curl -fsS --max-time 20 "${BASE_URL}/tsloms/health" || exit 1
           curl -fsS --max-time 20 -o /dev/null "${BASE_URL}/tsloms/admin/" || exit 1
+          VERSION_JSON=$(curl -fsS --max-time 20 "${BASE_URL}/tsloms/admin/version.json?probe=${{ steps.sha.outputs.RELEASE_SHA }}")
+          echo "生产前端版本：${VERSION_JSON}"
+          echo "$VERSION_JSON" | jq -e --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" '.commit == $sha' >/dev/null \
+            || { echo "ERROR: 生产前端版本与部署 SHA 不一致，拒绝判定部署成功" >&2; exit 1; }
           echo "部署完成，前端与 API 均正常"
