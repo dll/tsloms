@@ -7,6 +7,10 @@ dist/
 output/
 build/
 
+# 例外：packages/admin/build 下含运行期源码（bundle budget 插件），不是构建产物，需入库
+!packages/admin/build/
+!packages/admin/build/*.mjs
+
 # Go 编译产物
 packages/server/server
 packages/server/server.linux
