@@ -46,7 +46,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err := AutoMigrate(db); err != nil {
+	if err := MigrateDatabaseVersioned(db); err != nil {
 		return nil, err
 	}
 
@@ -80,7 +80,9 @@ func InitTestDB() *gorm.DB {
 		panic(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := AutoMigrate(db); err != nil {
+	// 一键全量建表 + 版本化迁移 + 种子：走 MigrateDatabaseVersioned（SQLite 简化无锁无备份路径），
+	// 行为与原先 AutoMigrate 等价（38 表 + uk_wo_active_scope + RBAC + 超管 + 区划俱在）。
+	if err := MigrateDatabaseVersioned(db); err != nil {
 		panic(err)
 	}
 	DB = db
