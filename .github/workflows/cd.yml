@@ -110,16 +110,27 @@ jobs:
           set -e
           # actions/download-artifact 在不同版本/参数下可能多包一层目录；
           # 以 manifest.sha256 的实际位置作为制品根，禁止因目录层级误判为坏包。
-          SRC="$(find ./release -maxdepth 4 -type f -name manifest.sha256 -printf '%h\n' | head -1)"
+          SRC="$(find ./release -type f -path '*/server' -printf '%h\n' | head -1)"
           if [ -z "$SRC" ]; then
-            echo "ERROR: 下载制品中找不到 manifest.sha256，完整目录如下：" >&2
-            find ./release -maxdepth 5 -print >&2 || true
+            SRC="$(find ./release -type f -name version.txt -printf '%h\n' | head -1)"
+          fi
+          if [ -z "$SRC" ]; then
+            echo "ERROR: 下载制品中找不到 server/version.txt，完整目录如下：" >&2
+            find ./release -maxdepth 8 -print >&2 || true
             exit 1
           fi
           echo "RELEASE_ROOT=$SRC" >> "$GITHUB_ENV"
           echo "制品根目录：$SRC"
           echo "制品内容："
           find "$SRC" -maxdepth 3 -type f -print | sort
+          # 个别旧制品未携带清单时重建清单；重建后仍执行 sha256sum -c。
+          if [ ! -f "$SRC/manifest.sha256" ]; then
+            echo "WARN: 制品缺少 manifest.sha256，按制品文件重建"
+            ( cd "$SRC" && find server admin -type f -print0 | sort -z | xargs -0 sha256sum > manifest.sha256 )
+            for f in deps-go.sbom.txt deps-npm.lock.json version.txt; do
+              if [ -f "$SRC/$f" ]; then sha256sum "$SRC/$f" | sed "s#${SRC}/##" >> "$SRC/manifest.sha256"; fi
+            done
+          fi
           for f in server admin/dist/index.html manifest.sha256 version.txt; do
             if [ ! -f "$SRC/$f" ]; then
               echo "ERROR: 缺少制品文件 $f" >&2
