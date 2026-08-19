@@ -39,7 +39,13 @@ func main() {
 
 // totalFromFunc 通过 go tool cover -func=<profile> 解析合并后的 total 行。
 func totalFromFunc(profile string) (float64, error) {
-	cmd := exec.Command("go", "tool", "cover", "-func="+profile)
+	normalized, err := normalizeProfile(profile)
+	if err != nil {
+		return 0, err
+	}
+	defer os.Remove(normalized)
+
+	cmd := exec.Command("go", "tool", "cover", "-func="+normalized)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -70,4 +76,75 @@ func totalFromFunc(profile string) (float64, error) {
 		return 0, err
 	}
 	return 0, fmt.Errorf("未在 go tool cover 输出中找到 total 行")
+}
+
+// normalizeProfile 合并 go test -coverpkg=./... 生成的重复代码块。
+// Go 会为每个被测包追加一份完整 profile，同一代码块可能出现多次；
+// 直接交给 go tool cover 会只读取首份记录，造成覆盖率被系统性低估。
+// 对同一代码块取最大执行次数，既能保留“是否覆盖”的事实，也不会重复累计次数。
+func normalizeProfile(profile string) (string, error) {
+	in, err := os.Open(profile)
+	if err != nil {
+		return "", fmt.Errorf("打开覆盖率文件失败: %w", err)
+	}
+	defer in.Close()
+
+	type block struct {
+		line  string
+		count int
+	}
+	blocks := make(map[string]block)
+	order := make([]string, 0)
+	scanner := bufio.NewScanner(in)
+	mode := ""
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "mode:") {
+			if mode == "" {
+				mode = line
+			}
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+		count, err := strconv.Atoi(fields[2])
+		if err != nil {
+			return "", fmt.Errorf("解析覆盖率块 %q 失败: %w", line, err)
+		}
+		key := fields[0] + " " + fields[1]
+		if old, ok := blocks[key]; !ok {
+			blocks[key] = block{line: fields[0] + " " + fields[1] + " " + fields[2], count: count}
+			order = append(order, key)
+		} else if count > old.count {
+			old.line = fields[0] + " " + fields[1] + " " + fields[2]
+			old.count = count
+			blocks[key] = old
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("读取覆盖率文件失败: %w", err)
+	}
+
+	out, err := os.CreateTemp("", "tsloms-coverage-*.out")
+	if err != nil {
+		return "", fmt.Errorf("创建临时覆盖率文件失败: %w", err)
+	}
+	name := out.Name()
+	defer out.Close()
+	if _, err := fmt.Fprintln(out, mode); err != nil {
+		os.Remove(name)
+		return "", fmt.Errorf("写入覆盖率模式失败: %w", err)
+	}
+	for _, key := range order {
+		if _, err := fmt.Fprintln(out, blocks[key].line); err != nil {
+			os.Remove(name)
+			return "", fmt.Errorf("写入覆盖率块失败: %w", err)
+		}
+	}
+	return name, nil
 }

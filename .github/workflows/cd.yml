@@ -31,6 +31,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   deploy:
@@ -39,8 +40,6 @@ jobs:
     environment: production
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: 解析目标 commit SHA
         id: sha
         shell: bash
@@ -55,8 +54,17 @@ jobs:
             SHA="${{ github.event.workflow_run.head_sha }}"
           fi
           SHA="${SHA//$'\r'/}"
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: RELEASE_SHA 必须为 40 位小写十六进制 SHA" >&2
+            exit 1
+          fi
           echo "RELEASE_SHA=${SHA}" >> "$GITHUB_OUTPUT"
           echo "解析部署 SHA: ${SHA}"
+
+      - name: 检出目标提交
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.RELEASE_SHA }}
 
       - name: 定位 CI 制品的 run_id
         id: runid
@@ -81,7 +89,6 @@ jobs:
           path: ./release
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ steps.runid.outputs.CI_RUN_ID }}
-        continue-on-error: true
 
       - name: 校验制品完整性
         shell: bash
@@ -97,6 +104,8 @@ jobs:
               exit 1
             fi
           done
+          test "$(tr -d '\r\n' < "$SRC/version.txt")" = "${{ steps.sha.outputs.RELEASE_SHA }}" \
+            || { echo "ERROR: 制品 version.txt 与目标 SHA 不一致" >&2; exit 1; }
           ( cd "$SRC" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败" >&2; exit 1; }
           echo "制品校验通过"
 
@@ -152,7 +161,11 @@ jobs:
             bash ${{ env.DEPLOY_APP_DIR }}/bin/release-install.sh
 
       - name: 生产入口健康检查（HTTPS + 后台 index）
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
         run: |
-          curl -fsS --max-time 20 "http://${{ secrets.DEPLOY_HOST }}:8092/tsloms/health" || exit 1
-          curl -fsS --max-time 20 -o /dev/null "http://${{ secrets.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
+          BASE_URL="${DEPLOY_BASE_URL:-http://${DEPLOY_HOST}:8092}"
+          curl -fsS --max-time 20 "${BASE_URL}/tsloms/health" || exit 1
+          curl -fsS --max-time 20 -o /dev/null "${BASE_URL}/tsloms/admin/" || exit 1
           echo "部署完成，前端与 API 均正常"

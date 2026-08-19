@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: packages/server/go.mod
+          go-version: '1.26.6'
           cache: true
           cache-dependency-path: packages/server/go.sum
 
@@ -47,7 +47,7 @@ jobs:
         run: |
           go version
           test "$(go version | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)" = "go1.26.6" \
-            || echo "WARN: 版本可能与 .tool-versions 不一致（go.mod toolchain 会接管）"
+            || { echo "ERROR: Go 版本必须为 1.26.6" >&2; exit 1; }
 
       - name: gofmt 检查（应为 0 文件）
         run: |
@@ -81,9 +81,39 @@ jobs:
           path: packages/server/coverage.out
           if-no-files-found: ignore
 
+  admin-quality-gate:
+    name: 前端 lint + 单测 + 构建 + 依赖审计
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: packages/admin/package-lock.json
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: ESLint 与类型检查
+        run: npm run lint
+
+      - name: 前端单元测试
+        run: npm run test
+
+      - name: 前端生产构建
+        run: npm run build
+
+      - name: 前端依赖漏洞审计
+        run: npm audit --omit=dev --audit-level=high
+
   package:
     name: 构建不可变制品（server + admin dist + manifest）
-    needs: quality-gate
+    needs: [quality-gate, admin-quality-gate]
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     outputs:
@@ -97,13 +127,13 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: packages/server/go.mod
+          go-version: '1.26.6'
           cache: true
           cache-dependency-path: packages/server/go.sum
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: packages/admin/package-lock.json
 
@@ -122,7 +152,6 @@ jobs:
       - name: 构建前端 dist
         working-directory: packages/admin
         run: |
-          npm config set registry https://registry.npmmirror.com
           npm ci
           npm run build
           mkdir -p ../../release/admin
@@ -134,7 +163,7 @@ jobs:
           # 发布脚本由 CD 单独上传到服务器固定 /opt/tsloms/bin/，不打包进制品
           # （避免与服务器端脚本版本漂移）。制品只含不可变二进制与前端。
           echo "${GITHUB_SHA}" > release/version.txt
-          ( cd release && sha256sum server admin/dist/index.html > manifest.sha256 )
+          ( cd release && find server admin -type f -print0 | sort -z | xargs -0 sha256sum > manifest.sha256 )
           echo "== 制品清单 =="
           ls -la release
           ( cd release && cat manifest.sha256 )

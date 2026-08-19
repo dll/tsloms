@@ -8,6 +8,7 @@ on:
 
 env:
   DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  DEPLOY_BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
 
 # P1-03：CO 需要创建/关闭告警 issue，显式声明最小权限
 permissions:
@@ -22,7 +23,8 @@ jobs:
       - name: 检查 API 健康
         id: api
         run: |
-          if curl -fsS --max-time 15 "http://${{ env.DEPLOY_HOST }}:8092/tsloms/health"; then
+          BASE_URL="${DEPLOY_BASE_URL:-http://${DEPLOY_HOST}:8092}"
+          if curl -fsS --max-time 15 "${BASE_URL}/tsloms/health"; then
             echo "api=ok"
           else
             echo "api=fail"
@@ -31,7 +33,8 @@ jobs:
 
       - name: 检查前端可达
         run: |
-          curl -fsS --max-time 15 -o /dev/null "http://${{ env.DEPLOY_HOST }}:8092/tsloms/admin/" || exit 1
+          BASE_URL="${DEPLOY_BASE_URL:-http://${DEPLOY_HOST}:8092}"
+          curl -fsS --max-time 15 -o /dev/null "${BASE_URL}/tsloms/admin/" || exit 1
 
       - name: 检查 MQTT 端口
         run: |

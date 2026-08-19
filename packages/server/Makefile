@@ -16,7 +16,7 @@ test:
 lint:
 	golangci-lint run
 
-# 覆盖率门禁：单命令合并全包覆盖率，低于门槛则非零退出
+# 覆盖率门禁：合并全包覆盖率，跨平台浮点比较
 # 用法: make coverage-check [COV_THRESHOLD=80]
 COV_THRESHOLD ?= 80
 coverage:
@@ -24,10 +24,5 @@ coverage:
 
 coverage-check:
 	go test ./... -count=1 -covermode=set -coverpkg=./... -coverprofile=coverage.out
-	@total=$$(go tool cover -func=coverage.out | grep -oE 'total:.*[0-9]+\.[0-9]+%' | grep -oE '[0-9]+\.[0-9]+' | head -1); \
-	int=$${total%%.*}; \
-	echo "total coverage: $$total%% (threshold: $(COV_THRESHOLD)%%)"; \
-	if [ -z "$$int" ] || [ "$$int" -lt "$(COV_THRESHOLD)" ]; then \
-		echo "ERROR: 覆盖率 '$$total'%% 低于门禁 $(COV_THRESHOLD)%%"; rm -f coverage.out; exit 1; \
-	else echo "PASS: 覆盖率达标"; fi; \
+	go run ./cmd/coveragecheck -threshold $(COV_THRESHOLD) -profile coverage.out
 	rm -f coverage.out

@@ -4,14 +4,21 @@ on:
   push:
     paths:
       - 'packages/admin/**'
+      - '.github/workflows/ci-admin.yml'
+      - '.node-version'
   pull_request:
     paths:
       - 'packages/admin/**'
+      - '.github/workflows/ci-admin.yml'
+      - '.node-version'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   admin-quality-gate:
-    name: lint + 单测 + 构建
+    name: lint + 单测 + 构建 + 依赖审计
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,14 +28,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: packages/admin/package-lock.json
 
-      - name: 安装依赖（国内镜像加速）
-        run: |
-          npm config set registry https://registry.npmmirror.com
-          npm ci
+      - name: 安装依赖
+        run: npm ci
 
       - name: ESLint + 类型检查
         run: npm run lint
@@ -38,3 +43,6 @@ jobs:
 
       - name: 生产构建
         run: npm run build
+
+      - name: 依赖漏洞审计（高危及阻断）
+        run: npm audit --omit=dev --audit-level=high
