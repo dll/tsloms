@@ -1,5 +1,8 @@
 name: CI - Go 质量门（含覆盖率门禁 ≥80%）
 
+# CI-P1-03：E2E 冒烟（health/登录/仪表盘/读接口）不在 CI 阶段执行，因 CI 尚未部署、无运行中的服务；
+#           由部署后的 e2e.yml 通过 CD 成功 workflow_run 触发，并支持受保护环境 + SSH 本机冒烟。
+#           此处不重复执行，避免对未部署端点误判。
 on:
   push:
     branches: [main]
@@ -9,6 +12,7 @@ on:
       - 'deploy/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/cd.yml'
+      - '.github/workflows/e2e.yml'
       - '.tool-versions'
   pull_request:
     paths:
