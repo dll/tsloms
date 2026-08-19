@@ -90,6 +90,31 @@ systemd 单元 `ExecStart=/opt/tsloms/current/server`，nginx 前端/媒体分�
 生产运维的部署用户最小权限、SSH 禁 root、sudoers 白名单、数据库备份恢复演练（mysqldump|zstd、
 恢复步骤、RTO/RPO）与故障注入演练清单，详见 **`runbook-备份恢复与故障演练.md`**。
 
+## 数据库版本化迁移（CD-P0-01，P0 级）
+
+服务启动不再隐藏式全量 `AutoMigrate` 改库，而通过 `MigrateDatabaseVersioned` 显式版本化迁移：
+
+- `schema_migrations` 版本表记录已应用版本；有序迁移 `0001`(结构基座+active→occurred)、
+  `0002`(uk_wo_active_scope 唯一索引)、`0003`(旧 device_materials 并入 materials 并删表)、
+  `0004`(超管首建)。
+- 单实例锁：MySQL 用 `GET_LOCK` 且与全部迁移/释放固定在同一条独占物理连接（`*sql.Conn`）；
+  SQLite 测试走简化无锁路径。任一版本失败整体 fail-closed，不进正常服务启动。
+- 含 DDL/DropTable 的版本（0002/0003）执行前强制 `MYSQL_PWD` 环境变量 + `mysqldump|zstd`
+  备份到 `/opt/tsloms/backups/db`，凭据缺失即阻断。
+
+### MySQL 集成验证（v3 §7.1 P0-01 现场证据）
+
+在被验证的集成/部署环境设置 `TSLOMS_TEST_MYSQL_DSN`,并执行：
+
+```bash
+cd packages/server
+export TSLOMS_TEST_MYSQL_DSN='user:pass@tcp(127.0.0.1:3306)/tsloms_test?charset=utf8mb4'
+go test ./internal/model/ -run 'TestMigrateDatabaseVersioned_MySQLGetLockIntegration' -v
+```
+
+该用例验证 GET_LOCK 配对释放、二次实例并发被拒（fail-closed）、锁超时。随后做一次
+`mysqldump|zstd` 恢复演练并记录 RTO/RPO（见 `runbook-备份恢复与故障演练.md`）。
+
 ## 注意事项
 
 - 生产 SSH 私钥、数据库密码、JWT 等一律走 Secrets / `/etc/tsloms/tsloms.env`（0600），
