@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
+import { bundleBudgetPlugin } from './build/bundle-budget.mjs'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -43,6 +44,7 @@ export default defineConfig({
   plugins: [
     vue(),
     copyCesiumAssets(),
+    bundleBudgetPlugin(),
   ],
   define: {
     // Cesium 全局：让 Cesium 的 worker 使用我们拷贝的静态资源
@@ -54,7 +56,9 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 2000,
+    // CI-P2-01：体积预算由 bundleBudgetPlugin 显式管控并硬性阻断；
+    // 此处提高默认 warning 阈值以避免与自定义预算重复告警（cesium 单码 >2000kB 属预期）。
+    chunkSizeWarningLimit: 5000,
     // 分包：把 Cesium / ECharts / Vue 框架独立成 chunk，改善首屏加载与长期缓存命中
     rollupOptions: {
       output: {
