@@ -91,7 +91,9 @@ jobs:
       - name: 覆盖率门禁（合并全包浮点比较，低于 80% 失败）
         run: |
           go test ./... -count=1 -covermode=set -coverpkg=./... -coverprofile=coverage.out
-          go run ./cmd/coveragecheck -threshold 80 -profile coverage.out
+          TOTAL=$(go run ./cmd/coveragecheck -threshold 80 -profile coverage.out 2>&1 | tee /dev/stderr | grep -oE '[0-9]+\.[0-9]+%' | head -1)
+          echo "## 覆盖率门禁结果：$TOTAL（阈值 80%）" >> "$GITHUB_STEP_SUMMARY"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
 
       - name: 上传覆盖率报告
         if: always()
