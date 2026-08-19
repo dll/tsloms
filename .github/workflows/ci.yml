@@ -176,6 +176,9 @@ jobs:
         run: |
           npm ci
           npm run build
+          # 双重保证版本清单进入制品：即使 Vite 插件未执行，也不能生成不带版本标识的前端包。
+          test -f dist/version.json || node -e "const fs=require('fs');const p=require('./package.json');const v=p.version.split('.');const n=process.env.GITHUB_RUN_NUMBER||'local';fs.writeFileSync('dist/version.json',JSON.stringify({version:v[0]+'.'+v[1]+'.'+n,commit:process.env.GITHUB_SHA||'unknown',build:n,built_at:new Date().toISOString()},null,2)+'\\n')"
+          cat dist/version.json
           mkdir -p ../../release/admin
           cp -r dist ../../release/admin/dist
 

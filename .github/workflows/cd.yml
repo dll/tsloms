@@ -118,6 +118,10 @@ jobs:
               exit 1
             fi
           done
+          echo "前端版本清单："
+          cat "$SRC/admin/dist/version.json"
+          jq -e --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" '.commit == $sha' "$SRC/admin/dist/version.json" >/dev/null \
+            || { echo "ERROR: 制品 version.json 的 commit 与目标 SHA 不一致" >&2; exit 1; }
           test "$(tr -d '\r\n' < "$SRC/version.txt")" = "${{ steps.sha.outputs.RELEASE_SHA }}" \
             || { echo "ERROR: 制品 version.txt 与目标 SHA 不一致" >&2; exit 1; }
           ( cd "$SRC" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败" >&2; exit 1; }
