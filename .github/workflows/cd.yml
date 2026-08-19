@@ -108,10 +108,18 @@ jobs:
         shell: bash
         run: |
           set -e
-          SRC=./release
+          # actions/download-artifact 在不同版本/参数下可能多包一层目录；
+          # 以 manifest.sha256 的实际位置作为制品根，禁止因目录层级误判为坏包。
+          SRC="$(find ./release -maxdepth 4 -type f -name manifest.sha256 -printf '%h\n' | head -1)"
+          if [ -z "$SRC" ]; then
+            echo "ERROR: 下载制品中找不到 manifest.sha256，完整目录如下：" >&2
+            find ./release -maxdepth 5 -print >&2 || true
+            exit 1
+          fi
+          echo "RELEASE_ROOT=$SRC" >> "$GITHUB_ENV"
+          echo "制品根目录：$SRC"
           echo "制品内容："
-          ls -la "$SRC" || true
-          find "$SRC" -maxdepth 3 -type f | sort
+          find "$SRC" -maxdepth 3 -type f -print | sort
           for f in server admin/dist/index.html manifest.sha256 version.txt; do
             if [ ! -f "$SRC/$f" ]; then
               echo "ERROR: 缺少制品文件 $f" >&2
@@ -170,7 +178,7 @@ jobs:
             "rm -rf ${ROOT}/releases/${SHA}.staging && mkdir -p ${ROOT}/releases/${SHA}.staging/admin"
 
           # 3) 流式上传制品（保持相对路径：admin/ server manifest.sha256 version.txt + SBOM）
-          tar -C ./release -czf - admin server manifest.sha256 version.txt deps-go.sbom.txt deps-npm.lock.json \
+          tar -C "${RELEASE_ROOT:-./release}" -czf - admin server manifest.sha256 version.txt deps-go.sbom.txt deps-npm.lock.json \
             | ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
               "cat > /tmp/tsloms-${SHA}.tgz && tar -xzf /tmp/tsloms-${SHA}.tgz -C ${ROOT}/releases/${SHA}.staging && rm -f /tmp/tsloms-${SHA}.tgz"
 
