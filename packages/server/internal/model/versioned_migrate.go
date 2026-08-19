@@ -10,15 +10,19 @@ package model
 //   - 不改变任何业务逻辑、字段、既有表/索引名。
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tsloms/server/internal/config"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -147,33 +151,76 @@ func migrateStructureBaseline(db *gorm.DB) error {
 //
 // 语义（CD-P0-01）：
 //  1. 自建 schema_migrations 版本表；
-//  2. MySQL 生产用 GET_LOCK('tsloms_migrate', timeout) 单实例锁；SQLite 测试走简化无锁路径；
+//  2. MySQL 生产专用 GET_LOCK('tsloms_migrate', timeout) 单实例锁：
+//     「获取锁 → 执行全部待应用版本 → 释放锁」全程固定在【同一条独占物理连接】
+//     (*sql.Conn) 上执行，避免连接池漂移导致会话级锁在另一端失效（BLOCK-1）。
+//     SQLite 测试走简化无锁路径；
 //  3. 对每个未应用版本：若该版本含 DDL/DropTable（NeedsBackup），执行前强制备份，失败 fail-closed；
 //     SQLite 测试跳过备份；
 //  4. 版本执行成功写入 schema_migrations；某一步失败立即 return error，不再继续后续版本；
-//  5. 纯幂等启动逻辑（SeedRBAC / SeedAreas / active→occurred 兜底）在版本管道之后每启动重放安全执行。
+//  5. 纯幂等启动逻辑（SeedRBAC / SeedAreas）在版本管道之后每启动重放安全执行。
 func MigrateDatabaseVersioned(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("MigrateDatabaseVersioned: 数据库未初始化")
 	}
+
+	if db.Dialector.Name() == "mysql" {
+		// MySQL：锁与全部迁移冻结在同一条独占连接上（BLOCK-1 修复）。
+		return migrateDatabaseVersionedWithLock(db)
+	}
+	// SQLite（测试/本地）：简化无锁路径，不申请会话级锁、不做备份。
+	return runMigrationBody(db)
+}
+
+// migrateDatabaseVersionedWithLock MySQL 专属：把 GET_LOCK → 全部迁移(含 DDL) → RELEASE_LOCK
+// 全部放在从连接池取出的【同一条独占物理连接】上执行，杜绝会话级锁在连接池漂移中失效。
+func migrateDatabaseVersionedWithLock(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("获取底层连接池失败: %w", err)
+	}
+
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("获取独占迁移连接失败: %w", err)
+	}
+	defer conn.Close()
+
+	// 将 *gorm.DB 绑定到该独占连接上：mysql.Config.Conn 直接充当 ConnPool，
+	// 后续 GET_LOCK / 迁移 DDL / RELEASE_LOCK 全部在同一物理连接执行。
+	lockDB, err := gorm.Open(mysql.New(mysql.Config{Conn: conn}), &gorm.Config{})
+	if err != nil {
+		return fmt.Errorf("打开绑定到独占连接的 GORM 实例失败: %w", err)
+	}
+
+	got, err := acquireMigrateLock(lockDB, migrateLockTimeoutSec)
+	if err != nil {
+		return fmt.Errorf("获取迁移锁失败(fail-closed): %w", err)
+	}
+	if !got {
+		return fmt.Errorf("获取迁移锁超时(%ds)，可能已有其它实例在迁移；拒绝启动（fail-closed）", migrateLockTimeoutSec)
+	}
+	// 锁与迁移在同一连接；RELEASE_LOCK 在 defer 中同连接释放，不会静默泄漏。
+	defer releaseMigrateLock(lockDB)
+
+	return runMigrationBody(lockDB)
+}
+
+// migrateLockName MySQL 单实例锁名（命名空间隔离，避免与同库其它应用冲突）。
+const migrateLockName = "tsloms_migrate"
+
+// migrateLockTimeoutSec GET_LOCK 等待秒数；大表 CREATE UNIQUE INDEX 预留充分。
+const migrateLockTimeoutSec = 300
+
+// runMigrationBody 版本迁移主体（创建版本表 → 应用未应用版本 → 幂等种子）。
+// MySQL 路径传入绑定独占连接的 lockDB；SQLite 路径传入原始 db。
+func runMigrationBody(db *gorm.DB) error {
 	if err := ensureSchemaMigrationsTable(db); err != nil {
 		return fmt.Errorf("创建 schema_migrations 版本表失败: %w", err)
 	}
 
 	isMySQL := db.Dialector.Name() == "mysql"
-
-	// ---------- 单实例锁（MySQL）----------
-	lockTimeout := 300 // 秒；大表 CREATE UNIQUE INDEX 预留充分
-	if isMySQL {
-		got, err := acquireMigrateLock(db, lockTimeout)
-		if err != nil {
-			return fmt.Errorf("获取迁移锁失败(fail-closed): %w", err)
-		}
-		if !got {
-			return fmt.Errorf("获取迁移锁超时(%ds)，可能已有其它实例在迁移；拒绝启动（fail-closed）", lockTimeout)
-		}
-		defer releaseMigrateLock(db)
-	}
 
 	// 已应用版本集合
 	applied := map[string]bool{}
@@ -189,11 +236,9 @@ func MigrateDatabaseVersioned(db *gorm.DB) error {
 		}
 
 		// DDL/DropTable 版本：执行前强制备份（fail-closed）。SQLite 测试跳过备份。
-		if step.NeedsBackup {
-			if isMySQL {
-				if err := backupDatabaseBeforeDDL(db); err != nil {
-					return fmt.Errorf("迁移 %s(%s) 前备份失败，已阻断启动（fail-closed）: %w", step.Version, step.Name, err)
-				}
+		if step.NeedsBackup && isMySQL {
+			if err := backupDatabaseBeforeDDL(); err != nil {
+				return fmt.Errorf("迁移 %s(%s) 前备份失败，已阻断启动（fail-closed）: %w", step.Version, step.Name, err)
 			}
 		}
 
@@ -215,20 +260,22 @@ func MigrateDatabaseVersioned(db *gorm.DB) error {
 	return nil
 }
 
-// acquireMigrateLock MySQL 单实例锁；SQLite 直接返回 true（简化路径）。
+// acquireMigrateLock MySQL 单实例锁。
+// 调用方必须保证传入的是【已绑定独占连接】的 *gorm.DB（MySQL 路径为 migrateDatabaseVersionedWithLock
+// 里的 lockDB）；否则会在连接池漂移连接上执行、锁失效。
 func acquireMigrateLock(db *gorm.DB, timeout int) (bool, error) {
 	var ok int
 	// GET_LOCK 返回 1=获取成功, 0=超时, NULL=错误；同一连接内需 RELEASE_LOCK。
-	err := db.Raw("SELECT GET_LOCK(?, ?)", "tsloms_migrate", timeout).Scan(&ok).Error
+	err := db.Raw("SELECT GET_LOCK(?, ?)", migrateLockName, timeout).Scan(&ok).Error
 	if err != nil {
 		return false, err
 	}
 	return ok == 1, nil
 }
 
-// releaseMigrateLock 释放 MySQL 迁移锁（best-effort）。
+// releaseMigrateLock 释放 MySQL 迁移锁（best-effort）。需与 acquireMigrateLock 在同一连接上调用。
 func releaseMigrateLock(db *gorm.DB) {
-	_ = db.Exec("SELECT RELEASE_LOCK(?)", "tsloms_migrate").Error
+	_ = db.Exec("SELECT RELEASE_LOCK(?)", migrateLockName).Error
 }
 
 // ensureSchemaMigrationsTable 自建版本表（跨方言：MySQL DATETIME / SQLite 均用字符串时间戳）。
@@ -324,7 +371,10 @@ func envValue(path, key string) (string, bool) {
 
 // backupDatabaseBeforeDDL 执行 mysqldump | zstd 备份（fail-closed）。
 // 仅 MySQL 生产路径调用；SQLite 测试由调用方（MigrateDatabaseVersioned）跳过。
-func backupDatabaseBeforeDDL(db *gorm.DB) error {
+// 安全（HIGH-3）：不把 DB 密码写进命令行/进程参数，改由 mysqldump 官方支持的 MYSQL_PWD
+// 环境变量传递（与 deploy/scripts/release-install.sh 中 export MYSQL_PWD=... 的做法一致）；
+// mysqldump 以参数数组方式调用（不走 sh -c 拼串），密码绝不入 argv/日志。
+func backupDatabaseBeforeDDL() error {
 	creds, err := resolveBackupCreds()
 	if err != nil {
 		return err
@@ -336,20 +386,32 @@ func backupDatabaseBeforeDDL(db *gorm.DB) error {
 	ts := time.Now().UTC().Format("20060102_150405")
 	outFile := filepath.Join(backupDir, fmt.Sprintf("tsloms_%s_%s.sql.zst", creds.DBName, ts))
 
-	cmdStr := fmt.Sprintf(
-		"mysqldump --single-transaction --set-gtid-purged=OFF -u '%s' -p'%s' -h '%s' -P '%s' %s | zstd -q -o %s",
-		creds.User, creds.Password, creds.Host, creds.Port, creds.DBName, outFile)
+	dump, zstd, err := newMysqldumpBackupCmds(creds, outFile)
+	if err != nil {
+		return err
+	}
 
-	var cmd *exec.Cmd
-	if commandExists("sh") {
-		cmd = exec.Command("sh", "-c", cmdStr)
-	} else {
-		// Windows 兜底（一般不用于生产迁移备份，此处保证可编译）
-		return fmt.Errorf("生产备份需 sh/mysqldump/zstd，当前环境不支持")
+	dumpOut, err := dump.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("建立 mysqldump 输出管道失败: %w", err)
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("备份命令执行失败: %v; 输出: %s", err, string(out))
+	var dumpErr bytes.Buffer
+	dump.Stderr = &dumpErr
+	zstd.Stdin = dumpOut
+
+	if err := zstd.Start(); err != nil {
+		return fmt.Errorf("启动 zstd 失败: %w", err)
 	}
+	if err := dump.Run(); err != nil {
+		_ = dumpOut.Close()
+		_ = zstd.Wait()
+		return fmt.Errorf("mysqldump 备份失败: %v; stderr: %s", err, strings.TrimSpace(dumpErr.String()))
+	}
+	_ = dumpOut.Close()
+	if err := zstd.Wait(); err != nil {
+		return fmt.Errorf("zstd 压缩写入失败: %v", err)
+	}
+
 	if !fileExists(outFile) {
 		return fmt.Errorf("备份命令未生成文件 %s", outFile)
 	}
@@ -357,18 +419,46 @@ func backupDatabaseBeforeDDL(db *gorm.DB) error {
 	return nil
 }
 
-// backupTargetDir 备份根目录：优先 releases/backups/db，生产兜底 /opt/tsloms/backups/db。
+// newMysqldumpBackupCmds 构造 mysqldump 与 zstd 两个命令（不启动、不执行，便于单测核验）。
+// 安全（HIGH-3）：密码绝不写入命令行/进程参数（argv），改由 mysqldump 官方支持的 MYSQL_PWD
+// 环境变量注入（与 release-install.sh 中 export MYSQL_PWD=... 一致）；mysqldump 以参数数组
+// 方式调用（不走 sh -c 拼串），因此 ps/进程参数/审计日志均看不到明文密码。
+func newMysqldumpBackupCmds(creds *mysqlBackupCfg, outFile string) (dump, zstd *exec.Cmd, err error) {
+	if creds == nil {
+		return nil, nil, errors.New("newMysqldumpBackupCmds: creds 为空")
+	}
+	dumpArgs := []string{
+		"--single-transaction",
+		"--set-gtid-purged=OFF",
+		"-u" + creds.User,
+		"-h" + creds.Host,
+		"-P" + creds.Port,
+		"--default-character-set=utf8mb4",
+		creds.DBName,
+	}
+	dump = exec.Command("mysqldump", dumpArgs...)
+	dump.Env = append(os.Environ(), "MYSQL_PWD="+creds.Password)
+
+	// zstd 压缩写文件（与 release-install 一致：zstd -q -o file）。
+	zstd = exec.Command("zstd", "-q", "-o", outFile)
+	return dump, zstd, nil
+}
+
+// backupTargetDir 备份根目录（HIGH-2）：
+//   - 生产（AppEnv==production）固定为持久目录 /opt/tsloms/backups/db，
+//     与 deploy/scripts/release-install.sh / probe-deep.sh 完全一致，探针与回滚脚本能定位到
+//     迁移前快照，且不落在不可变 release 目录内（跨版本/回滚不会被清理）；
+//   - 开发/测试回退到相对路径 backups/db（绝不使用 releases/...）。
 func backupTargetDir() string {
-	rel := filepath.Join("releases", "backups", "db")
+	const prodBackupDir = "/opt/tsloms/backups/db"
+	if config.Get().IsProduction() {
+		return prodBackupDir
+	}
+	rel := filepath.Join("backups", "db")
 	if abs, err := filepath.Abs(rel); err == nil {
 		return abs
 	}
-	return "/opt/tsloms/backups/db"
-}
-
-func commandExists(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
+	return prodBackupDir
 }
 
 // —— 轻量字符串工具（避免为 env 解析引入额外依赖）——
