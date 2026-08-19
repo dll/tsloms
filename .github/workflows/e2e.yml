@@ -8,12 +8,12 @@ name: E2E - 生产端到端冒烟（CI-P1-03）
 # 限制与说明：
 #   - CI runner 是无浏览器沙箱，本工作流不跑 UI 自动化；只做 HTTP 层最小冒烟
 #     （health / 登录 / dashboard / 只读业务接口），符合“最小冒烟”验收口径。
-#   - 凭据一律来自 GitHub Environment Secret（E2E_ADMIN_USER / E2E_ADMIN_PASS），
-#     经环境变量注入，不写入脚本、命令行与日志；脚本已对 token/密码做脱敏。
-#   - E2E 访问入口方式两种：
-#       A) EA2E_BASE_URL / DEPLOY_BASE_URL 指向外部（HTTPS/反向代理）入口，直接跑 node 脚本；
+#   - 凭据一律来自 GitHub Environment Secret（production，工作流级不经环境引不到），
+#     在声明了 environment 的 job 内经 env 注入，不写入脚本/命令行/日志；脚本已脱敏。
+#   - E2E 访问入口两种：
+#       A) E2E_BASE_URL / DEPLOY_BASE_URL 指向外部（HTTPS/反向代理）入口，直接跑 node 脚本；
 #       B) 受保护环境 + SSH 调服务器本机冒烟（deploy/scripts/smoke-local.sh，127.0.0.1:8093），
-#          避免暴露测试入口，仅依赖 DEPLOY_SSH_KEY 等既有 SSH Secret。
+#          避免暴露测试入口，仅依赖既有 SSH Secret。
 on:
   workflow_run:
     workflows: ['CD - 生产制品化部署']
@@ -28,51 +28,53 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-  DEPLOY_BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
-  E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-  E2E_ADMIN_USER: ${{ secrets.E2E_ADMIN_USER }}
-  E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS }}
-
 jobs:
   e2e-http:
     name: HTTP 层端到端冒烟（外部/测试入口）
     runs-on: ubuntu-latest
     environment: production
+    # 环境级 secrets 仅在声明 environment 的 job 内可用；workflow 顶层 env 不可见。
+    env:
+      E2E_ADMIN_USER: ${{ secrets.E2E_ADMIN_USER }}
+      E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS }}
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: 决定 E2E 目标地址
         id: target
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_BASE_URL: ${{ secrets.DEPLOY_BASE_URL }}
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
         shell: bash
         run: |
-          BASE="${E2E_BASE_URL:-${DEPLOY_BASE_URL:-https://${{ env.DEPLOY_HOST }}:8092/tsloms/api/v1}}"
+          BASE="${E2E_BASE_URL:-${DEPLOY_BASE_URL:-https://${DEPLOY_HOST}:8092/tsloms/api/v1}}"
           echo "TARGET=${BASE}" >> "$GITHUB_OUTPUT"
           # 不打印凭据；仅打印目标主机用于审计
-          echo "E2E 目标: ${{ env.DEPLOY_HOST }}"
+          echo "E2E 目标: ${DEPLOY_HOST}"
 
       # smoke.js 只用 Node 原生 fetch，无需 npm install；Node ≥18 自带全局 fetch。
       - name: 执行 E2E 冒烟（node e2e/smoke.js）
         working-directory: packages/admin
         env:
           E2E_BASE_URL: ${{ steps.target.outputs.TARGET }}
-          E2E_ADMIN_USER: ${{ env.E2E_ADMIN_USER }}
-          E2E_ADMIN_PASS: ${{ env.E2E_ADMIN_PASS }}
-        # 密码只经 ENV 注入，脚本内部脱敏，不进入命令行 argv（避免 Actions 日志打印凭据）。
+        # 密码只经 env 注入（job 级 env），脚本内部脱敏，不进入命令行 argv。
         run: node e2e/smoke.js
 
   e2e-ssh-local:
     name: 服务器本机 E2E 冒烟（受保护环境 + SSH）
     runs-on: ubuntu-latest
     environment: production
+    # 供 appleboy/ssh-action 的 envs 转发到远端
+    env:
+      E2E_ADMIN_USER: ${{ secrets.E2E_ADMIN_USER }}
+      E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS }}
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: 生成本机冒烟脚本（base64 传输，避免路径转义）
-        id: smoke
         shell: bash
         run: echo "SMOKE_B64=$(base64 -w0 deploy/scripts/smoke-local.sh)" >> "$GITHUB_ENV"
 
@@ -87,7 +89,8 @@ jobs:
           # 固定 SSH host fingerprint（防中间人），与 cd.yml/co.yml 一致
           fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           timeout: 120s
-          # 凭据经 ENV 传给远端脚本；curl localhost 冒烟，凭据不在命令行/日志中出现。
+          # 凭据经 job 级 env -> ssh-action envs 转发到远端；curl localhost 冒烟，
+          # 凭据不在命令行/日志中出现。
           envs: E2E_ADMIN_USER,E2E_ADMIN_PASS
           script: |
             set -e
