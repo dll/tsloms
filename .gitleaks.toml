@@ -1,0 +1,26 @@
+# gitleaks 配置 —— 用于 CI 安全门（CI-P1-02 license 私钥治理后）
+#
+# 背景：仓库曾误含"供应方生产 Ed25519 私钥"。已整改：
+#   - cmd/licensegen/main.go 的生产私钥已移出仓库，改为从环境变量
+#     TSLOMS_LICENSE_PRIVATE_KEY 读取（离线签发工具）。
+#   - 生产公钥 supplierPublicKeyB64 仍保留（用于服务器验签，公钥非机密）。
+#
+# 因此此处只对"明确标记为测试专用、允许进仓库的密钥"做豁免；
+# 严禁豁免生产私钥（一经发现即为真实泄漏，应直接阻断）。
+
+title = "TSLOMS gitleaks config"
+
+[allowlist]
+  description = "仅豁免测试专用密钥（license 单元/集成测试对）"
+  # 测试密钥所在文件（路径豁免，配合 regexes 缩小范围）
+  paths = [
+    '''packages/server/internal/license/license_test.go''',
+    '''packages/server/internal/handler/license_test.go''',
+  ]
+  # 测试专用独立 Ed25519 密钥对（仅测试签发/验签授权码，非生产密钥）
+  regexes = [
+    # test private key
+    '''tAmZSDUmFfBfrQCGftwmtPmxCUAND01jHM0AECFgL8yqUwxyd8yHBBFdIROuLjggqDMecdOKcV9R_CkwBNDQ2w''',
+    # test public key
+    '''qlMMcnfMhwQRXSETri44IKgzHnHTinFfUfwpMATQ0Ns''',
+  ]

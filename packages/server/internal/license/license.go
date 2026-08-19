@@ -45,6 +45,17 @@ const supplierPublicKeyB64 = "_Ilp6BWDR58wY3w9rsnbmY9Qy_PRPU2ltPsHpOA9-gs"
 // cachedPublicKey 进程内缓存解码后的公钥
 var cachedPublicKey ed25519.PublicKey
 
+// SetPublicKeyForTest 仅测试专用：覆盖验签公钥，使测试可用独立测试密钥对（与生产私钥解耦）。
+// 生产代码绝不调用本函数；不调用时验签仍使用默认生产公钥 supplierPublicKeyB64。
+// 生产验签/授权机制不受影响。
+func SetPublicKeyForTest(pub ed25519.PublicKey) {
+	if pub == nil || len(pub) != ed25519.PublicKeySize {
+		cachedPublicKey = nil
+		return
+	}
+	cachedPublicKey = pub
+}
+
 // PublicKey 返回用于验签的 Ed25519 公钥；未配置/解码失败时返回 nil。
 func PublicKey() ed25519.PublicKey {
 	if cachedPublicKey != nil {

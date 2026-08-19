@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tsloms/server/internal/license"
 	"github.com/tsloms/server/internal/model"
 )
 
@@ -21,8 +22,20 @@ func licenseRoutes(r *gin.Engine) {
 	g.POST("/license/unlock", UnlockLicense)
 }
 
-// helper: 测试用供应方私钥（与服务器公钥配对）签发授权码
-const licenseTestPrivB64 = "QNn9Qbk-Pi2AYWhbeHl2_SAYfLBbTLYfFNYsXxCpoSH8iWnoFYNHnzBjfD2uyduZj1DL89E9TaW0-wek4D36Cw"
+// helper: 测试专用独立 Ed25519 密钥对（与生产密钥完全无关，仅测试签发授权码）。
+// 用授权码解锁时会走 license.VerifyUnlockCode 验签，需先用测试公钥覆盖 license 的验签公钥。
+const (
+	licenseTestPrivB64 = "tAmZSDUmFfBfrQCGftwmtPmxCUAND01jHM0AECFgL8yqUwxyd8yHBBFdIROuLjggqDMecdOKcV9R_CkwBNDQ2w"
+	licenseTestPubB64  = "qlMMcnfMhwQRXSETri44IKgzHnHTinFfUfwpMATQ0Ns"
+)
+
+func useTestLicenseKey() {
+	pub, err := base64.RawURLEncoding.DecodeString(licenseTestPubB64)
+	if err != nil {
+		panic("测试公钥解码失败: " + err.Error())
+	}
+	license.SetPublicKeyForTest(ed25519.PublicKey(pub))
+}
 
 func signLicenseCode(t *testing.T, module string, nbf, exp time.Time) string {
 	t.Helper()
@@ -98,11 +111,29 @@ func TestLicense_UnlockByCode(t *testing.T) {
 	r := gin.New()
 	model.InitTestDB()
 	licenseRoutes(r)
+	// 用授权码解锁需验签，先切到独立测试公钥（生产验签逻辑不变）
+	useTestLicenseKey()
 	now := time.Now()
 	code := signLicenseCode(t, "ai", now.Add(-time.Hour), now.Add(365*24*time.Hour))
 	c, _ := doReq(t, r, "POST", "/api/v1/license/unlock", `{"module":"ai","code":"`+code+`"}`)
 	if c != http.StatusOK {
 		t.Fatalf("授权码解锁失败 code=%d", c)
+	}
+}
+
+// TestLicense_RejectTamperedCode 负向用例：授权码被篡改后解锁必须被拒绝。
+func TestLicense_RejectTamperedCode(t *testing.T) {
+	r := gin.New()
+	model.InitTestDB()
+	licenseRoutes(r)
+	useTestLicenseKey()
+	now := time.Now()
+	good := signLicenseCode(t, "ai", now.Add(-time.Hour), now.Add(365*24*time.Hour))
+	// 篡改模块 → 签名与载荷不匹配
+	tampered := good[:len(good)-5] + "video"
+	c, _ := doReq(t, r, "POST", "/api/v1/license/unlock", `{"module":"ai","code":"`+tampered+`"}`)
+	if c != http.StatusUnauthorized {
+		t.Errorf("被篡改授权码应 401, got %d", c)
 	}
 }
 
