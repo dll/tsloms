@@ -191,7 +191,9 @@ jobs:
           # 轻量 SBOM（CI-P1-02）：记录后端模块与前端依赖清单，供供应链审计
           ( cd packages/server && go list -m all > ../../release/deps-go.sbom.txt )
           ( cd packages/admin && cp package-lock.json ../../release/deps-npm.lock.json )
-          ( cd release && find server admin -type f -print0 | sort -z | xargs -0 sha256sum > manifest.sha256 )
+          # GitHub Artifact 默认不上传隐藏文件；排除 .bundle-report.json 等构建诊断文件，
+          # 避免清单包含未随制品传输的隐藏文件导致 CD 完整性校验失败。
+          ( cd release && find server admin -type f ! -path '*/.*' -print0 | sort -z | xargs -0 sha256sum > manifest.sha256 )
           # 将 SBOM 也纳入完整性清单
           ( cd release && sha256sum deps-go.sbom.txt deps-npm.lock.json version.txt >> manifest.sha256 )
           echo "== 制品清单 =="
