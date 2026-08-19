@@ -1,8 +1,8 @@
 # TSLOMS 流水线（CI / CD / CO）v2.0
 
-> 文档性质：对现有流水线的严格审核、可行性验证与改进方案  
-> 审核日期：2026-08-18  
-> 适用仓库：TSLOMS（`packages/admin`、`packages/server`、`deploy`）  
+> 文档性质：对现有流水线的严格审核、可行性验证与改进方案
+> 审核日期：2026-08-18
+> 适用仓库：TSLOMS（`packages/admin`、`packages/server`、`deploy`）
 > 基线文件：`docs/TSLOMS-流水线CICDCO-v1.0.md`（正文标题自称 v1.1；仓库中不存在名为 `TSLOMS-流水线CICDCO-v1.1.md` 的文件）
 
 ## 1. 结论先行
