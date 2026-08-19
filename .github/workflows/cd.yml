@@ -175,7 +175,22 @@ jobs:
           # CD-P1-04：固定 SSH host fingerprint，禁止 StrictHostKeyChecking=no
           FINGERPRINT="${{ secrets.DEPLOY_HOST_FINGERPRINT }}"
           KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
-          echo "${HOST} ${FINGERPRINT}" > "${KNOWN_HOSTS}"
+          SCANNED_HOSTS="${RUNNER_TEMP}/scanned_hosts"
+          # DEPLOY_HOST_FINGERPRINT 是 SHA256 摘要，不是 known_hosts 公钥行；
+          # 先扫描完整 ED25519 公钥，再计算摘要比对后写入 known_hosts。
+          ssh-keyscan -T 15 -t ed25519 "${HOST}" > "${SCANNED_HOSTS}" 2>/dev/null
+          if [ ! -s "${SCANNED_HOSTS}" ]; then
+            echo "ERROR: 无法获取 ${HOST} 的 ED25519 主机公钥" >&2
+            exit 1
+          fi
+          ACTUAL_FINGERPRINT=$(ssh-keygen -lf "${SCANNED_HOSTS}" -E sha256 | awk 'NR==1{print $2}')
+          if [ -z "${ACTUAL_FINGERPRINT}" ] || [ "${ACTUAL_FINGERPRINT}" != "${FINGERPRINT}" ]; then
+            echo "ERROR: 主机指纹不匹配" >&2
+            echo "期望: ${FINGERPRINT}" >&2
+            echo "实际: ${ACTUAL_FINGERPRINT:-<空>}" >&2
+            exit 1
+          fi
+          cp "${SCANNED_HOSTS}" "${KNOWN_HOSTS}"
 
           SSHOPTS=(-i "$KEY_FILE" -o UserKnownHostsFile="$KNOWN_HOSTS" -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
 
