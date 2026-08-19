@@ -13,19 +13,19 @@ import (
 // buildCheckinFrame 构造一条合法的签到告警帧（带1条事件记录）
 func buildCheckinFrame(cmd uint8, hwID uint32, errCode int8) []byte {
 	rec := make([]byte, EventRecordLen)
-	binary.BigEndian.PutUint32(rec[0:4], hwID)
-	binary.BigEndian.PutUint32(rec[8:12], 0x01020000) // swVer
-	binary.BigEndian.PutUint32(rec[12:16], 1)         // confVer
-	rec[16] = 0x83                                    // ledState
-	rec[17] = byte(errCode)                           // errCode
-	binary.BigEndian.PutUint16(rec[18:20], 300)       // currentR
-	binary.BigEndian.PutUint16(rec[20:22], 200)       // currentY
-	binary.BigEndian.PutUint16(rec[22:24], 100)       // currentG
+	binary.LittleEndian.PutUint32(rec[0:4], hwID)
+	binary.LittleEndian.PutUint32(rec[8:12], 0x01020000) // swVer
+	binary.LittleEndian.PutUint32(rec[12:16], 1)         // confVer
+	rec[16] = 0x83                                       // ledState
+	rec[17] = byte(errCode)                              // errCode
+	binary.LittleEndian.PutUint16(rec[18:20], 300)       // currentR
+	binary.LittleEndian.PutUint16(rec[20:22], 200)       // currentY
+	binary.LittleEndian.PutUint16(rec[22:24], 100)       // currentG
 
 	// 事件包头
 	eventPak := make([]byte, EventPakHeaderLen)
-	binary.BigEndian.PutUint16(eventPak[0:2], 1) // 1 条记录
-	binary.BigEndian.PutUint16(eventPak[2:4], EventRecordLen)
+	binary.LittleEndian.PutUint16(eventPak[0:2], 1) // 1 条记录
+	binary.LittleEndian.PutUint16(eventPak[2:4], EventRecordLen)
 	eventPak = append(eventPak, rec...)
 
 	return BuildCmdFrame(cmd, 0x01020000, 0x0001, 0, eventPak)

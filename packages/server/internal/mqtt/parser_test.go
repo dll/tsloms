@@ -24,19 +24,19 @@ func buildFrame(t *testing.T, cmd uint8, swVer uint32, cmdSeq uint16, userVal ui
 func buildEventPakData(t *testing.T, records []EventRecord) []byte {
 	t.Helper()
 	data := make([]byte, EventPakHeaderLen+len(records)*EventRecordLen)
-	binary.BigEndian.PutUint16(data[0:2], uint16(len(records)))
-	binary.BigEndian.PutUint16(data[2:4], uint16(len(records)*EventRecordLen))
+	binary.LittleEndian.PutUint16(data[0:2], uint16(len(records)))
+	binary.LittleEndian.PutUint16(data[2:4], uint16(len(records)*EventRecordLen))
 	for i, rec := range records {
 		off := EventPakHeaderLen + i*EventRecordLen
-		binary.BigEndian.PutUint32(data[off:off+4], rec.LedHwID)
-		binary.BigEndian.PutUint32(data[off+4:off+8], rec.SubHwID)
-		binary.BigEndian.PutUint32(data[off+8:off+12], rec.SwVer)
-		binary.BigEndian.PutUint32(data[off+12:off+16], rec.ConfVer)
+		binary.LittleEndian.PutUint32(data[off:off+4], rec.LedHwID)
+		binary.LittleEndian.PutUint32(data[off+4:off+8], rec.SubHwID)
+		binary.LittleEndian.PutUint32(data[off+8:off+12], rec.SwVer)
+		binary.LittleEndian.PutUint32(data[off+12:off+16], rec.ConfVer)
 		data[off+16] = uint8(rec.LedState)
 		data[off+17] = uint8(rec.ErrCode)
-		binary.BigEndian.PutUint16(data[off+18:off+20], rec.CurrentR)
-		binary.BigEndian.PutUint16(data[off+20:off+22], rec.CurrentY)
-		binary.BigEndian.PutUint16(data[off+22:off+24], rec.CurrentG)
+		binary.LittleEndian.PutUint16(data[off+18:off+20], rec.CurrentR)
+		binary.LittleEndian.PutUint16(data[off+20:off+22], rec.CurrentY)
+		binary.LittleEndian.PutUint16(data[off+22:off+24], rec.CurrentG)
 	}
 	return data
 }
@@ -144,11 +144,63 @@ func TestParseEventPak_Valid(t *testing.T) {
 	}
 }
 
+func TestParseEventRecord_LittleEndianWireFormat(t *testing.T) {
+	// 使用现场线上的原始字节序列，避免测试构造器与解析器同时改错而无法发现问题。
+	data := []byte{
+		0x78, 0x56, 0x34, 0x12, // ledHwID = 0x12345678
+		0x04, 0x03, 0x02, 0x01, // subHwID = 0x01020304
+		0x04, 0x03, 0x02, 0x01, // swVer = 0x01020304
+		0x01, 0x08, 0x26, 0x26, // confVer = 0x26260801
+		byte(StateY), 0xFF, // LEDErrROFF = -1
+		0x34, 0x12, // currentR = 0x1234
+		0xCD, 0xAB, // currentY = 0xABCD
+		0x00, 0x01, // currentG = 0x0100
+	}
+	rec, err := ParseEventRecord(data)
+	if err != nil {
+		t.Fatalf("ParseEventRecord 失败: %v", err)
+	}
+	if rec.LedHwID != 0x12345678 || rec.SubHwID != 0x01020304 {
+		t.Fatalf("硬件 ID 小端解析错误: led=%08X sub=%08X", rec.LedHwID, rec.SubHwID)
+	}
+	if rec.SwVer != 0x01020304 || rec.ConfVer != 0x26260801 {
+		t.Fatalf("版本字段小端解析错误: sw=%08X conf=%08X", rec.SwVer, rec.ConfVer)
+	}
+	if rec.CurrentR != 0x1234 || rec.CurrentY != 0xABCD || rec.CurrentG != 0x0100 {
+		t.Fatalf("电流字段小端解析错误: r=%04X y=%04X g=%04X", rec.CurrentR, rec.CurrentY, rec.CurrentG)
+	}
+}
+
+func TestBuildCmdFrame_LittleEndianWireFormat(t *testing.T) {
+	frame := BuildCmdFrame(CmdCheckin, 0x01020304, 0x1234, 0xA1B2C3D4, nil)
+	if got := frame[4:8]; !equalBytes(got, []byte{0x04, 0x03, 0x02, 0x01}) {
+		t.Fatalf("swVer 未按小端编码: % X", got)
+	}
+	if got := frame[8:10]; !equalBytes(got, []byte{0x34, 0x12}) {
+		t.Fatalf("cmdSeq 未按小端编码: % X", got)
+	}
+	if got := frame[12:16]; !equalBytes(got, []byte{0xD4, 0xC3, 0xB2, 0xA1}) {
+		t.Fatalf("userVal 未按小端编码: % X", got)
+	}
+}
+
+func equalBytes(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestParseEventPak_DatLenMismatch(t *testing.T) {
 	rec := EventRecord{LedHwID: 1}
 	data := buildEventPakData(t, []EventRecord{rec})
 	// 篡改 datLen
-	binary.BigEndian.PutUint16(data[2:4], 999)
+	binary.LittleEndian.PutUint16(data[2:4], 999)
 	if _, err := ParseEventPak(data); err == nil {
 		t.Fatal("期望 datLen 不匹配错误，实际解析成功")
 	}
@@ -204,7 +256,7 @@ func TestBuildTimeSyncAck(t *testing.T) {
 		t.Errorf("cmd 应为 ack, got %02X", frame[1])
 	}
 	// userVal = epoch seconds
-	if got := binary.BigEndian.Uint32(frame[12:16]); got != epoch {
+	if got := binary.LittleEndian.Uint32(frame[12:16]); got != epoch {
 		t.Errorf("userVal = %d, 期望 %d", got, epoch)
 	}
 	// 校验和正确
@@ -216,14 +268,14 @@ func TestBuildTimeSyncAck(t *testing.T) {
 		t.Errorf("校验和错误 %02X", uint8(sum))
 	}
 	// swVer 与 cmdSeq
-	if got := binary.BigEndian.Uint32(frame[4:8]); got != 0x01020304 {
+	if got := binary.LittleEndian.Uint32(frame[4:8]); got != 0x01020304 {
 		t.Errorf("swVer = %08X", got)
 	}
-	if got := binary.BigEndian.Uint16(frame[8:10]); got != 7 {
+	if got := binary.LittleEndian.Uint16(frame[8:10]); got != 7 {
 		t.Errorf("cmdSeq = %d, 期望 7", got)
 	}
 	// 无数据部分
-	if got := binary.BigEndian.Uint16(frame[10:12]); got != 0 {
+	if got := binary.LittleEndian.Uint16(frame[10:12]); got != 0 {
 		t.Errorf("datLen 应为 0, got %d", got)
 	}
 }

@@ -30,7 +30,7 @@
 | 环节 | 现状 | 代码证据 |
 |------|------|----------|
 | 连接检测器 | 已实现：MQTT 客户端支持 Broker 地址与账号密码认证，订阅设备上行 Topic | `mqtt/client.go` Connect / SetUsername / SetPassword；`cmd/server/main.go:78` 订阅 `trafficLight/+/+/+/U` |
-| 自动抓包解析 | 已实现：校验帧（token=0x55、checksum=0xFF、大端序）→ 解析 EVENT_RECORD（ledState/errCode/current[3]） | `mqtt/parser.go` ParseCmdFrame / ParseEventPak |
+| 自动抓包解析 | 已实现：校验帧（token=0x55、checksum=0xFF、小端序）→ 解析 EVENT_RECORD（ledState/errCode/current[3]） | `mqtt/parser.go` ParseCmdFrame / ParseEventPak |
 | 分析信号灯状态 | 已实现：多源融合研判（固件 errCode 主信号 + 电流印证/否证 + 灯态印证），故障归档、去重、置信度 | `recognition/engine.go` NewEvaluator / Validate；`mqtt/handler.go` HandleCheckin / HandleAlarm |
 | 数据落库与展示 | 已实现：电流/灯态写入 FaultRecord，设备页展示固件/配置版本与灯态 | `mqtt/handler.go:354`；`handler/device.go` sw_ver_info / conf_ver_info |
 | 反向通道 | 已实现：时间同步应答、固件检查/升级应答（/U 转 /D 下行） | `mqtt/handler.go` buildDownTopic / sendTimeSyncAck / sendFWCheckAck |
@@ -40,7 +40,7 @@
 **可行，且无需真实硬件**。用任意 MQTT 客户端（`mosquitto_pub`、Node MQTT 库等）向后台订阅的上行 Topic 发布构造帧，即可全链路跑通：
 
 1. 上报帧按协议组装：`token(0x55) + cmd(0x00 签到) + ver(0x10) + checksum(0xFF - 前 3 字节和) + swVer(4) + cmdSeq(2) + datLen(2) + userVal(4) + 事件包`。
-2. 事件记录 24 字节：`ledHwId(4) + subHwId(4) + swVer(4) + confVer(4) + ledState(1) + errCode(1) + currentR/Y/G(各 2，大端)`。
+2. 事件记录 24 字节：`ledHwId(4) + subHwId(4) + swVer(4) + confVer(4) + ledState(1) + errCode(1) + currentR/Y/G(各 2，小端)`。
 3. 后台自动解析、研判、生成故障与工单，前端页面可见。
 
 仓库内已具备协议帧构造样例可供复用：`mqtt/parser_test.go`（buildFrame）、`mqtt/handler_cov_test.go`（rec[16]=0x83 构造 ledState 帧）。
@@ -72,7 +72,7 @@
 ### 1.2 current[3] 量程确认
 
 **实现现状**：
-- 大端 uint16 已实现：`mqtt/parser.go:123-125` `binary.BigEndian.Uint16` 解析三通道电流。
+- 小端 uint16 已实现：`mqtt/parser.go:123-125` `binary.LittleEndian.Uint16` 解析三通道电流。
 - 量程 0-2048（相对值）已在结构体注释明确（`mqtt/commands.go:104`）。
 - 研判引擎对电流的使用：印证"灯灭时该灯电流显著偏低（<50）"，否证"灯灭但电流正常偏高（>=200）"（`recognition/engine.go:248/271`）。
 

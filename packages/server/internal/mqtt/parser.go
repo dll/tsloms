@@ -13,14 +13,14 @@ const CmdFrameHeaderLen = 16
 // eventRecordNum(2) + datLen(2)
 const EventPakHeaderLen = 4
 
-// EVENT_RECORD 固定长度（25 字节）
+// EVENT_RECORD 固定长度（24 字节）
 // ledHwId(4) + subHwId(4) + swVer(4) + confVer(4) + ledState(1) + errCode(1) + current[3](6) = 24
 // 注意：C 结构体因 1 字节对齐，current[3] 紧跟 errCode 后，总长 24 字节
 const EventRecordLen = 24
 
 // ParseCmdFrame 解析二进制命令帧
 // 验证 token=0x55、checksum=0xFF，解析各字段
-// 使用大端序解析多字节字段
+// 使用小端序解析多字节字段（以现场检测器实际报文为准）
 func ParseCmdFrame(data []byte) (*CmdFrame, error) {
 	if len(data) < CmdFrameHeaderLen {
 		return nil, fmt.Errorf("数据长度不足: 需要 %d 字节, 实际 %d 字节", CmdFrameHeaderLen, len(data))
@@ -31,10 +31,10 @@ func ParseCmdFrame(data []byte) (*CmdFrame, error) {
 		Cmd:      data[1],
 		Ver:      data[2],
 		Checksum: data[3],
-		SwVer:    binary.BigEndian.Uint32(data[4:8]),
-		CmdSeq:   binary.BigEndian.Uint16(data[8:10]),
-		DatLen:   binary.BigEndian.Uint16(data[10:12]),
-		UserVal:  binary.BigEndian.Uint32(data[12:16]),
+		SwVer:    binary.LittleEndian.Uint32(data[4:8]),
+		CmdSeq:   binary.LittleEndian.Uint16(data[8:10]),
+		DatLen:   binary.LittleEndian.Uint16(data[10:12]),
+		UserVal:  binary.LittleEndian.Uint32(data[12:16]),
 	}
 
 	// 验证魔术字
@@ -72,8 +72,8 @@ func ParseEventPak(data []byte) (*EventPak, error) {
 	}
 
 	pak := &EventPak{
-		EventRecordNum: binary.BigEndian.Uint16(data[0:2]),
-		DatLen:         binary.BigEndian.Uint16(data[2:4]),
+		EventRecordNum: binary.LittleEndian.Uint16(data[0:2]),
+		DatLen:         binary.LittleEndian.Uint16(data[2:4]),
 	}
 
 	// 验证记录数量与数据长度一致性
@@ -112,17 +112,17 @@ func ParseEventRecord(data []byte) (*EventRecord, error) {
 	}
 
 	rec := &EventRecord{
-		LedHwID: binary.BigEndian.Uint32(data[0:4]),
-		SubHwID: binary.BigEndian.Uint32(data[4:8]),
-		SwVer:   binary.BigEndian.Uint32(data[8:12]),
-		ConfVer: binary.BigEndian.Uint32(data[12:16]),
+		LedHwID: binary.LittleEndian.Uint32(data[0:4]),
+		SubHwID: binary.LittleEndian.Uint32(data[4:8]),
+		SwVer:   binary.LittleEndian.Uint32(data[8:12]),
+		ConfVer: binary.LittleEndian.Uint32(data[12:16]),
 		// ledState 和 errCode 为有符号 int8，直接类型转换
 		LedState: int8(data[16]),
 		ErrCode:  int8(data[17]),
-		// current[3] 为 3 个 uint16，大端序
-		CurrentR: binary.BigEndian.Uint16(data[18:20]),
-		CurrentY: binary.BigEndian.Uint16(data[20:22]),
-		CurrentG: binary.BigEndian.Uint16(data[22:24]),
+		// current[3] 为 3 个 uint16，小端序
+		CurrentR: binary.LittleEndian.Uint16(data[18:20]),
+		CurrentY: binary.LittleEndian.Uint16(data[20:22]),
+		CurrentG: binary.LittleEndian.Uint16(data[22:24]),
 	}
 
 	return rec, nil
@@ -139,10 +139,10 @@ func BuildCmdFrame(cmd uint8, swVer uint32, cmdSeq uint16, userVal uint32, data 
 	frame[1] = cmd      // cmd
 	frame[2] = CmdVer   // ver
 	// checksum 先填 0，最后计算
-	binary.BigEndian.PutUint32(frame[4:8], swVer)
-	binary.BigEndian.PutUint16(frame[8:10], cmdSeq)
-	binary.BigEndian.PutUint16(frame[10:12], datLen)
-	binary.BigEndian.PutUint32(frame[12:16], userVal)
+	binary.LittleEndian.PutUint32(frame[4:8], swVer)
+	binary.LittleEndian.PutUint16(frame[8:10], cmdSeq)
+	binary.LittleEndian.PutUint16(frame[10:12], datLen)
+	binary.LittleEndian.PutUint32(frame[12:16], userVal)
 
 	// 拷贝数据部分
 	if datLen > 0 {

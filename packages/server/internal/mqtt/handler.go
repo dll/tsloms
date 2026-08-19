@@ -544,7 +544,7 @@ func (h *Handler) sendFWCheckAck(frame *CmdFrame, uplinkTopic string, targetSwVe
 	}
 	// 数据部分：目标固件位域值(4字节)。0 表示无新版本
 	data := make([]byte, 4)
-	binary.BigEndian.PutUint32(data, targetSwVer)
+	binary.LittleEndian.PutUint32(data, targetSwVer)
 	ackCmd := MakeAckCmd(CmdCheckFW)
 	payload := BuildCmdFrame(ackCmd, frame.SwVer, frame.CmdSeq, targetSwVer, data)
 	downTopic := buildDownTopic(uplinkTopic, frame.CmdSeq)
