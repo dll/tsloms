@@ -86,11 +86,14 @@ async function initMap() {
   if (!viewer) {
     // 默认高德卫星瓦片（高德路网 style=8 已被上游降级为 1x1 占位图不可用，卫星 style=6 可用，故默认影像）
     viewer = new Cesium.Viewer(el, {
-      imageryProvider: new (GaodeImageryProvider as any)({ style: 6 }),
+      baseLayer: false,
       baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
       navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
       infoBox: false, selectionIndicator: false,
     } as any)
+    // Cesium 1.144 不再稳定兼容 Viewer.imageryProvider 构造参数，创建后显式加入同源图层。
+    viewer.imageryLayers.removeAll()
+    viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)({ style: 6 }))
     // 点击地图选点
     inputHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
     inputHandler.setInputAction((e: any) => {

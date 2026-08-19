@@ -247,6 +247,10 @@ onMounted(() => { loadStatus(); loadDevice() })
 
 <style scoped>
 .access-page { max-width: 1440px; margin: 0 auto; }
+.access-page :deep(.el-descriptions__label),
+.access-page :deep(.el-descriptions__content) { font-size: 13px; }
+.access-page :deep(.el-alert__title) { font-size: 14px; font-weight: 400; }
+.access-page :deep(.el-tabs__item) { font-size: 14px; font-weight: 500; }
 .overview { margin-bottom: 18px; }
 .overview :deep(.el-col) { margin-bottom: 16px; }
 .overview :deep(.el-card) { height: 100%; }
@@ -255,11 +259,11 @@ onMounted(() => { loadStatus(); loadDevice() })
 .ov-item.warn .ov-icon { color: #E6A23C; }
 .ov-icon { font-size: 18px; color: #409EFF; }
 .ov-label { margin: 0; font-size: 13px; color: #64748b; }
-.ov-val { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: #1f2937; }
+.ov-val { margin: 4px 0 0; font-size: 18px; font-weight: 600; color: #1f2937; }
 .ov-val.small { font-size: 13px; font-weight: 500; }
 .ov-sub { margin: 2px 0 0; font-size: 13px; color: #909399; line-height: 1.4; }
 .access-tabs { padding: 4px 8px 14px; }
-.block-title { margin: 20px 0 12px; font-weight: 700; color: #1f2937; font-size: 15px; }
+.block-title { margin: 18px 0 10px; font-weight: 600; color: #1f2937; font-size: 14px; }
 .access-steps { max-width: 760px; padding: 4px 0 8px 4px; }
 .access-steps :deep(.el-step__title) { font-size: 14px; }
 .access-steps :deep(.el-step__description) { line-height: 1.7; }
