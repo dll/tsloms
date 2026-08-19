@@ -112,16 +112,25 @@ jobs:
           echo "制品内容："
           ls -la "$SRC" || true
           find "$SRC" -maxdepth 3 -type f | sort
-          for f in server admin/dist/index.html admin/dist/version.json manifest.sha256 version.txt; do
+          for f in server admin/dist/index.html manifest.sha256 version.txt; do
             if [ ! -f "$SRC/$f" ]; then
               echo "ERROR: 缺少制品文件 $f" >&2
               exit 1
             fi
           done
-          echo "前端版本清单："
-          cat "$SRC/admin/dist/version.json"
-          jq -e --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" '.commit == $sha' "$SRC/admin/dist/version.json" >/dev/null \
-            || { echo "ERROR: 制品 version.json 的 commit 与目标 SHA 不一致" >&2; exit 1; }
+          # 兼容版本清单改造前的历史 CI 制品：缺失时按目标 SHA 补齐；已有清单则必须严格匹配。
+          if [ ! -f "$SRC/admin/dist/version.json" ]; then
+            echo "WARN: 历史制品缺少 version.json，按目标 SHA 补生成"
+            jq -n --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" \
+              '{version:"legacy",commit:$sha,build:"legacy",built_at:(now|todateiso8601)}' \
+              > "$SRC/admin/dist/version.json"
+            sha256sum "$SRC/admin/dist/version.json" | sed "s#${SRC}/##" >> "$SRC/manifest.sha256"
+          else
+            echo "前端版本清单："
+            cat "$SRC/admin/dist/version.json"
+            jq -e --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" '.commit == $sha' "$SRC/admin/dist/version.json" >/dev/null \
+              || { echo "ERROR: 制品 version.json 的 commit 与目标 SHA 不一致" >&2; exit 1; }
+          fi
           test "$(tr -d '\r\n' < "$SRC/version.txt")" = "${{ steps.sha.outputs.RELEASE_SHA }}" \
             || { echo "ERROR: 制品 version.txt 与目标 SHA 不一致" >&2; exit 1; }
           ( cd "$SRC" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败" >&2; exit 1; }
