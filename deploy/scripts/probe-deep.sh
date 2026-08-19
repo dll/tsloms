@@ -17,6 +17,11 @@
 set -uo pipefail
 
 ENV_FILE="/etc/tsloms/tsloms.env"
+# 兼容生产现状：新权威单元用 /etc/tsloms/tsloms.env，旧 prod-fitted 单元用 packages/server/.env。
+# 按存在性选择确保探针能拿到真实凭据；若两个都不存在则仅保留 systemd/journal 探针。
+if [ ! -f "$ENV_FILE" ] && [ -f "/opt/tsloms/packages/server/.env" ]; then
+  ENV_FILE="/opt/tsloms/packages/server/.env"
+fi
 SERVICE="tsloms-server"
 ROOT="/opt/tsloms"
 RC=0
@@ -26,8 +31,15 @@ note() { echo "[probe] PASS $*"; }
 warn() { echo "[probe] WARN $*"; }
 fail() { echo "[probe] FAIL $*"; RC=1; }
 
-# 读取 env 值（不回显敏感内容）
-getenv() { grep "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-; }
+# 读取 env 值（不回显敏感内容）；优先权威路径，其次既有 .env
+getenv() {
+  local k="$1"
+  for f in "$ENV_FILE" "/opt/tsloms/packages/server/.env"; do
+    if [ -f "$f" ]; then
+      grep "^${k}=" "$f" 2>/dev/null | head -1 | cut -d= -f2- && return
+    fi
+  done
+}
 
 echo "==== TSLOMS 深度探针 $(date -Is) ===="
 
@@ -104,10 +116,10 @@ if [ -d "$BACKUP_DIR" ]; then
       note "最近数据库备份 ${AGE} 秒前"
     fi
   else
-    fail "backups/db 下无备份文件"
+    warn "backups/db 下无备份文件（首次部署或未初始化备份，不判定为故障但建议初始化）"
   fi
 else
-  fail "备份目录 $BACKUP_DIR 不存在"
+  warn "备份目录 $BACKUP_DIR 不存在（建议初始化）"
 fi
 
 # ---------- L6: 制品目录 ----------
@@ -124,14 +136,27 @@ MQTT_BROKER=$(getenv MQTT_BROKER); MQTT_USERNAME=$(getenv MQTT_USERNAME); MQTT_P
 MQTT_TOPIC_PREFIX=$(getenv MQTT_TOPIC_PREFIX); MQTT_TOPIC_PREFIX="${MQTT_TOPIC_PREFIX:-trafficLight}"
 PROBE_TOPIC="${MQTT_TOPIC_PREFIX}/probe/co/$$"
 if command -v mosquitto_pub >/dev/null 2>&1 && command -v mosquitto_sub >/dev/null 2>&1 && [ -n "$MQTT_BROKER" ]; then
-  BROKER_HOST=$(echo "$MQTT_BROKER" | sed -E 's#(tcp|ssl|mqtt|mqtts)://##')
-  # 用后台 sub 订阅探针 topic，再 pub 一条，验证回环
+  # 解析 host[:port]；localhost 归一化为 127.0.0.1（EMQX，避免 IPv6 ::1 解析失败）
+  BURL="$(echo "$MQTT_BROKER" | sed -E 's#(tcp|ssl|mqtt|mqtts)://##')"
+  if [[ "$BURL" == *:* ]]; then
+    BROKER_HOST="${BURL%%:*}"; BROKER_PORT="${BURL##*:}"
+  else
+    BROKER_HOST="$BURL"; BROKER_PORT="1883"
+  fi
+  [ "$BROKER_HOST" = "localhost" ] && BROKER_HOST="127.0.0.1"
+  # 用后台 sub 订阅探针 topic（输出到临时文件），再 pub 一条，验证回环
   PAYLOAD="co-probe-$$-$(date +%s)"
-  timeout 10 mosquitto_sub -h "$BROKER_HOST" -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "$PROBE_TOPIC" -C 1 -W 8 &
+  RECV_FILE="/tmp/mqtt-probe-recv.$$"
+  rm -f "$RECV_FILE"
+  timeout 10 mosquitto_sub -h "$BROKER_HOST" -p "$BROKER_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "$PROBE_TOPIC" -C 1 -W 8 > "$RECV_FILE" 2>/dev/null &
   SUB_PID=$!
   sleep 1
-  timeout 6 mosquitto_pub -h "$BROKER_HOST" -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "$PROBE_TOPIC" -m "$PAYLOAD" 2>/dev/null
-  RECV=$(timeout 12 wait "$SUB_PID" 2>/dev/null)
+  timeout 6 mosquitto_pub -h "$BROKER_HOST" -p "$BROKER_PORT" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "$PROBE_TOPIC" -m "$PAYLOAD" 2>/dev/null
+  RECV=$(timeout 12 cat "$RECV_FILE" 2>/dev/null)
+  wait "$SUB_PID" 2>/dev/null || true
+  rm -f "$RECV_FILE"
   if [ -n "$RECV" ] && [ "$RECV" = "$PAYLOAD" ]; then
     note "MQTT CONNECT/PUBLISH/SUBSCRIBE 认证回环 OK"
   else
