@@ -154,6 +154,25 @@ echo "[4] 原子切换 current 指向新 release"
 ln -sfn "${RELEASE_DIR}" "${NEXT_LINK}" && mv -Tf "${NEXT_LINK}" "${CURRENT_LINK}"
 ls -l "${CURRENT_LINK}"
 
+echo "[4] systemd 单元校验（P0-03：验证实际启用单元为唯一权威 tsloms，而非 root/旧 env）"
+# 在重启前校验服务器实际单元属性，防止只有 restart 而应用了错误/旧单元。
+CUR_USER=$(systemctl show ${SERVICE} -p User --value 2>/dev/null || echo '')
+CUR_ENVFILE=$(systemctl show ${SERVICE} -p EnvironmentFile --value 2>/dev/null || echo '')
+CUR_EXECSTART=$(systemctl show ${SERVICE} -p ExecStart --value 2>/dev/null || echo '')
+echo "  User=$CUR_USER EnvironmentFile=$CUR_ENVFILE ExecStart=$CUR_EXECSTART"
+if [ "${CUR_USER}" != "tsloms" ]; then
+  echo "ERROR: 实际启用单元 User=${CUR_USER:-空}，必须为 tsloms（拒绝使用 root 单元，P0-03）" >&2; exit 1
+fi
+case "${CUR_ENVFILE}" in
+  *"/etc/tsloms/tsloms.env"*) :;;
+  *) echo "ERROR: EnvironmentFile=${CUR_ENVFILE:-空}，必须为 /etc/tsloms/tsloms.env（拒绝旧 .env 路径）" >&2; exit 1;;
+esac
+case "${CUR_EXECSTART}" in
+  *"/opt/tsloms/current/server"*) :;;
+  *) echo "ERROR: ExecStart=${CUR_EXECSTART:-空}，必须指向 /opt/tsloms/current/server" >&2; exit 1;;
+esac
+echo "[4] systemd 单元校验通过（唯一权威单元已生效）"
+
 echo "[4] systemd 重新读取并重启"
 # deploy 用户经 sudoers 白名单执行 systemctl restart
 systemctl restart "${SERVICE}" 2>/dev/null || sudo -n systemctl restart "${SERVICE}" \
