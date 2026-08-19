@@ -56,6 +56,7 @@ if [ -d "${RELEASE_DIR}" ]; then
   test -f "${RELEASE_DIR}/server"     || { echo "ERROR: 已存在 release 缺失 server" >&2; exit 1; }
   test -x "${RELEASE_DIR}/server"     || { echo "ERROR: 已存在 release 的 server 不可执行" >&2; exit 1; }
   test -f "${RELEASE_DIR}/admin/dist/index.html" || { echo "ERROR: 已存在 release 缺失 admin/dist/index.html" >&2; exit 1; }
+  test -f "${RELEASE_DIR}/admin/dist/version.json" || { echo "ERROR: 已存在 release 缺失 admin/dist/version.json" >&2; exit 1; }
   test "$(tr -d '\r\n' < "${RELEASE_DIR}/version.txt" 2>/dev/null)" = "${RELEASE_SHA}" \
     || { echo "ERROR: 已存在 release 的 version.txt 与目标 SHA 不一致" >&2; exit 1; }
   echo "  已存在 release 复核通过，直接使用"
@@ -69,6 +70,7 @@ else
   chmod +x "${STAGING_DIR}/server"
   test -x "${STAGING_DIR}/server"            || { echo "ERROR: server 无法设置为可执行" >&2; exit 1; }
   test -f "${STAGING_DIR}/admin/dist/index.html" || { echo "ERROR: 缺失 admin/dist/index.html" >&2; exit 1; }
+  test -f "${STAGING_DIR}/admin/dist/version.json" || { echo "ERROR: 缺失 admin/dist/version.json" >&2; exit 1; }
   test "$(tr -d '\r\n' < "${STAGING_DIR}/version.txt" 2>/dev/null)" = "${RELEASE_SHA}" \
     || { echo "ERROR: version.txt 与 RELEASE_SHA 不一致" >&2; exit 1; }
   echo "version=$(cat "${STAGING_DIR}/version.txt" 2>/dev/null || echo unknown)  sha=${RELEASE_SHA}"
