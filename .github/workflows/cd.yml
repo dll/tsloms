@@ -107,9 +107,7 @@ jobs:
       - name: 校验制品完整性
         shell: bash
         run: |
-          # 临时诊断模式：制品异常只告警不阻断，优先验证生产 SSH 通道。
-          # SSH 验证完成后应恢复 set -e + sha256sum -c 严格门禁。
-          set +e
+          set -e
           # actions/download-artifact 在不同版本/参数下可能多包一层目录；
           # 以 manifest.sha256 的实际位置作为制品根，禁止因目录层级误判为坏包。
           SRC="$(find ./release -type f -path '*/server' -printf '%h\n' | head -1)"
@@ -117,9 +115,9 @@ jobs:
             SRC="$(find ./release -type f -name version.txt -printf '%h\n' | head -1)"
           fi
           if [ -z "$SRC" ]; then
-            echo "WARN: 下载制品中找不到 server/version.txt，完整目录如下：" >&2
+            echo "ERROR: 下载制品中找不到 server/version.txt，完整目录如下：" >&2
             find ./release -maxdepth 8 -print >&2 || true
-            SRC=./release
+            exit 1
           fi
           echo "RELEASE_ROOT=$SRC" >> "$GITHUB_ENV"
           echo "制品根目录：$SRC"
@@ -135,7 +133,8 @@ jobs:
           fi
           for f in server admin/dist/index.html manifest.sha256 version.txt; do
             if [ ! -f "$SRC/$f" ]; then
-              echo "WARN: 缺少制品文件 $f" >&2
+              echo "ERROR: 缺少制品文件 $f" >&2
+              exit 1
             fi
           done
           # 兼容版本清单改造前的历史 CI 制品：缺失时按目标 SHA 补齐；已有清单则必须严格匹配。
@@ -149,16 +148,16 @@ jobs:
             echo "前端版本清单："
             cat "$SRC/admin/dist/version.json"
             jq -e --arg sha "${{ steps.sha.outputs.RELEASE_SHA }}" '.commit == $sha' "$SRC/admin/dist/version.json" >/dev/null \
-              || echo "WARN: 制品 version.json 的 commit 与目标 SHA 不一致"
+              || { echo "ERROR: 制品 version.json 的 commit 与目标 SHA 不一致" >&2; exit 1; }
           fi
           if [ -f "$SRC/version.txt" ]; then
             test "$(tr -d '\r\n' < "$SRC/version.txt")" = "${{ steps.sha.outputs.RELEASE_SHA }}" \
-              || echo "WARN: 制品 version.txt 与目标 SHA 不一致"
+              || { echo "ERROR: 制品 version.txt 与目标 SHA 不一致" >&2; exit 1; }
           fi
           if [ -f "$SRC/manifest.sha256" ]; then
-            ( cd "$SRC" && sha256sum -c manifest.sha256 ) || echo "WARN: 制品 SHA-256 校验失败（诊断模式继续）"
+            ( cd "$SRC" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败" >&2; exit 1; }
           fi
-          echo "制品校验结束（诊断模式，不阻断 SSH 预检）"
+          echo "制品校验通过"
 
       - name: 流式上传制品到服务器暂存目录（sha-staging）
         # 用 tar + ssh 流式传输，避免逐文件 scp 半成品；服务器只做落位与切换。
@@ -197,7 +196,13 @@ jobs:
             "rm -rf ${ROOT}/releases/${SHA}.staging && mkdir -p ${ROOT}/releases/${SHA}.staging/admin"
 
           # 3) 流式上传制品（保持相对路径：admin/ server manifest.sha256 version.txt + SBOM）
-          tar -C "${RELEASE_ROOT:-./release}" -czf - admin server manifest.sha256 version.txt deps-go.sbom.txt deps-npm.lock.json \
+          UPLOAD_ROOT="${RELEASE_ROOT:-./release}"
+          UPLOAD_FILES=(admin server manifest.sha256 version.txt)
+          for optional in deps-go.sbom.txt deps-npm.lock.json; do
+            if [ -f "${UPLOAD_ROOT}/${optional}" ]; then UPLOAD_FILES+=("${optional}"); fi
+          done
+          echo "上传文件：${UPLOAD_FILES[*]}"
+          tar -C "${UPLOAD_ROOT}" -czf - "${UPLOAD_FILES[@]}" \
             | ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
               "cat > /tmp/tsloms-${SHA}.tgz && tar -xzf /tmp/tsloms-${SHA}.tgz -C ${ROOT}/releases/${SHA}.staging && rm -f /tmp/tsloms-${SHA}.tgz"
 
