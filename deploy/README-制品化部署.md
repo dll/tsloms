@@ -81,7 +81,9 @@ systemd 单元 `ExecStart=/opt/tsloms/current/server`，nginx 前端/媒体分�
   sudo systemctl restart tsloms-server
   curl -fsS http://127.0.0.1:8093/api/v1/health
   ```
-- 该脚本不删除原 `/opt/tsloms/packages`，应急可切回旧 systemd 单元。
+- 该脚本不删除原 `/opt/tsloms/packages`（仅作历史数据兜底）。systemd 唯一权威单元为
+  `deploy/systemd/tsloms-server.service`（`User=tsloms`、`/etc/tsloms/tsloms.env`，P0-03）；
+  已归档 `tsloms-server.prod-fitted.service`（root/旧 .env）**禁止**再部署到生产。详见 `deploy/systemd/README.md`。
 
 ## 注意事项
 

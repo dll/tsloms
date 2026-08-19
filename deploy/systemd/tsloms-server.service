@@ -1,3 +1,21 @@
+# =============================================================================
+# TSLOMS 生产唯一权威 systemd 单元（P0-03）
+#
+# 本文件是生产环境 systemd 单元的唯一权威来源（单源 of truth）。
+# 部署要求：
+#   - 运行用户：tsloms（非 root）；禁止使用 root 或在 unit 内指定 User=root。
+#   - 密钥/敏感配置：统一从 /etc/tsloms/tsloms.env（0600，root:root）读取。
+#   - 禁止使用旧的 /opt/tsloms/packages/server/.env 路径（已归档，见 archive/）。
+#   - WorkingDirectory / ExecStart 指向原子切换的 current 符号链接（制品化，不本地编译）。
+#
+# CD 部署前后须校验服务器实际启用的单元与本文件一致：
+#   systemctl cat tsloms-server            # 确认 ExecStart/EnvironmentFile/User
+#   systemctl show tsloms-server -p User -p EnvironmentFile -p ExecStart
+#   重新部署后验证 current 符号链接与运行进程一致（避免 restart 未应用当前单元）。
+# 覆盖/替换：
+#   sudo cp deploy/systemd/tsloms-server.service /etc/systemd/system/tsloms-server.service
+#   sudo systemctl daemon-reload && sudo systemctl restart tsloms-server
+# =============================================================================
 [Unit]
 Description=TSLOMS Server
 After=network.target mysql.service redis.service
