@@ -1,5 +1,5 @@
 <template>
-  <el-dialog :model-value="modelValue" :title="'地图选点' + (title ? ' · ' + title : '')" width="820px" append-to-body :destroy-on-close="true" @close="onClose" @open="initMap">
+  <el-dialog :model-value="modelValue" :title="'地图选点' + (title ? ' · ' + title : '')" width="820px" append-to-body :destroy-on-close="true" @close="onClose" @opened="initMap">
     <div class="mp-row">
       <el-input v-model="kw" placeholder="搜索地名/路口（可输入坐标 经度,纬度），或直接在地图上点击定位；鼠标拖动/滚轮缩放" clearable @keyup.enter="searchPlace" style="flex:1">
         <template #prefix><el-icon><Search /></el-icon></template>
@@ -15,7 +15,13 @@
       </div>
     </div>
 
-    <div ref="mapContainer" class="mp-map"></div>
+    <div class="mp-map-shell">
+      <div ref="mapContainer" class="mp-map"></div>
+      <div v-if="mapLoading" class="mp-map-state"><el-icon class="is-loading"><Loading /></el-icon><span>地图加载中…</span></div>
+      <div v-else-if="mapError" class="mp-map-state mp-map-error">
+        <el-icon><WarningFilled /></el-icon><span>{{ mapError }}</span><el-button size="small" type="primary" @click="initMap">重新加载</el-button>
+      </div>
+    </div>
 
     <div class="mp-coord-bar">
       <span>经度</span><el-input v-model="coordLng" size="small" style="width:130px" />
@@ -32,8 +38,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { ref, onUnmounted, nextTick } from 'vue'
+import { Search, Loading, WarningFilled } from '@element-plus/icons-vue'
 import * as Cesium from 'cesium'
 import { getCrossings } from '@/api/warning'      // 复用 crossings 接口
 import { getAreasTree } from '@/api/warning'       // 复用 areas 接口
@@ -48,7 +54,11 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'pick
 const mapContainer = ref<HTMLElement>()
 let viewer: Cesium.Viewer | null = null
 let marker: Cesium.Entity | null = null
+let inputHandler: Cesium.ScreenSpaceEventHandler | null = null
+let resizeObserver: ResizeObserver | null = null
 let initCoord = { lat: 0, lng: 0 }
+const mapLoading = ref(false)
+const mapError = ref('')
 
 const kw = ref('')
 const coordLat = ref('')
@@ -57,15 +67,22 @@ const searchResults = ref<{ id: number; name: string; lat: number; lng: number; 
 
 function fmt(v: any) { return v == null ? '' : Number(v).toFixed(6) }
 
-function initMap() {
+async function initMap() {
+  await nextTick()
   const el = mapContainer.value
-  if (!el) return
+  if (!el || !el.clientWidth || !el.clientHeight) {
+    mapError.value = '地图容器尚未准备完成，请稍后重试'
+    return
+  }
+  mapLoading.value = true
+  mapError.value = ''
   // 初始：来自 props 或 默认全国（合肥约 31.8,117.2）
   const ilat = props.initialLat ?? 31.8
   const ilng = props.initialLng ?? 117.22
   initCoord = { lat: ilat, lng: ilng }
   coordLat.value = fmt(ilat); coordLng.value = fmt(ilng)
 
+  try {
   if (!viewer) {
     // 默认高德卫星瓦片（高德路网 style=8 已被上游降级为 1x1 占位图不可用，卫星 style=6 可用，故默认影像）
     viewer = new Cesium.Viewer(el, {
@@ -75,8 +92,8 @@ function initMap() {
       infoBox: false, selectionIndicator: false,
     } as any)
     // 点击地图选点
-    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-    handler.setInputAction((e: any) => {
+    inputHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+    inputHandler.setInputAction((e: any) => {
       const cart = viewer?.camera.pickEllipsoid(e.position, viewer?.scene.globe.ellipsoid)
       if (cart) {
         const carto = Cesium.Cartographic.fromCartesian(cart)
@@ -85,11 +102,19 @@ function initMap() {
         placeMarker(lat, lng)
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-    // 默认支持左键拖动平移 + 滚轮缩放（不覆盖默认 zoomEventTypes）
+    resizeObserver = new ResizeObserver(() => viewer?.resize())
+    resizeObserver.observe(el)
   }
   // 定位初始
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(initCoord.lng, initCoord.lat, 40000) })
   placeMarker(initCoord.lat, initCoord.lng)
+  viewer.resize()
+  } catch (error) {
+    mapError.value = `地图加载失败：${error instanceof Error ? error.message : '请检查网络或服务状态'}`
+    if (viewer) { viewer.destroy(); viewer = null }
+  } finally {
+    mapLoading.value = false
+  }
 }
 
 function placeMarker(lat: number, lng: number) {
@@ -163,15 +188,25 @@ function confirmPick() {
 
 function onClose() {
   emit('update:modelValue', false)
-  if (viewer) { viewer.destroy(); viewer = null; marker = null }
+  destroyMap()
 }
 
-onUnmounted(() => { if (viewer) { viewer.destroy(); viewer = null; marker = null } })
+function destroyMap() {
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
+  if (inputHandler) { inputHandler.destroy(); inputHandler = null }
+  if (viewer) { viewer.destroy(); viewer = null; marker = null }
+  mapLoading.value = false
+}
+
+onUnmounted(destroyMap)
 </script>
 
 <style scoped>
 .mp-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-.mp-map { width: 100%; height: 420px; border: 1px solid #dcdfe6; border-radius: 6px; }
+.mp-map-shell { position: relative; width: 100%; height: 420px; border: 1px solid #e5eaf2; border-radius: 10px; overflow: hidden; background: #eef3f8; }
+.mp-map { width: 100%; height: 100%; }
+.mp-map-state { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 8px; color: #64748b; background: rgba(248, 250, 252, .88); font-size: 14px; }
+.mp-map-error { flex-direction: column; color: #b42318; }
 .mp-search-list { max-height: 120px; overflow: auto; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 6px; }
 .mp-search-item { display: flex; justify-content: space-between; padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .mp-search-item:hover { background: #f0f2f5; }

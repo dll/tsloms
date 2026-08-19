@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import 'element-plus/dist/index.css'
+import './styles/theme.css'
 // Cesium 控件样式（必须引入，否则地图 canvas 不填充容器/控件错乱）
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import App from './App.vue'
