@@ -35,6 +35,9 @@ jobs:
         working-directory: packages/server
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # gitleaks 需要完整 git 历史扫描泄漏（浅克隆 fetch-depth:1 会失败）
+          fetch-depth: 0
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
@@ -76,6 +79,8 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config: .gitleaks.toml
 
       - name: go build
         run: go build ./...
