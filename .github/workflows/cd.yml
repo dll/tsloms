@@ -74,13 +74,18 @@ jobs:
             RUN_ID="${{ github.event.workflow_run.id }}"
           else
             SHA="${{ steps.sha.outputs.RELEASE_SHA }}"
-            # CD-P1-03：手动部署必须找到目标 SHA 对应的成功 CI run，不做“最新成功”替代
-            RUN_ID=$(gh api \
-              -X GET "repos/{owner}/{repo}/actions/runs?head_sha=${SHA}&per_page=100" \
-              --jq '.workflow_runs[] | select(.name | startswith("CI")) | select(.conclusion == "success") | .id' \
-              | head -1)
-            if [ -z "$RUN_ID" ]; then
-              echo "ERROR: 未找到目标 SHA=${SHA} 的成功 CI 运行，拒绝部署" >&2
+            # CD-P1-03 / HIGH-6：手动部署必须找到目标 SHA 对应的成功 CI run，不做“最新成功”替代；
+            # 且必须精确定位产出 tsloms-release 制品的主 CI（.github/workflows/ci.yml，名为
+            # “CI - Go 质量门（含覆盖率门禁 ≥80%）”），绝不用 startswith("CI") 去匹配，
+            # 否则会命中同样以 CI 开头的 ci-admin.yml（其 run 不产出制品）。
+            RUN_ID=$(gh run list \
+              --workflow "CI - Go 质量门（含覆盖率门禁 ≥80%）" \
+              --commit "${SHA}" \
+              --json databaseId,status,conclusion \
+              --limit 30 \
+              --jq '[.[] | select(.status == "completed") | select(.conclusion == "success")] | .[0].databaseId')
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "ERROR: 未找到目标 SHA=${SHA} 的成功 CI(-Go质量门) 运行，拒绝部署" >&2
               exit 1
             fi
           fi
