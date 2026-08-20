@@ -224,21 +224,31 @@ jobs:
           echo "制品已上传到 ${ROOT}/releases/${SHA}.staging"
 
       - name: 执行原子切换 + 迁移备份 + 探活回滚（服务器端脚本）
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          port: 22
-          # CD-P1-04：固定 SSH host fingerprint，防中间人
-          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
-          timeout: 180s
-          script: |
-            set -e
-            # 服务器端发布脚本固定路径，入参为 release SHA
-            RELEASE_SHA=${{ steps.sha.outputs.RELEASE_SHA }} \
-            bash ${{ env.DEPLOY_APP_DIR }}/bin/release-install.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.sha.outputs.RELEASE_SHA }}"
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          USER="${{ secrets.DEPLOY_USER }}"
+          ROOT="${{ env.DEPLOY_APP_DIR }}"
+          KEY_FILE="${RUNNER_TEMP}/deploy_key"
+          KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
+
+          # 复用上传步骤中已经完成指纹比对的 known_hosts，确保整条 CD 仅使用一套 SSH 信任链。
+          test -s "${KEY_FILE}" || { echo "ERROR: 部署私钥文件不存在" >&2; exit 1; }
+          test -s "${KNOWN_HOSTS}" || { echo "ERROR: 已验证的 known_hosts 不存在" >&2; exit 1; }
+
+          SSHOPTS=(
+            -i "${KEY_FILE}"
+            -o UserKnownHostsFile="${KNOWN_HOSTS}"
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=12
+          )
+
+          ssh "${SSHOPTS[@]}" "${USER}@${HOST}" \
+            "RELEASE_SHA='${SHA}' bash '${ROOT}/bin/release-install.sh'"
 
       - name: 生产入口健康检查（HTTPS + 后台 index）
         env:
