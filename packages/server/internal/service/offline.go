@@ -64,7 +64,9 @@ func (o *OfflineCheck) runOnce() {
 	threshold := time.Now().Add(-o.timeout)
 	// 将超时且当前仍为在线的设备置为离线
 	result := model.DB.Model(&model.Device{}).
-		Where("lifecycle_status <> ? AND access_status = ? AND online_status = ? AND last_checkin_at IS NOT NULL AND last_checkin_at < ?", "retired", "accessed", true, threshold).
+		// 兼容迁移前/测试中仅有 last_checkin_at、尚未回填 access_status 的历史设备：
+		// 有有效签到时间即可视为曾接入；仅真正从未签到的预登记设备不参与离线判定。
+		Where("lifecycle_status <> ? AND online_status = ? AND last_checkin_at IS NOT NULL AND last_checkin_at < ?", "retired", true, threshold).
 		Updates(map[string]interface{}{"online_status": false, "access_status": "offline"})
 	if result.Error != nil {
 		o.logger.Error("离线检测更新失败", zap.Error(result.Error))
