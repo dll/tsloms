@@ -49,10 +49,22 @@ jobs:
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
         shell: bash
         run: |
-          BASE="${E2E_BASE_URL:-${DEPLOY_BASE_URL:-https://${DEPLOY_HOST}:8092/tsloms/api/v1}}"
+          DEFAULT_BASE="http://${DEPLOY_HOST}:8092/tsloms/api/v1"
+          BASE="${E2E_BASE_URL:-${DEPLOY_BASE_URL:-${DEFAULT_BASE}}}"
+          BASE="${BASE%/}"
+          # 生产 8092 当前由 HTTP Nginx 提供；若历史 Secret 误填 https://host:8092，
+          # 仅在 HTTPS 探测失败且 HTTP 探测成功时自动回退，不改变用户明确配置的其它地址。
+          if [[ "${BASE}" =~ ^https://[^/]+:8092(/.*)?$ ]]; then
+            HTTP_BASE="http://${BASE#https://}"
+            if ! curl -fsS --max-time 10 "${BASE}/health" >/dev/null 2>&1 && \
+               curl -fsS --max-time 10 "${HTTP_BASE}/health" >/dev/null 2>&1; then
+              BASE="${HTTP_BASE}"
+            fi
+          fi
           echo "TARGET=${BASE}" >> "$GITHUB_OUTPUT"
-          # 不打印凭据；仅打印目标主机用于审计
-          echo "E2E 目标: ${DEPLOY_HOST}"
+          # 不打印完整 URL 或任何凭据，仅打印协议和主机用于审计。
+          SCHEME="${BASE%%://*}"
+          echo "E2E 目标协议: ${SCHEME}; 主机: ${DEPLOY_HOST}"
 
       # smoke.js 只用 Node 原生 fetch，无需 npm install；Node ≥18 自带全局 fetch。
       - name: 执行 E2E 冒烟（node e2e/smoke.js）

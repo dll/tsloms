@@ -29,22 +29,27 @@ function check(name, ok, extra = '') {
 
 // 脱敏 rest 摘要：响应可能含 token/user/密码，这里只回显 HTTP 状态码。
 function safeStatus(res) {
-  return `status=${res.status}`
+  return res.networkError ? `network-error=${res.networkError}` : `status=${res.status}`
 }
 
 async function api(method, path, body, tok) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(tok ? { Authorization: ('Bea' + 'rer ' + tok) } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const raw = await res.text()
-  let j = null
-  try { j = JSON.parse(raw) } catch { /* 非JSON：不泄露内容 */ }
-  return { status: res.status, j }
+  try {
+    const res = await fetch(BASE + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tok ? { Authorization: ('Bea' + 'rer ' + tok) } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    const raw = await res.text()
+    let j = null
+    try { j = JSON.parse(raw) } catch { /* 非JSON：不泄露内容 */ }
+    return { status: res.status, j, networkError: null }
+  } catch (err) {
+    // 仅保留错误类型；禁止把 URL、代理信息或响应内容写入日志。
+    return { status: 0, j: null, networkError: err && err.name ? err.name : 'NetworkError' }
+  }
 }
 
 // 解析算术验证码题目："a + b = ?" 或 "a - b = ?"，返回答案字符串。
