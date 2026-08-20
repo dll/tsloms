@@ -106,14 +106,19 @@ fi
 # 2. 数据库前置备份（迁移前快照；凭据从 env 文件读取，不落日志）
 # ---------------------------------------------------------------------------
 echo "[2] 数据库备份（迁移前置）"
+ENV_FILE="/etc/tsloms/tsloms.env"
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "ERROR: 缺少生产环境配置 ${ENV_FILE}。该文件不随制品上传，必须由运维在服务器预置（建议 0600、root:root），拒绝使用应用默认凭据继续部署。" >&2
+  exit 1
+fi
 set +e
 # shellcheck disable=SC1090
-DBCONF=$(grep -E '^(DB_HOST|DB_PORT|DB_USER|DB_NAME)=' /etc/tsloms/tsloms.env 2>/dev/null)
+DBCONF=$(grep -E '^(DB_HOST|DB_PORT|DB_USER|DB_NAME)=' "${ENV_FILE}" 2>/dev/null)
 set -e
 if [ -n "${DBCONF}" ]; then
   # 从 env 文件安全取值（避免把密码打印到日志）
   # shellcheck disable=SC1090
-  source /etc/tsloms/tsloms.env
+  source "${ENV_FILE}"
   # DB_PASSWORD 为空则跳过备份（不硬编码凭据）
   if [ -n "${DB_PASSWORD:-}" ] && [ -n "${DB_NAME:-}" ]; then
     TS=$(date +%Y%m%d%H%M%S)
