@@ -50,7 +50,18 @@ jobs:
         shell: bash
         run: |
           DEFAULT_BASE="http://${DEPLOY_HOST}:8092/tsloms/api/v1"
-          BASE="${E2E_BASE_URL:-${DEPLOY_BASE_URL:-${DEFAULT_BASE}}}"
+          if [ -n "${E2E_BASE_URL}" ]; then
+            BASE="${E2E_BASE_URL}"
+          elif [ -n "${DEPLOY_BASE_URL}" ]; then
+            SITE_BASE="${DEPLOY_BASE_URL%/}"
+            if [[ "${SITE_BASE}" == */api/v1 ]]; then
+              BASE="${SITE_BASE}"
+            else
+              BASE="${SITE_BASE}/tsloms/api/v1"
+            fi
+          else
+            BASE="${DEFAULT_BASE}"
+          fi
           BASE="${BASE%/}"
           # 生产 8092 当前由 HTTP Nginx 提供；若历史 Secret 误填 https://host:8092，
           # 仅在 HTTPS 探测失败且 HTTP 探测成功时自动回退，不改变用户明确配置的其它地址。
