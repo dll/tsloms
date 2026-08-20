@@ -55,7 +55,7 @@ Environment=LOG_LEVEL=info
 Environment=MEDIA_DIR=/opt/tsloms/shared/media
 
 # 以下敏感项由 EnvironmentFile 提供：SERVER_PORT、DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、
-# REDIS_ADDR、REDIS_PASS、JWT_SECRET、MQTT_BROKER、MQTT_USERNAME、MQTT_PASSWORD
+# REDIS_ADDR、REDIS_PASS、JWT_SECRET、MQTT_BROKER、MQTT_USERNAME、MQTT_PASSWORD、EMQX_API_TOKEN
 # 示例 /etc/tsloms/tsloms.env（0600 root:root）：
 #   SERVER_PORT=8093
 #   DB_HOST=127.0.0.1
@@ -67,6 +67,8 @@ Environment=MEDIA_DIR=/opt/tsloms/shared/media
 #   MQTT_BROKER=tcp://127.0.0.1:1883
 #   MQTT_USERNAME=tsloms
 #   MQTT_PASSWORD=<强密码，勿写明文到仓库>
+#   EMQX_API_URL=http://127.0.0.1:18083
+#   EMQX_API_TOKEN=<EMQX Dashboard API Token，勿写入仓库>
 
 [Install]
 WantedBy=multi-user.target

@@ -77,7 +77,7 @@
             <el-descriptions-item label="协议版本">基于 MQTT 3.1.1；上行 Topic：trafficLight/{网络号}/{站点号}/{硬件ID}/U</el-descriptions-item>
             <el-descriptions-item label="自动建账">新硬件ID首次上报自动创建设备档案</el-descriptions-item>
           </el-descriptions>
-          <div class="credential-box"><el-button type="primary" @click="generateCredentials">生成检测器 MQTT 账号</el-button><div v-if="credential"><p>用户名：<code>{{ credential.username }}</code></p><p>密码：<code>{{ credential.password }}</code></p><el-alert type="warning" :closable="false" title="密码仅显示一次，请立即复制保存。" /></div></div>
+          <div class="credential-box"><el-button type="primary" @click="generateCredentials">生成检测器 MQTT 账号</el-button><div v-if="credential"><p>用户名：<code>{{ credential.username }}</code></p><p>密码：<code>{{ credential.password }}</code></p><el-alert type="warning" :closable="false" title="密码仅显示一次，请立即复制保存。" /></div><el-alert v-if="credentialError" type="error" :closable="false" :title="credentialError" style="margin-top:8px" /></div>
           <div class="block-title">接入步骤</div>
           <el-steps :active="4" finish-status="success" direction="vertical" class="access-steps">
             <el-step title="配置 MQTT" description="在 server/.env 配置 MQTT_BROKER、MQTT_USERNAME、MQTT_PASSWORD（可选鉴权）。" />
@@ -173,7 +173,8 @@ import { getDevices } from '@/api/device'
 const tab = ref('real')
 const st = reactive<any>({})
 const credential = ref<any>(null)
-async function generateCredentials() { try { const res = await createMqttCredentials(); credential.value = res.data; ElMessage.success('检测器账号已创建，密码仅本次显示') } catch { /* 后端提示 */ } }
+const credentialError = ref('')
+async function generateCredentials() { credentialError.value = ''; try { const res = await createMqttCredentials(); credential.value = res.data; ElMessage.success('检测器账号已创建，密码仅本次显示') } catch (e: any) { credentialError.value = e?.response?.data?.msg || '生成失败：请联系系统管理员配置 EMQX 管理 API' } }
 
 const faultOptions = [
   { v: 0, label: '0 正常（无错误）' },

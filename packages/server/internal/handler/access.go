@@ -105,11 +105,12 @@ func CreateMQTTDeviceCredential(c *gin.Context) {
 		}
 	}
 	if token == "" {
-		serverError(c, fmt.Errorf("未配置 EMQX_API_TOKEN 或 EMQX_API_USERNAME/EMQX_API_PASSWORD"))
+		fail(c, http.StatusServiceUnavailable, "emqx_api_not_configured", "检测器账号生成功能尚未配置 EMQX 管理 API，请联系系统管理员配置 EMQX_API_TOKEN")
 		return
 	}
 	if err := emqxCreateUser(cfg.EMQXAPIURL, token, user, password); err != nil {
-		serverError(c, fmt.Errorf("创建 EMQX 检测器账号失败: %w", err))
+		c.Error(fmt.Errorf("创建 EMQX 检测器账号失败: %w", err))
+		fail(c, http.StatusServiceUnavailable, "emqx_api_create_failed", "EMQX 管理 API 暂时不可用，请联系系统管理员检查 Token、Dashboard 地址和内置数据库认证")
 		return
 	}
 	// 禁止将 password 写入操作日志、服务日志或持久化存储。
