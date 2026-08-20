@@ -160,7 +160,12 @@ ls -l "${CURRENT_LINK}"
 echo "[4] systemd 单元校验（P0-03：验证实际启用单元为唯一权威 tsloms，而非 root/旧 env）"
 # 在重启前校验服务器实际单元属性，防止只有 restart 而应用了错误/旧单元。
 CUR_USER=$(systemctl show ${SERVICE} -p User --value 2>/dev/null || echo '')
-CUR_ENVFILE=$(systemctl show ${SERVICE} -p EnvironmentFile --value 2>/dev/null || echo '')
+# systemd 的 show 属性为复数 EnvironmentFiles（即使 unit 指令写作 EnvironmentFile=）；
+# 兼容较旧 systemd 仍暴露单数属性的情况，避免把正确配置误判为空。
+CUR_ENVFILE=$(systemctl show ${SERVICE} -p EnvironmentFiles --value 2>/dev/null || echo '')
+if [ -z "${CUR_ENVFILE}" ]; then
+  CUR_ENVFILE=$(systemctl show ${SERVICE} -p EnvironmentFile --value 2>/dev/null || echo '')
+fi
 CUR_EXECSTART=$(systemctl show ${SERVICE} -p ExecStart --value 2>/dev/null || echo '')
 echo "  User=$CUR_USER EnvironmentFile=$CUR_ENVFILE ExecStart=$CUR_EXECSTART"
 if [ "${CUR_USER}" != "tsloms" ]; then
