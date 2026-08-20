@@ -472,8 +472,9 @@ async function loadUsers() {
       department_id: query.department_id || undefined,
       keyword: query.keyword || undefined,
     })
-    users.value = res.data?.list || []
-    total.value = res.data?.total || 0
+    // 后端已过滤超级管理员，前端再做一次防御性过滤，避免旧接口/缓存数据泄露。
+    users.value = (res.data?.list || []).filter((u: UserItem) => u.role !== 'super_admin')
+    total.value = res.data?.total || users.value.length
   } catch { ElMessage.error('用户列表加载失败') } finally { loading.value = false }
 }
 

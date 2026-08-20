@@ -66,6 +66,20 @@ func TestUser_ListFilters(t *testing.T) {
 	}
 }
 
+func TestUser_ListHidesSuperAdmin(t *testing.T) {
+	r := userCovEngine(t)
+	model.DB.Create(&model.User{Username: "internal-super", Role: model.RoleSuperAdmin, Status: model.UserStatusEnabled})
+	model.DB.Create(&model.User{Username: "visible-admin", Role: model.RoleAdmin, Status: model.UserStatusEnabled})
+	code, body := doReq(t, r, "GET", "/api/v1/users", "")
+	mustOK(t, code, body, "用户列表隐藏超级管理员")
+	list := body["data"].(map[string]interface{})["list"].([]interface{})
+	for _, item := range list {
+		if item.(map[string]interface{})["role"] == model.RoleSuperAdmin {
+			t.Fatal("用户管理列表不应返回超级管理员")
+		}
+	}
+}
+
 func TestUser_Update(t *testing.T) {
 	r := userCovEngine(t)
 	u := model.User{Username: "upd_user", PasswordHash: "x", Role: model.RoleViewer}

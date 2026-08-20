@@ -27,7 +27,8 @@ func ListAssignableUsers(c *gin.Context) {
 func ListUsers(c *gin.Context) {
 	page, pageSize := paginate(c)
 
-	query := model.DB.Model(&model.User{})
+	// 超级管理员是系统内部账号，不进入普通用户管理列表，避免被编辑、重置或删除。
+	query := model.DB.Model(&model.User{}).Where("role <> ?", model.RoleSuperAdmin)
 	if role := c.Query("role"); role != "" {
 		query = query.Where("role = ?", role)
 	}
