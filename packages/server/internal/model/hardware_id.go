@@ -30,7 +30,9 @@ func HardwareIDAliases(value string) []string {
 	}
 	if legacyHardwareIDPattern.MatchString(v) {
 		padded := v
-		if len(padded) < 8 { padded = strings.Repeat("0", 8-len(padded)) + padded }
+		if len(padded) < 8 {
+			padded = strings.Repeat("0", 8-len(padded)) + padded
+		}
 		return []string{v, padded, "LA" + padded}
 	}
 	return []string{v}
