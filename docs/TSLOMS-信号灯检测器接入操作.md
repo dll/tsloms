@@ -148,7 +148,7 @@
 |---|---|
 | 认证方式 | MQTT 用户名/密码（EMQX 内置数据库 built_in_database，sha256+salt） |
 | 服务端账号 | `tsloms`（见 5.1，`packages/server/.env`） |
-| 检测器账号 | `det123`（密码 `det0818x`）、`det456`（密码 `det45678`）——已实测可连 |
+| 检测器账号 | 由管理员在 EMQX 内置数据库创建的专用账号；账号和密码不写入仓库、不在文档明文保存 |
 
 > 检测器使用**独立账号**，避免与服务端共用 `tsloms` 凭据，便于按设备审计与吊销。
 > 新增检测器账号（二选一）：
@@ -167,7 +167,20 @@
 > 把账号配置到检测器（见 4.1）。
 >
 > ⚠️ **账号长度约束（PDF 4.1/4.2）**：设备配置文件中 `mqttUserName`/`mqttPassword` **最长 8 位**。
-> 创建 EMQX 检测器账号时建议控制在 8 位以内（`det123`/`det456` 为 6 位，符合）。
+> 请现场生成随机强密码（不短于 8 位时需确认设备固件限制），通过受控渠道交付检测器，禁止提交 Git 或粘贴到工单/群聊。
+
+#### 推荐创建方式（服务器执行，不输出密码）
+
+```bash
+# 在服务器本机执行，密码从交互输入读取；不要把真实密码写入命令历史或仓库
+read -r -s -p 'MQTT检测器密码: ' DET_PASS; echo
+curl -fsS -X POST 'http://127.0.0.1:18083/api/v5/authentication/password_based:built_in_database/users' \
+  -H "Authorization: Bearer ${EMQX_API_TOKEN}" -H 'Content-Type: application/json' \
+  --data "$(python3 -c 'import json,os; print(json.dumps({"user_id":"det001","password":os.environ["DET_PASS"]}))')"
+unset DET_PASS
+```
+
+`EMQX_API_TOKEN` 应通过登录接口临时获取并在使用后立即撤销；如设备最多支持 8 位密码，使用随机 8 位以上大小写字母和数字组合，并按设备批次分配独立账号。
 
 ### 3.5 检测器参数配置（trafficLightConf 工具）
 
@@ -188,7 +201,7 @@
 [mqtt]
 mqttServerIp=129.211.223.113   ;MQTT 服务器 IP
 mqttServerPort=1883            ;MQTT 服务器端口
-mqttUserName=det123            ;登录用户名（最长 8 位）
+mqttUserName=<管理员分配的检测器账号> ;登录用户名（最长 8 位）
 mqttPassword=xxxxxxxx          ;登录密码（最长 8 位）
 mqttTopicPrefix=trafficLight   ;topic 前缀（一般不修改）
 networkCode=0                  ;网络号（默认 0，不修改）
@@ -202,7 +215,7 @@ stationCode=0                  ;站点号（默认 0，不修改）
 | `confVer` | `26081801` | 配置版本号（16 进制 YYMMDDBB） |
 | `mqttServerUserIp` | `129.211.223.113` | 设备连接的 MQTT 服务器 IP |
 | `mqttServerPort` | `1883` | MQTT 端口 |
-| `mqttUserName` / `mqttPassword` | `det123` | 设备登录账号（最长 8 位） |
+| `mqttUserName` / `mqttPassword` | 管理员分配的检测器专用凭据 | 设备登录账号（最长 8 位，密码不入库） |
 | `networkCode` / `stationCode` | `0` | 网络号 / 站点号 |
 | `mqttTopicPrefix` | `trafficLight` | topic 前缀 |
 | `checkinMin` | `2` | **签到周期（分钟）** |
@@ -215,8 +228,10 @@ stationCode=0                  ;站点号（默认 0，不修改）
 ./trafficLightConf <hwId> [options]
 # 用模板配置 hwId=1114006C 的设备
 ./trafficLightConf 1114006C
+# LA 编码仅作为平台台账标识；协议工具仍按厂商要求传 8 位协议值
+./trafficLightConf 82533848
 # 临时改参数配置（不写回 ini 文件）
-./trafficLightConf 1114006C --mqttServerUserIp 129.211.223.113 --mqttServerPort 1883 --mqttUserName det123
+./trafficLightConf 82533848 --mqttServerUserIp 129.211.223.113 --mqttServerPort 1883 --mqttUserName <检测器账号>
 ```
 
 流程：工具订阅 `trafficLight/0/0/+/U`，向 `trafficLight/0/0/<hwId>/D` 发送
@@ -231,13 +246,15 @@ stationCode=0                  ;站点号（默认 0，不修改）
 
 1. 连接 Broker：
    - Broker 地址：**`tcp://129.211.223.113:1883`**（腾讯云公网）
-   - 用户名/密码：使用第 3.4 节在 EMQX 中创建的**检测器专用账号**（如 `det123`）
+   - 用户名/密码：使用第 3.4 节在 EMQX 中创建的**检测器专用账号**（密码不在文档明文保存）
 2. 发布 Topic：`trafficLight/{网络号}/{站点号}/{硬件ID}/U`
    - **`{网络号}` `{站点号}` `{硬件ID}` 均为十六进制大写 ASCII 码**（PDF 前言，例如
      `trafficLight/0/0/11130000/U`、`trafficLight/0/0/1114006C/D`）；网络号 0~254、站点号
      0~65534，当前默认均为 0，不建议修改
    - `{硬件ID}`：设备出厂唯一硬件编号（如 `1114006C`），后台据 EVENT_RECORD 内
-     `ledHwId`（uint32）转大写十六进制 uuid 入库（如 0x00001F41 → `00001F41`）
+     `ledHwId`（uint32）转大写十六进制 uuid 入库。平台台账还支持 `LA` + IEM 编号后 8 位
+     （如 `LA82533848`）；预登记该编码后，上报协议值 `0x82533848` 会自动匹配原记录，
+     不会产生重复设备，历史 8 位 ID 继续兼容。
 3. payload 为二进制协议帧（见第 6 节），定时发送：
    - 正常时周期性发 **CHECKIN**（签到）
    - 检测到信号灯异常时发 **ALARM**（告警）
@@ -269,7 +286,7 @@ stationCode=0                  ;站点号（默认 0，不修改）
 > - EMQX 5.8.4 以**原生 systemd 服务**运行（`systemctl status emqx`），非 docker-compose
 >   （生产未装 docker/未用 docker-compose.prod.yml；该 compose 仅作模板，若日后改用需把 EMQX
 >   `1883` 对外绑定到 `0.0.0.0` 供检测器接入、`18083` Dashboard 保持 `127.0.0.1` 仅本机，下方 §5.4）。
-> - EMQX 已启用 `built_in_database` 密码认证；MQTT 用户见 §3.4（服务端 `tsloms` + 检测器 `det123`/`det456`）。
+> - EMQX 已启用 `built_in_database` 密码认证；服务端与检测器使用独立账号，具体凭据仅保存在服务器受限文件/密码管理器中。
 > - server 以 systemd 运行，MQTT 凭据写在 `packages/server/.env`（0600，非 /etc/tsloms/tsloms.env），
 >   含 `MQTT_BROKER=tcp://127.0.0.1:1883`、`MQTT_USERNAME=tsloms`、`MQTT_PASSWORD=<强密码>`。
 > - MySQL / Redis 亦为 systemd 服务（非 docker），仅绑定 `127.0.0.1`。
@@ -283,7 +300,7 @@ stationCode=0                  ;站点号（默认 0，不修改）
 > - Dashboard `18083` 仅绑定 `127.0.0.1`，公网不通，需 SSH 隧道：
 >   `ssh -L 18083:127.0.0.1:18083 root@129.211.223.113` → 浏览器 `http://127.0.0.1:18083`。
 > - Dashboard 管理员：`admin`（强密码已随机生成，保存在服务器 `/root/emqx_dash_pass.txt`，0600）。
-> - MQTT 账号：`tsloms`（服务端）、`det123`/`det456`（检测器），密码见服务器 `/root/emqx_mqtt_users.txt`（0600）。
+> - MQTT 账号：服务端账号与检测器专用账号分离；密码见服务器受限凭据文件（0600），不在仓库或工单中记录。
 
 ### 5.2 订阅 Topic
 

@@ -75,6 +75,22 @@ func TestMqttHandleCheckin_UpsertDevice(t *testing.T) {
 	}
 }
 
+func TestMqttUpsert_MatchesLAHardwareID(t *testing.T) {
+	h := mqttHandler(t)
+	model.DB.Create(&model.Device{HwID: "LA82533848", Intersection: "测试路口", AccessStatus: "never", LifecycleStatus: "active"})
+	h.upsertDevice(EventRecord{LedHwID: 0x82533848, SwVer: 2, ConfVer: 3}, time.Now())
+	var count int64
+	model.DB.Model(&model.Device{}).Where("hw_id IN ?", []string{"LA82533848", "82533848"}).Count(&count)
+	if count != 1 {
+		t.Fatalf("LA 硬件ID匹配不应新增重复设备，数量=%d", count)
+	}
+	var d model.Device
+	model.DB.Where("hw_id = ?", "LA82533848").First(&d)
+	if !d.OnlineStatus || d.AccessStatus != "accessed" || d.FirstAccessAt == nil {
+		t.Fatalf("LA 设备未正确接入: %+v", d)
+	}
+}
+
 func TestMqttHandleAlarm_CriticalFault(t *testing.T) {
 	h := mqttHandler(t)
 	// 告警：严重故障（errCode 对应 critical）

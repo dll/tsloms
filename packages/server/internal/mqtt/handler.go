@@ -79,7 +79,7 @@ func (h *Handler) HandleMessage(client MQTT.Client, msg MQTT.Message) {
 	// 提取设备硬件 ID（从第一条事件记录，或 0 表示无事件数据）
 	var deviceHwID string
 	if eventPak != nil && len(eventPak.Records) > 0 {
-		deviceHwID = recognition.LedUUID(eventPak.Records[0].LedHwID)
+		deviceHwID = canonicalHardwareID(eventPak.Records[0].LedHwID)
 	}
 
 	// 记录报文日志
@@ -208,7 +208,8 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 	}
 
 	var device model.Device
-	result := model.DB.Where("hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&device)
+	legacyID := recognition.LedUUID(rec.LedHwID)
+	result := model.DB.Where("hw_id IN ?", model.HardwareIDAliases(legacyID)).First(&device)
 
 	if result.Error != nil {
 		if result.Error != gorm.ErrRecordNotFound {
@@ -217,7 +218,7 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 		}
 		// 设备不存在，创建新设备
 		device = model.Device{
-			HwID:               recognition.LedUUID(rec.LedHwID),
+			HwID:               legacyID,
 			SwVersion:          rec.SwVer,
 			ConfVersion:        rec.ConfVer,
 			OnlineStatus:       true,
@@ -265,6 +266,18 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 	}
 }
 
+// canonicalHardwareID 返回台账中已登记的规范 ID，优先保留 LA+8 位编码；未登记时回退协议历史 8 位编码。
+func canonicalHardwareID(hwID uint32) string {
+	legacyID := recognition.LedUUID(hwID)
+	if model.DB != nil {
+		var device model.Device
+		if model.DB.Where("hw_id IN ?", model.HardwareIDAliases(legacyID)).First(&device).Error == nil && device.HwID != "" {
+			return device.HwID
+		}
+	}
+	return legacyID
+}
+
 // processFault 故障研判与去重（智能多源故障识别研判引擎已接入，范围A）
 // 同一设备同一 errCode 在 30 分钟内只生成一条故障记录，后续更新 lastSeen（R3）。
 // 研判链路：
@@ -304,8 +317,8 @@ func (h *Handler) processFault(rec *EventRecord) {
 	// 查找同一设备同一错误码的活跃故障记录
 	var existing model.FaultRecord
 	result := model.DB.Where(
-		"device_hw_id = ? AND err_code = ? AND status IN ?",
-		recognition.LedUUID(rec.LedHwID), rec.ErrCode,
+		"device_hw_id IN ? AND err_code = ? AND status IN ?",
+		model.HardwareIDAliases(canonicalHardwareID(rec.LedHwID)), rec.ErrCode,
 		[]string{model.FaultStatusOccurred, model.FaultStatusConfirmed, model.FaultStatusDispatched},
 	).First(&existing)
 
@@ -338,7 +351,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 				model.DB.Model(&existing).Updates(updGrade)
 				// critical 自动派单（M1 原子防重，内部回填 work_order_id/confirmed）
 				if existing.FaultLevel == "critical" && judge.FaultLevel == "critical" {
-					model.EnsureActiveWorkOrder(model.DB, existing.ID, recognition.LedUUID(rec.LedHwID))
+					model.EnsureActiveWorkOrder(model.DB, existing.ID, canonicalHardwareID(rec.LedHwID))
 					dispatchIf = true
 				}
 				h.logger.Info("待确认故障自动升级确认",
@@ -371,7 +384,7 @@ func (h *Handler) processFault(rec *EventRecord) {
 
 	// 创建新故障记录（研判结果落库）
 	fault := model.FaultRecord{
-		DeviceHwID:        recognition.LedUUID(rec.LedHwID),
+		DeviceHwID:        canonicalHardwareID(rec.LedHwID),
 		ErrCode:           rec.ErrCode,
 		FaultType:         judge.FaultType,
 		FaultLevel:        judge.FaultLevel,
@@ -690,7 +703,7 @@ func (h *Handler) logPacket(deviceHwID string, rawData []byte, cmdType uint8, cm
 // 汇入已归一化的佐证信号，作为多源交叉验证的输入；无记录则不注入（不阻塞规则主通道）。
 // hwID 为协议帧 uint32，查询台账时转 uuid 字符串。
 func injectAuxEvidence(eval *recognition.Evaluator, hwID uint32, now time.Time) {
-	hwUUID := recognition.LedUUID(hwID)
+	hwUUID := canonicalHardwareID(hwID)
 	windowStart := now.Add(-24 * time.Hour) // 检索窗口：近 24h 的辅助证据
 
 	// 群众反映（Feedback）—— 辅助证据
@@ -747,7 +760,7 @@ func (h *Handler) persistEvidence(eval *recognition.Evaluator, fault *model.Faul
 	curY := rec.CurrentY
 	curG := rec.CurrentG
 	primaryEv := recognition.RuleEvidence{
-		DeviceHwID:    recognition.LedUUID(rec.LedHwID),
+		DeviceHwID:    canonicalHardwareID(rec.LedHwID),
 		SourceType:    model.EvSourceFirmware,
 		ErrCode:       &errCode,
 		LedState:      &led,
@@ -766,7 +779,7 @@ func (h *Handler) persistEvidence(eval *recognition.Evaluator, fault *model.Faul
 	for i := range eval.Evidence() {
 		ev := eval.Evidence()[i]
 		if ev.DeviceHwID == "" {
-			ev.DeviceHwID = recognition.LedUUID(rec.LedHwID)
+			ev.DeviceHwID = canonicalHardwareID(rec.LedHwID)
 		}
 		recs = append(recs, &ev)
 	}

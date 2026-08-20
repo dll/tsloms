@@ -136,7 +136,8 @@
     <el-dialog v-model="editVisible" :title="editId ? '编辑设备' : '新增设备'" width="520px">
       <el-form :model="editFormDev" label-width="90px">
         <el-form-item label="硬件ID" required>
-          <el-input v-model="editFormDev.hw_id" :disabled="!!editId" placeholder="出厂唯一硬件ID" />
+          <el-input v-model="editFormDev.hw_id" :disabled="!!editId" placeholder="8位协议ID或 LA+IEM后8位，如 LA82533848" />
+          <div class="coord-tip">支持历史 8 位协议 ID，也支持 LA 加 IEM 编号后 8 位；设备实际上报后自动匹配。</div>
         </el-form-item>
         <el-form-item label="路口位置">
           <el-input v-model="editFormDev.intersection" placeholder="如：人民路口" />

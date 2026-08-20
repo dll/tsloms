@@ -234,6 +234,11 @@ func CreateDevice(c *gin.Context) {
 		badRequest(c, "硬件ID必填")
 		return
 	}
+	req.HwID = model.NormalizeHardwareID(req.HwID)
+	if !model.IsValidHardwareID(req.HwID) {
+		badRequest(c, "硬件ID格式无效，应为8位十六进制或LA加8位编码（如 LA82533848）")
+		return
+	}
 	// 校验硬件ID唯一
 	var count int64
 	model.DB.Model(&model.Device{}).Where("hw_id = ?", req.HwID).Count(&count)

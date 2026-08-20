@@ -23,7 +23,7 @@
 | ------------------------- | ----------------- |
 | mqttServerUserIp          | `129.211.223.113` |
 | mqttServerPort            | `1883`            |
-| mqttUserName              | `det123`（最长 8 位）  |
+| mqttUserName              | 管理员分配的检测器专用账号（最长 8 位）  |
 | mqttPassword              | 检测器账号密码           |
 | mqttTopicPrefix           | `trafficLight`    |
 | networkCode / stationCode | `0`               |
@@ -70,4 +70,3 @@
 - 检测器接入页：Broker 已连接、在线设备增长 ✅
 
 > 全部通过即接入成功。若设备不在线，检查检测器网络与账号配置；若接入页显示未连接，联系管理员检查 MQTT 服务。新增检测器账号需联系管理员在 EMQX 创建。
-
