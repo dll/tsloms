@@ -66,7 +66,7 @@ jobs:
     name: 服务器本机 E2E 冒烟（受保护环境 + SSH）
     runs-on: ubuntu-latest
     environment: production
-    # 供 appleboy/ssh-action 的 envs 转发到远端
+    # 凭据仅在运行时注入远端探针，不写入仓库或日志。
     env:
       E2E_ADMIN_USER: ${{ secrets.E2E_ADMIN_USER }}
       E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS }}
@@ -74,27 +74,38 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: 生成本机冒烟脚本（base64 传输，避免路径转义）
+      - name: 准备原生 SSH 严格主机校验
         shell: bash
-        run: echo "SMOKE_B64=$(base64 -w0 deploy/scripts/smoke-local.sh)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          KEY_FILE="${RUNNER_TEMP}/deploy_key"
+          SCANNED_HOSTS="${RUNNER_TEMP}/scanned_hosts"
+          KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
+          printf '%s' "${{ secrets.DEPLOY_SSH_KEY }}" > "${KEY_FILE}"
+          chmod 600 "${KEY_FILE}"
+          ssh-keyscan -T 15 -t ed25519 "${{ secrets.DEPLOY_HOST }}" > "${SCANNED_HOSTS}" 2>/dev/null
+          test -s "${SCANNED_HOSTS}"
+          ACTUAL_FINGERPRINT=$(ssh-keygen -lf "${SCANNED_HOSTS}" -E sha256 | awk 'NR==1{print $2}')
+          EXPECTED_FINGERPRINT="${{ secrets.DEPLOY_HOST_FINGERPRINT }}"
+          test -n "${EXPECTED_FINGERPRINT}" && test "${ACTUAL_FINGERPRINT}" = "${EXPECTED_FINGERPRINT}" \
+            || { echo "ERROR: SSH 主机指纹不匹配（期望 ${EXPECTED_FINGERPRINT}，实际 ${ACTUAL_FINGERPRINT}）" >&2; exit 1; }
+          cp "${SCANNED_HOSTS}" "${KNOWN_HOSTS}"
 
       - name: SSH 调用服务器本机冒烟
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          port: 22
-          # 固定 SSH host fingerprint（防中间人），与 cd.yml/co.yml 一致
-          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
-          timeout: 120s
-          # 凭据经 job 级 env -> ssh-action envs 转发到远端；curl localhost 冒烟，
-          # 凭据不在命令行/日志中出现。
-          envs: E2E_ADMIN_USER,E2E_ADMIN_PASS
-          script: |
-            set -e
-            echo "${{ env.SMOKE_B64 }}" | base64 -d > /tmp/tsloms-smoke-local.sh
-            chmod +x /tmp/tsloms-smoke-local.sh
-            bash /tmp/tsloms-smoke-local.sh
-            rm -f /tmp/tsloms-smoke-local.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_FILE="${RUNNER_TEMP}/deploy_key"
+          KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
+          USER="${{ secrets.DEPLOY_USER }}"
+          HOST="${{ secrets.DEPLOY_HOST }}"
+          SSHOPTS=(-i "${KEY_FILE}" -o UserKnownHostsFile="${KNOWN_HOSTS}" -o StrictHostKeyChecking=yes -o ConnectTimeout=20)
+          USER_B64=$(printf '%s' "${E2E_ADMIN_USER}" | base64 -w0)
+          PASS_B64=$(printf '%s' "${E2E_ADMIN_PASS}" | base64 -w0)
+          {
+            printf 'E2E_ADMIN_USER_B64=%s\n' "${USER_B64}"
+            printf 'E2E_ADMIN_PASS_B64=%s\n' "${PASS_B64}"
+            printf '%s\n' 'export E2E_ADMIN_USER="$(printf "%s" "$E2E_ADMIN_USER_B64" | base64 -d)"'
+            printf '%s\n' 'export E2E_ADMIN_PASS="$(printf "%s" "$E2E_ADMIN_PASS_B64" | base64 -d)"'
+            cat deploy/scripts/smoke-local.sh
+          } | ssh "${SSHOPTS[@]}" "${USER}@${HOST}" 'bash -s'
