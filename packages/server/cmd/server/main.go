@@ -202,6 +202,8 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/devices/:id", handler.GetDevice)
 			auth.POST("/devices", middleware.RequirePerm("device:create"), handler.CreateDevice)
 			auth.PUT("/devices/:id", middleware.RequirePerm("device:update"), handler.UpdateDevice)
+			auth.POST("/devices/:id/retire", middleware.RequirePerm("device:update"), handler.RetireDevice)
+			auth.POST("/devices/:id/restore", middleware.RequirePerm("device:update"), handler.RestoreDevice)
 			auth.DELETE("/devices/:id", middleware.RequirePerm("device:delete"), handler.DeleteDevice)
 			auth.GET("/intersections", handler.ListIntersections)
 			auth.PUT("/intersections/rename", middleware.RequirePerm("intersection:update"), handler.RenameIntersection)

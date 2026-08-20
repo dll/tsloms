@@ -18,7 +18,7 @@ import (
 func TestMigrateDatabaseVersioned_AppliesAndIsIdempotent(t *testing.T) {
 	db := InitTestDB() // InitTestDB 内部即走 MigrateDatabaseVersioned（SQLite 简化无锁无备份）
 
-	// 版本表应存在且含全部 0001~0004
+	// 版本表应存在且含全部已定义版本
 	if !db.Migrator().HasTable(&schemaMigrations{}) {
 		t.Fatal("schema_migrations 版本表应已创建")
 	}
@@ -26,7 +26,7 @@ func TestMigrateDatabaseVersioned_AppliesAndIsIdempotent(t *testing.T) {
 	if err := db.Model(&schemaMigrations{}).Order("version ASC").Pluck("version", &applied).Error; err != nil {
 		t.Fatalf("读取已应用版本: %v", err)
 	}
-	want := []string{"0001", "0002", "0003", "0004"}
+	want := []string{"0001", "0002", "0003", "0004", "0005"}
 	if len(applied) != len(want) {
 		t.Fatalf("已应用版本数 = %d, 期望 %d; 实际 %v", len(applied), len(want), applied)
 	}

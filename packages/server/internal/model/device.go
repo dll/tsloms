@@ -10,24 +10,31 @@ type Device struct {
 	HwID         string `json:"hw_id" gorm:"size:64;uniqueIndex;comment:设备硬件ID(uuid字符串,出厂唯一)"`
 	Intersection string `json:"intersection" gorm:"size:128;index;comment:路口位置描述"`
 	// P0-4 路口/行政区划挂接：均可空，只增不删，未挂接线旧设备不受影响
-	CrossingID    *uint      `json:"crossing_id" gorm:"index;comment:所属路口ID(crossings.id,可空)"`
-	ProvinceID    *uint      `json:"province_id" gorm:"comment:省ID"`
-	CityID        *uint      `json:"city_id" gorm:"comment:市ID"`
-	DistrictID    *uint      `json:"district_id" gorm:"comment:区县ID"`
-	StreetID      *uint      `json:"street_id" gorm:"comment:街道ID"`
-	CommunityID   *uint      `json:"community_id" gorm:"comment:社区ID"`
-	RoadID        *uint      `json:"road_id" gorm:"comment:道路ID"`
-	RoadName      string     `json:"road_name" gorm:"size:128;comment:道路名称(冗余)"`
-	Lat           *float64   `json:"lat" gorm:"comment:纬度"`
-	Lng           *float64   `json:"lng" gorm:"comment:经度"`
-	NetworkCode   int        `json:"network_code" gorm:"comment:网络号"`
-	StationCode   int        `json:"station_code" gorm:"comment:站点号"`
-	SwVersion     uint32     `json:"sw_version" gorm:"comment:固件版本号"`
-	ConfVersion   uint32     `json:"conf_version" gorm:"comment:配置版本号"`
-	OnlineStatus  bool       `json:"online_status" gorm:"default:false;comment:在线状态"`
-	IsWatched     bool       `json:"is_watched" gorm:"default:false;comment:是否关注(锁定/可能故障)"`
-	LastCheckinAt *time.Time `json:"last_checkin_at" gorm:"comment:最后签到时间"`
-	InstalledAt   *time.Time `json:"installed_at" gorm:"comment:安装日期"`
+	CrossingID   *uint    `json:"crossing_id" gorm:"index;comment:所属路口ID(crossings.id,可空)"`
+	ProvinceID   *uint    `json:"province_id" gorm:"comment:省ID"`
+	CityID       *uint    `json:"city_id" gorm:"comment:市ID"`
+	DistrictID   *uint    `json:"district_id" gorm:"comment:区县ID"`
+	StreetID     *uint    `json:"street_id" gorm:"comment:街道ID"`
+	CommunityID  *uint    `json:"community_id" gorm:"comment:社区ID"`
+	RoadID       *uint    `json:"road_id" gorm:"comment:道路ID"`
+	RoadName     string   `json:"road_name" gorm:"size:128;comment:道路名称(冗余)"`
+	Lat          *float64 `json:"lat" gorm:"comment:纬度"`
+	Lng          *float64 `json:"lng" gorm:"comment:经度"`
+	NetworkCode  int      `json:"network_code" gorm:"comment:网络号"`
+	StationCode  int      `json:"station_code" gorm:"comment:站点号"`
+	SwVersion    uint32   `json:"sw_version" gorm:"comment:固件版本号"`
+	ConfVersion  uint32   `json:"conf_version" gorm:"comment:配置版本号"`
+	OnlineStatus bool     `json:"online_status" gorm:"default:false;comment:在线状态"`
+	// 设备生命周期与接入状态：手工新增先预登记，首次 MQTT 上报后转为已接入。
+	LifecycleStatus    string     `json:"lifecycle_status" gorm:"size:16;default:active;index;comment:生命周期(active/retired)"`
+	AccessStatus       string     `json:"access_status" gorm:"size:16;default:never;index;comment:接入状态(never/accessed/offline)"`
+	FirstAccessAt      *time.Time `json:"first_access_at" gorm:"comment:首次有效接入时间"`
+	RetiredAt          *time.Time `json:"retired_at" gorm:"comment:报废时间"`
+	RetiredReason      string     `json:"retired_reason" gorm:"size:255;comment:报废原因"`
+	RegistrationSource string     `json:"registration_source" gorm:"size:16;default:manual;comment:建账来源(manual/mqtt_auto)"`
+	IsWatched          bool       `json:"is_watched" gorm:"default:false;comment:是否关注(锁定/可能故障)"`
+	LastCheckinAt      *time.Time `json:"last_checkin_at" gorm:"comment:最后签到时间"`
+	InstalledAt        *time.Time `json:"installed_at" gorm:"comment:安装日期"`
 	// 设备资料（照片/说明书/维修手册）：URL 可为外链或内部上传地址（/media/...），Name 为上传原文件名（用于阅读/下载展示）
 	Photo            string `json:"photo" gorm:"size:500;comment:设备照片URL"`
 	ManualUrl        string `json:"manual_url" gorm:"size:500;comment:说明书链接(外链或上传)"`

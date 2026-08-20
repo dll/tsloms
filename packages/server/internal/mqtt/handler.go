@@ -14,6 +14,7 @@ import (
 	"github.com/tsloms/server/internal/model"
 	"github.com/tsloms/server/internal/recognition"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // Handler MQTT 消息处理器
@@ -210,13 +211,21 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 	result := model.DB.Where("hw_id = ?", recognition.LedUUID(rec.LedHwID)).First(&device)
 
 	if result.Error != nil {
+		if result.Error != gorm.ErrRecordNotFound {
+			h.logger.Error("查询设备记录失败", zap.String("hwId", recognition.LedUUID(rec.LedHwID)), zap.Error(result.Error))
+			return
+		}
 		// 设备不存在，创建新设备
 		device = model.Device{
-			HwID:          recognition.LedUUID(rec.LedHwID),
-			SwVersion:     rec.SwVer,
-			ConfVersion:   rec.ConfVer,
-			OnlineStatus:  true,
-			LastCheckinAt: &checkinTime,
+			HwID:               recognition.LedUUID(rec.LedHwID),
+			SwVersion:          rec.SwVer,
+			ConfVersion:        rec.ConfVer,
+			OnlineStatus:       true,
+			LastCheckinAt:      &checkinTime,
+			LifecycleStatus:    "active",
+			AccessStatus:       "accessed",
+			FirstAccessAt:      &checkinTime,
+			RegistrationSource: "mqtt_auto",
 		}
 		if err := model.DB.Create(&device).Error; err != nil {
 			h.logger.Error("创建设备记录失败",
@@ -225,12 +234,27 @@ func (h *Handler) upsertDevice(rec EventRecord, checkinTime time.Time) {
 			)
 		}
 	} else {
+		// 报废设备保留历史，不因旧设备重新上报而自动复活；仅记录最后报文时间供审计。
+		if device.LifecycleStatus == "retired" {
+			if err := model.DB.Model(&device).Update("last_checkin_at", checkinTime).Error; err != nil {
+				h.logger.Error("更新报废设备上报时间失败", zap.Uint32("hwId", rec.LedHwID), zap.Error(err))
+			}
+			h.logger.Warn("已报废设备仍在上报，忽略自动恢复", zap.Uint32("hwId", rec.LedHwID))
+			return
+		}
 		// 设备已存在，更新信息
 		updates := map[string]interface{}{
 			"sw_version":      rec.SwVer,
 			"conf_version":    rec.ConfVer,
 			"online_status":   true,
 			"last_checkin_at": checkinTime,
+			"access_status":   "accessed",
+		}
+		if device.FirstAccessAt == nil {
+			updates["first_access_at"] = checkinTime
+		}
+		if device.LifecycleStatus == "" {
+			updates["lifecycle_status"] = "active"
 		}
 		if err := model.DB.Model(&device).Updates(updates).Error; err != nil {
 			h.logger.Error("更新设备记录失败",

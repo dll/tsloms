@@ -7,6 +7,8 @@ export interface DeviceQuery {
   page_size?: number
   intersection?: string
   online_status?: string
+  access_status?: string
+  lifecycle_status?: string
   hw_id?: string
 }
 
@@ -49,4 +51,11 @@ export function createDevice(data: Record<string, any>): Promise<ApiResponse> {
 // 删除设备
 export function deleteDevice(id: number | string): Promise<ApiResponse> {
   return request.delete(`/devices/${id}`) as unknown as Promise<ApiResponse>
+}
+
+export function retireDevice(id: number | string, reason = ''): Promise<ApiResponse> {
+  return request.post(`/devices/${id}/retire`, { reason }) as unknown as Promise<ApiResponse>
+}
+export function restoreDevice(id: number | string): Promise<ApiResponse> {
+  return request.post(`/devices/${id}/restore`) as unknown as Promise<ApiResponse>
 }

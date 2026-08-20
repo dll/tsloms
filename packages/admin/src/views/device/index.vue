@@ -11,6 +11,11 @@
             style="width: 200px"
           />
         </el-form-item>
+        <el-form-item label="接入状态">
+          <el-select v-model="searchForm.access_status" placeholder="全部" clearable style="width: 140px">
+            <el-option label="未接入" value="never" /><el-option label="已接入" value="accessed" /><el-option label="已离线" value="offline" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="在线状态">
           <el-select
             v-model="searchForm.online_status"
@@ -33,7 +38,7 @@
     <el-card shadow="never" class="table-card">
       <div class="table-toolbar">
         <el-button v-if="canEdit" type="primary" :icon="Plus" @click="openCreate">新增设备</el-button>
-        <span class="toolbar-tip">{{ canEdit ? '可新增/编辑设备；删除仅管理员' : '只读（查看人员）' }}</span>
+        <span class="toolbar-tip">{{ canEdit ? '新增设备为预登记，首次 MQTT 上报后自动接入；报废保留历史' : '只读（查看人员）' }}</span>
       </div>
       <el-table :data="tableData" v-loading="loading" border stripe style="width: 100%">
         <el-table-column prop="id" label="设备ID" width="80" align="center" />
@@ -44,6 +49,7 @@
             <el-tag :type="row.online_status ? 'success' : 'info'" size="small">{{ row.online_status ? '在线' : '离线' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="接入状态" width="100" align="center"><template #default="{ row }"><el-tag :type="row.lifecycle_status === 'retired' ? 'info' : row.access_status === 'never' ? 'warning' : 'success'" size="small">{{ row.lifecycle_status === 'retired' ? '已报废' : row.access_status === 'never' ? '未接入' : row.access_status === 'offline' ? '已离线' : '已接入' }}</el-tag></template></el-table-column>
         <el-table-column prop="sw_version" label="固件版本" width="110" align="center" />
         <el-table-column prop="func" label="信号灯功能" width="100" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.func || '-' }}</template>
@@ -64,7 +70,8 @@
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleDetail(row)">详情</el-button>
             <el-button v-if="canEdit" type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="isAdmin" type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="isAdmin && row.lifecycle_status !== 'retired'" type="danger" link size="small" @click="handleRetire(row)">报废</el-button>
+            <el-button v-if="isAdmin && row.lifecycle_status === 'retired'" type="success" link size="small" @click="handleRestore(row)">恢复</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -246,7 +253,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus, Upload, Document, Link } from '@element-plus/icons-vue'
-import { getDevices, updateDevice, createDevice, deleteDevice } from '@/api/device'
+import { getDevices, updateDevice, createDevice, retireDevice, restoreDevice } from '@/api/device'
 import { uploadDeviceMedia } from '@/api/media'
 import { getDeviceAdvice } from '@/api/copilot'
 import AiCopilot from '@/components/AiCopilot.vue'
@@ -262,6 +269,7 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 const searchForm = reactive({
   intersection: '',
   online_status: '',
+  access_status: '',
 })
 
 // 表格数据
@@ -308,6 +316,7 @@ async function fetchData() {
       page_size: pagination.page_size,
       intersection: searchForm.intersection || undefined,
       online_status: searchForm.online_status || undefined,
+      access_status: searchForm.access_status || undefined,
     })
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
@@ -328,6 +337,7 @@ function handleSearch() {
 function handleReset() {
   searchForm.intersection = ''
   searchForm.online_status = ''
+  searchForm.access_status = ''
   pagination.page = 1
   fetchData()
 }
@@ -458,13 +468,19 @@ async function loadDeviceAdvice() {
     lng: parseFloat(editFormDev.lng) || 0,
   })
 }
-async function handleDelete(row: Record<string, any>) {
+async function handleRetire(row: Record<string, any>) {
   try {
-    await ElMessageBox.confirm(`确认删除设备（硬件ID #${row.hw_id}）？该设备关联的故障/工单数据会保留，仅移除台账。`, '提示', { type: 'warning' })
-    await deleteDevice(row.id)
-    ElMessage.success('设备已删除')
-    fetchData()
-  } catch { /* 取消或失败 */ }
+    const result = await ElMessageBox.prompt('请输入报废原因（可选）', '设备报废', { inputPlaceholder: '例如：硬件损坏、替换升级' })
+    await retireDevice(row.id, result.value || '')
+    ElMessage.success('设备已报废'); fetchData()
+  } catch { /* 用户取消 */ }
+}
+
+async function handleRestore(row: Record<string, any>) {
+  try {
+    await ElMessageBox.confirm('恢复后需等待设备再次 MQTT 上报才会在线，确认恢复？', '恢复设备', { type: 'warning' })
+    await restoreDevice(row.id); ElMessage.success('设备已恢复'); fetchData()
+  } catch { /* 用户取消 */ }
 }
 
 onMounted(() => {

@@ -95,6 +95,24 @@ var orderedMigrations = []migrationStep{
 			return nil
 		},
 	},
+	{
+		Version: "0005",
+		Name:    "device lifecycle and access fields",
+		Fn: func(db *gorm.DB) error {
+			// 仅增加设备生命周期字段，并为历史设备回填为已接入/手工来源。
+			if err := db.AutoMigrate(&Device{}); err != nil {
+				return err
+			}
+			if err := db.Model(&Device{}).Where("registration_source = '' OR registration_source IS NULL").Update("registration_source", "manual").Error; err != nil {
+				return err
+			}
+			// 历史上有签到时间的设备视为已接入；其余保留预登记语义。
+			if err := db.Model(&Device{}).Where("first_access_at IS NULL AND last_checkin_at IS NOT NULL").Updates(map[string]interface{}{"first_access_at": gorm.Expr("last_checkin_at"), "access_status": "accessed"}).Error; err != nil {
+				return err
+			}
+			return db.Model(&Device{}).Where("first_access_at IS NULL AND (access_status = '' OR access_status IS NULL)").Update("access_status", "never").Error
+		},
+	},
 }
 
 // migrateStructureBaseline GORM 全量结构基座（0001 的独立实现，供版本化调用）。

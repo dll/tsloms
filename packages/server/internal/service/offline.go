@@ -64,8 +64,8 @@ func (o *OfflineCheck) runOnce() {
 	threshold := time.Now().Add(-o.timeout)
 	// 将超时且当前仍为在线的设备置为离线
 	result := model.DB.Model(&model.Device{}).
-		Where("online_status = ? AND last_checkin_at IS NOT NULL AND last_checkin_at < ?", true, threshold).
-		Update("online_status", false)
+		Where("lifecycle_status <> ? AND access_status = ? AND online_status = ? AND last_checkin_at IS NOT NULL AND last_checkin_at < ?", "retired", "accessed", true, threshold).
+		Updates(map[string]interface{}{"online_status": false, "access_status": "offline"})
 	if result.Error != nil {
 		o.logger.Error("离线检测更新失败", zap.Error(result.Error))
 		return

@@ -22,7 +22,13 @@ func ListDevices(c *gin.Context) {
 
 	// 按在线状态筛选
 	if online := c.Query("online_status"); online != "" {
-		query = query.Where("online_status = ?", online == "true")
+		query = query.Where("online_status = ?", online == "true" || online == "online")
+	}
+	if access := c.Query("access_status"); access != "" {
+		query = query.Where("access_status = ?", access)
+	}
+	if lifecycle := c.Query("lifecycle_status"); lifecycle != "" {
+		query = query.Where("lifecycle_status = ?", lifecycle)
 	}
 
 	// 按硬件 ID 筛选
@@ -67,7 +73,14 @@ func GetDevice(c *gin.Context) {
 		"device":        device,
 		"sw_ver_info":   model.DecodeSwVer(device.SwVersion),
 		"conf_ver_info": model.DecodeConfVer(device.ConfVersion),
+		"fault_summary": deviceFaultSummary(device.HwID),
 	})
+}
+
+func deviceFaultSummary(hwID string) gin.H {
+	var active int64
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ? AND status <> ?", hwID, model.FaultStatusResolved).Count(&active)
+	return gin.H{"active_count": active}
 }
 
 // UpdateDevice 更新设备信息（路口位置、安装日期等台账信息）
@@ -250,6 +263,7 @@ func CreateDevice(c *gin.Context) {
 		Direction:        req.Direction,
 		Batch:            req.Batch,
 		Remark:           req.Remark,
+		LifecycleStatus:  "active", AccessStatus: "never", RegistrationSource: "manual",
 	}
 	if err := model.DB.Create(&device).Error; err != nil {
 		serverError(c, err)
@@ -257,6 +271,51 @@ func CreateDevice(c *gin.Context) {
 	}
 	recordOperation(c, model.OpCreate, fmt.Sprintf("device/%d", device.ID), "新增设备台账")
 	ok(c, gin.H{"device": device, "message": "设备已新增"})
+}
+
+// RetireDevice 报废设备，保留故障、工单与审计历史。
+func RetireDevice(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "设备ID无效")
+		return
+	}
+	var device model.Device
+	if model.DB.First(&device, id).Error != nil {
+		notFound(c, "设备不存在")
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	now := time.Now()
+	if err := model.DB.Model(&device).Updates(map[string]interface{}{"lifecycle_status": "retired", "online_status": false, "access_status": "offline", "retired_at": now, "retired_reason": req.Reason}).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpUpdate, fmt.Sprintf("device/%d", id), "设备报废")
+	ok(c, gin.H{"message": "设备已报废"})
+}
+
+// RestoreDevice 恢复设备台账，等待再次 MQTT 接入。
+func RestoreDevice(c *gin.Context) {
+	id, err := parseUint(c.Param("id"))
+	if err != nil {
+		badRequest(c, "设备ID无效")
+		return
+	}
+	var device model.Device
+	if model.DB.First(&device, id).Error != nil {
+		notFound(c, "设备不存在")
+		return
+	}
+	if err := model.DB.Model(&device).Updates(map[string]interface{}{"lifecycle_status": "active", "online_status": false, "access_status": "never", "retired_at": nil, "retired_reason": ""}).Error; err != nil {
+		serverError(c, err)
+		return
+	}
+	recordOperation(c, model.OpUpdate, fmt.Sprintf("device/%d", id), "恢复设备台账")
+	ok(c, gin.H{"message": "设备已恢复，等待再次接入"})
 }
 
 // DeleteDevice 删除设备台账（仅管理员）
@@ -271,12 +330,23 @@ func DeleteDevice(c *gin.Context) {
 		notFound(c, "设备不存在")
 		return
 	}
+	// 仅允许删除从未接入且无故障历史的误登记记录；正式设备必须报废以保留历史。
+	if device.AccessStatus != "never" && device.FirstAccessAt != nil {
+		badRequest(c, "正式设备不可直接删除，请使用报废操作保留历史")
+		return
+	}
+	var faultCount int64
+	model.DB.Model(&model.FaultRecord{}).Where("device_hw_id = ?", device.HwID).Count(&faultCount)
+	if faultCount > 0 {
+		badRequest(c, "存在故障历史，请使用报废操作")
+		return
+	}
 	if err := model.DB.Delete(&device).Error; err != nil {
 		serverError(c, err)
 		return
 	}
-	recordOperation(c, model.OpDelete, fmt.Sprintf("device/%d", id), "删除设备台账")
-	ok(c, gin.H{"message": "设备已删除"})
+	recordOperation(c, model.OpDelete, fmt.Sprintf("device/%d", id), "删除未接入误登记设备台账")
+	ok(c, gin.H{"message": "未接入设备已删除"})
 }
 
 // applyDeviceArea 将路口/区划挂接字段写入 updates map。
@@ -305,7 +375,7 @@ func applyDeviceArea(updates map[string]interface{}, crossing, street, community
 func DeviceStats(c *gin.Context) {
 	var onlineCount, offlineCount int64
 	model.DB.Model(&model.Device{}).Where("online_status = ?", true).Count(&onlineCount)
-	model.DB.Model(&model.Device{}).Where("online_status = ?", false).Count(&offlineCount)
+	model.DB.Model(&model.Device{}).Where("lifecycle_status <> ? AND online_status = ?", "retired", false).Count(&offlineCount)
 
 	ok(c, gin.H{
 		"online":  onlineCount,
