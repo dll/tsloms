@@ -45,10 +45,6 @@ fi
 echo "[0] releases 目录检查"
 mkdir -p "${ROOT}/releases" "${ROOT}/backups/db" "${ROOT}/shared/media"
 
-if [ ! -d "${STAGING_DIR}" ]; then
-  echo "ERROR: 未找到制品暂存目录 ${STAGING_DIR}，请先上传制品（保持 .staging 状态直到校验完成）" >&2
-  exit 1
-fi
 if [ -d "${RELEASE_DIR}" ]; then
   echo "INFO: 目标 release 已存在 ${RELEASE_DIR}，强制重新校验（禁止同 SHA 内容漂移 CD-P1-01）"
   echo "[1] 重新校验已存在 release 的 manifest/结构/version"
@@ -62,6 +58,10 @@ if [ -d "${RELEASE_DIR}" ]; then
     || { echo "ERROR: 已存在 release 的 version.txt 与目标 SHA 不一致" >&2; exit 1; }
   echo "  已存在 release 复核通过，直接使用"
 else
+  if [ ! -d "${STAGING_DIR}" ]; then
+    echo "ERROR: 目标 release 与制品暂存目录均不存在：${RELEASE_DIR} / ${STAGING_DIR}" >&2
+    exit 1
+  fi
   echo "[1] 校验制品 sha256"
   ( cd "${STAGING_DIR}" && sha256sum -c manifest.sha256 ) || { echo "ERROR: 制品 SHA-256 校验失败，丢弃。" >&2; exit 1; }
 
@@ -122,7 +122,8 @@ if [ -n "${DBCONF}" ]; then
   # DB_PASSWORD 为空则跳过备份（不硬编码凭据）
   if [ -n "${DB_PASSWORD:-}" ] && [ -n "${DB_NAME:-}" ]; then
     TS=$(date +%Y%m%d%H%M%S)
-    MYSQL_CMD=(mysqldump --single-transaction --routines --triggers)
+    # 应用专用账号不授予全局 PROCESS 权限；禁用 tablespaces 元数据仍可完整备份业务库。
+    MYSQL_CMD=(mysqldump --single-transaction --routines --triggers --no-tablespaces)
     export MYSQL_PWD="${DB_PASSWORD}"
     if command -v zstd >/dev/null 2>&1; then
       "${MYSQL_CMD[@]}" -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" -u"${DB_USER:-tsloms}" "${DB_NAME}" \
