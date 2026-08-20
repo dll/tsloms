@@ -5,6 +5,9 @@ import type { ApiResponse } from '@/utils/request'
 export function getAccessStatus(): Promise<ApiResponse> {
   return request.get('/access/status') as unknown as Promise<ApiResponse>
 }
+export function createMqttCredentials(): Promise<ApiResponse> {
+  return request.post('/access/mqtt-credentials') as unknown as Promise<ApiResponse>
+}
 
 // Mock 模拟发送一条协议帧
 export interface MockSendData {

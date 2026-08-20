@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/json"
 	"encoding/csv"
+	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +16,7 @@ import (
 
 	"github.com/tsloms/server/internal/model"
 	"github.com/tsloms/server/internal/mqtt"
+	"github.com/tsloms/server/internal/config"
 )
 
 // mqttGlobal 保存服务器持有的 MQTT 客户端（用于状态上报；由 cmd/server 启动期注册）。
@@ -81,6 +86,51 @@ func DetectorAccessStatus(c *gin.Context) {
 		"csv_enabled":  true,
 		"server_time":  time.Now().Format(time.RFC3339),
 	})
+}
+
+// CreateMQTTDeviceCredential 创建一个 EMQX built_in_database 检测器账号。
+// 密码只通过本次 HTTP 响应返回一次，不写数据库、不写日志；生产必须配置 EMQX_API_TOKEN，
+// 或配置 EMQX_API_USERNAME/EMQX_API_PASSWORD 供服务端换取短期 token。
+func CreateMQTTDeviceCredential(c *gin.Context) {
+	cfg := config.Get()
+	user := "det" + randomCredential(5)
+	password := randomCredential(8)
+	token := cfg.EMQXAPIToken
+	var err error
+	if token == "" && cfg.EMQXAPIUsername != "" && cfg.EMQXAPIPassword != "" {
+		token, err = emqxLogin(cfg.EMQXAPIURL, cfg.EMQXAPIUsername, cfg.EMQXAPIPassword)
+		if err != nil { serverError(c, fmt.Errorf("EMQX 管理 API 登录失败: %w", err)); return }
+	}
+	if token == "" { serverError(c, fmt.Errorf("未配置 EMQX_API_TOKEN 或 EMQX_API_USERNAME/EMQX_API_PASSWORD")); return }
+	if err := emqxCreateUser(cfg.EMQXAPIURL, token, user, password); err != nil {
+		serverError(c, fmt.Errorf("创建 EMQX 检测器账号失败: %w", err)); return
+	}
+	// 禁止将 password 写入操作日志、服务日志或持久化存储。
+	ok(c, gin.H{"username": user, "password": password, "broker": cfg.MQTTBroker, "message": "账号已创建；密码仅显示本次，请立即复制保存"})
+}
+
+const credentialAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+func randomCredential(length int) string {
+	b := make([]byte, length)
+	for i := range b { var x [1]byte; if _, err := rand.Read(x[:]); err != nil { panic(err) }; b[i] = credentialAlphabet[int(x[0])%len(credentialAlphabet)] }
+	return string(b)
+}
+
+func emqxLogin(base, username, password string) (string, error) {
+	body, _ := json.Marshal(map[string]string{"username": username, "password": password})
+	resp, err := http.Post(strings.TrimRight(base, "/")+"/api/v5/login", "application/json", strings.NewReader(string(body)))
+	if err != nil { return "", err }; defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 { return "", fmt.Errorf("HTTP %d", resp.StatusCode) }
+	var out struct{ Token string `json:"token"` }; if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.Token == "" { return "", fmt.Errorf("响应缺少 token") }; return out.Token, nil
+}
+
+func emqxCreateUser(base, token, username, password string) error {
+	body, _ := json.Marshal(map[string]string{"user_id": username, "password": password})
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(base, "/")+"/api/v5/authentication/password_based:built_in_database/users", strings.NewReader(string(body))); if err != nil { return err }
+	req.Header.Set("Authorization", "Bearer "+token); req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req); if err != nil { return err }; defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return fmt.Errorf("HTTP %d", resp.StatusCode) }; return nil
 }
 
 // mockSendReq Mock 模拟发送请求体

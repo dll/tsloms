@@ -231,6 +231,7 @@ func setupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/proxy/amap/place", handler.AmapPlaceSearch)
 			// 检测器接入（真实硬件 / CSV 导入 / Mock 模拟）：状态 + Mock 发送 + CSV 回放
 			auth.GET("/access/status", handler.DetectorAccessStatus)
+			auth.POST("/access/mqtt-credentials", middleware.RequireSystemAdmin(), handler.CreateMQTTDeviceCredential)
 			auth.POST("/access/mock/send", handler.MockSend)
 			auth.POST("/access/csv/import", handler.CSVImport)
 			// 系统演示（仅系统管理员）：生成随机演示数据 / 一键清理回滚

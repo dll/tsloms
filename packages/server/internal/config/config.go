@@ -26,6 +26,10 @@ type Config struct {
 	MQTTPassword    string // MQTT 密码
 	MQTTClientID    string // MQTT 客户端 ID
 	MQTTTopicPrefix string // MQTT Topic 前缀
+	EMQXAPIURL      string // EMQX Dashboard API 地址（默认本机 18083）
+	EMQXAPIToken    string // EMQX API Bearer Token（不落库、不打印）
+	EMQXAPIUsername string // 可选：用于换取短期 API Token 的 Dashboard 用户名
+	EMQXAPIPassword string // 可选：用于换取短期 API Token 的 Dashboard 密码
 	AllowedOrigins  string // CORS 生产白名单（逗号分隔，可为空）
 	OfflineAfterMin int    // 设备离线判定阈值（分钟，默认6=3倍签到周期）
 	MediaDir        string // 媒体文件存储目录（默认 ./uploads/media）
@@ -59,6 +63,10 @@ func Load() *Config {
 		MQTTPassword:    getEnv("MQTT_PASSWORD", ""),
 		MQTTClientID:    getEnv("MQTT_CLIENT_ID", "tsloms-server"),
 		MQTTTopicPrefix: getEnv("MQTT_TOPIC_PREFIX", "trafficLight"),
+		EMQXAPIURL:      getEnv("EMQX_API_URL", "http://127.0.0.1:18083"),
+		EMQXAPIToken:    getEnv("EMQX_API_TOKEN", ""),
+		EMQXAPIUsername: getEnv("EMQX_API_USERNAME", ""),
+		EMQXAPIPassword: getEnv("EMQX_API_PASSWORD", ""),
 		AllowedOrigins:  getEnv("ALLOWED_ORIGINS", ""),
 		OfflineAfterMin: getEnvInt("OFFLINE_AFTER_MIN", 6),
 		MediaDir:        getEnv("MEDIA_DIR", ""),
