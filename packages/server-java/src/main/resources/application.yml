@@ -7,6 +7,9 @@ server:
 spring:
   application:
     name: tsloms-server
+  jackson:
+    # 关键契约配置：Go 版所有 JSON 字段为 snake_case（json tag），Java 端全局对齐
+    property-naming-strategy: SNAKE_CASE
   datasource:
     # 环境变量语义与 Go 版 internal/config 一致：DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME
     url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:tsloms}?useUnicode=true&characterEncoding=utf8mb4&connectionTimeZone=local
@@ -22,3 +25,7 @@ spring:
 app:
   # 运行环境：development / production / test（Go 版 APP_ENV 同名同默认）
   env: ${APP_ENV:development}
+
+jwt:
+  # JWT_SECRET：生产至少 32 位强随机（Go 版同名变量；开发默认与 Go 版一致）
+  secret: ${JWT_SECRET:tsloms-secret-key}

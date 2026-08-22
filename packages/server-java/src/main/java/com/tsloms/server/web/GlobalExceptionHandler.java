@@ -33,12 +33,26 @@ public class GlobalExceptionHandler {
     /** 参数校验失败（对应 Go 版 badRequest）。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> onValidation(MethodArgumentNotValidException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.fail("bad_request", firstMessage(ex)));
+    }
+
+    /**
+     * 方法级校验失败（Spring 6.1+ 对 record/@Valid 参数抛出此异常而非
+     * MethodArgumentNotValidException），同样按 bad_request 处理。
+     */
+    @ExceptionHandler(org.springframework.web.method.annotation.HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> onHandlerValidation(
+            org.springframework.web.method.annotation.HandlerMethodValidationException ex) {
         String msg = "参数错误";
-        var fe = ex.getBindingResult().getFieldError();
-        if (fe != null) {
-            msg = fe.getDefaultMessage();
+        if (!ex.getAllErrors().isEmpty()) {
+            msg = ex.getAllErrors().get(0).getDefaultMessage();
         }
         return ResponseEntity.badRequest().body(ApiResponse.fail("bad_request", msg));
+    }
+
+    private String firstMessage(MethodArgumentNotValidException ex) {
+        var fe = ex.getBindingResult().getFieldError();
+        return fe != null ? fe.getDefaultMessage() : "参数错误";
     }
 
     /** 未捕获异常（对应 Go 版 serverError：生产不回显内部细节）。 */

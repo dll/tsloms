@@ -3,7 +3,9 @@
 package com.tsloms.server.model;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Component;
 
+@Component
 public final class PasswordHasher {
 
     private final BCryptPasswordEncoder encoder;

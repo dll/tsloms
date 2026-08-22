@@ -9,3 +9,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  jackson:
+    # 与主配置一致：snake_case 契约（测试 yml 覆盖整个主 yml，需重复声明）
+    property-naming-strategy: SNAKE_CASE
+
+# 测试用强密钥（jjwt 要求 HS256 ≥32 字节）
+jwt:
+  secret: "unit-test-secret-key-0123456789abcdef0123456789abcdef"
