@@ -90,3 +90,7 @@ c/
 
 # 构建产物
 *.exe
+
+# ---- Java 重构版（packages/server-java）----
+packages/server-java/target/
+*.class

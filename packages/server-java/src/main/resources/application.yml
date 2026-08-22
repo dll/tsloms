@@ -1,0 +1,13 @@
+# TSLOMS 后端（Java 重构版）配置
+# 环境变量语义与 Go 版 internal/config 对齐；生产由 systemd EnvironmentFile 注入。
+
+server:
+  port: ${SERVER_PORT:8093}
+
+spring:
+  application:
+    name: tsloms-server
+
+app:
+  # 运行环境：development / production / test（Go 版 APP_ENV 同名同默认）
+  env: ${APP_ENV:development}
