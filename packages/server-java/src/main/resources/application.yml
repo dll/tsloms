@@ -7,6 +7,17 @@ server:
 spring:
   application:
     name: tsloms-server
+  datasource:
+    # 环境变量语义与 Go 版 internal/config 一致：DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:tsloms}?useUnicode=true&characterEncoding=utf8mb4&connectionTimeZone=local
+    username: ${DB_USER:tsloms}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    # 生产禁用自动建表：表结构由既有 Go 版 AutoMigrate 维护（双跑期），Java 侧只读映射
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
 
 app:
   # 运行环境：development / production / test（Go 版 APP_ENV 同名同默认）

@@ -1,0 +1,11 @@
+# 测试数据源：H2 内存库（对齐 Go 版 InitTestDB 内存 SQLite 策略）
+# ddl-auto=create-drop 等价于 Go 测试的 AutoMigrate 全量建表
+spring:
+  datasource:
+    url: jdbc:h2:mem:tsloms_test;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
