@@ -6,12 +6,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
+public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long>, JpaSpecificationExecutor<WorkOrder> {
 
     long countByStatus(String status);
+
+    long countByOrderNoStartingWith(String prefix);
+
+    /** 最新一条关联故障的工单（GetFault 用）。 */
+    Optional<WorkOrder> findFirstByFaultIdOrderByCreatedAtDesc(Long faultId);
 
     Optional<WorkOrder> findFirstByFaultIdAndFaultActiveScope(Long faultId, Long faultActiveScope);
 

@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import org.hibernate.annotations.UpdateTimestamp;
 
 /** 生命周期状态机：occurred → confirmed → dispatched → resolved。 */
 @Entity
@@ -92,6 +93,10 @@ public class FaultRecord extends BaseEntity {
 
     @Column(name = "reviewed_at")
     public Instant reviewedAt;
+
+    @Column(name = "updated_at", nullable = false)
+    @UpdateTimestamp
+    public Instant updatedAt;
 
     /** 是否仍处于进行中（未解决）。 */
     public boolean isActive() {

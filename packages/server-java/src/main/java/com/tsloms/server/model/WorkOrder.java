@@ -22,7 +22,8 @@ public class WorkOrder extends BaseEntity {
     @Column(name = "order_no", nullable = false, length = 32)
     public String orderNo;
 
-    @Column(name = "fault_id", nullable = false)
+    /** 关联故障 ID（删除工单/故障后可置空——对齐 Go 版行为）。 */
+    @Column(name = "fault_id")
     public Long faultId;
 
     @Column(name = "device_hw_id", nullable = false, length = 64)
