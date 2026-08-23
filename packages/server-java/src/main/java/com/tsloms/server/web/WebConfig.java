@@ -1,8 +1,9 @@
-// Web MVC 配置：注册认证与权限拦截器，公开路径对齐 Go 版路由分组。
+// Web MVC 配置：注册认证/权限拦截器与静态媒体资源映射。
 package com.tsloms.server.web;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
@@ -38,5 +39,12 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/auth/captcha",
                         "/api/v1/_test/**")
                 .order(1);
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // 静态媒体文件：对齐 Go 版 r.Static("/media", MediaDir())
+        registry.addResourceHandler("/media/**")
+                .addResourceLocations("file:./uploads/media/");
     }
 }
