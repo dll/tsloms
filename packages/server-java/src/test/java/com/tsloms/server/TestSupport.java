@@ -2,6 +2,9 @@
 package com.tsloms.server;
 
 import com.tsloms.server.auth.CaptchaService;
+import com.tsloms.server.model.Role;
+import com.tsloms.server.repository.RoleRepository;
+import java.util.Optional;
 
 public final class TestSupport {
 
@@ -12,6 +15,12 @@ public final class TestSupport {
         return "{\"username\":\"" + username + "\",\"password\":\"" + password
                 + "\",\"captcha_uuid\":\"" + cap.uuid()
                 + "\",\"captcha_code\":\"" + answer + "\"}";
+    }
+
+    /** 按角色编码查 ID（测试辅助）。 */
+    public static Long roleIdByCode(RoleRepository roles, String code) {
+        Optional<Role> r = roles.findByCode(code);
+        return r.map(v -> v.id).orElseThrow();
     }
 
     private TestSupport() {
