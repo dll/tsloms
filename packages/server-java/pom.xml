@@ -46,10 +46,11 @@
       <artifactId>mysql-connector-j</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- H2：测试内存库 + 开发模式运行库（对齐 Go 版 DB_DRIVER=sqlite 双模式） -->
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
-      <scope>test</scope>
+      <scope>runtime</scope>
     </dependency>
     <!-- 密码哈希：BCrypt，与 Go 版 golang.org/x/crypto/bcrypt 哈希互通（$2a$/$2b$ 前缀均校验） -->
     <dependency>

@@ -6,8 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.PrePersist;
 import java.time.Instant;
-import org.hibernate.annotations.CreationTimestamp;
 
 @MappedSuperclass
 public abstract class BaseEntity {
@@ -16,8 +16,10 @@ public abstract class BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
 
-    /** 创建时间（GORM autoCreateTime 同义，由数据库写入时间填充）。 */
-    @CreationTimestamp
+    /**
+     * 创建时间：为空时在落库前自动填充（GORM autoCreateTime 同义——
+     * 显式赋值则保留，便于测试回填历史数据）。
+     */
     @Column(name = "created_at", nullable = false, updatable = false)
     public Instant createdAt;
 
@@ -27,5 +29,12 @@ public abstract class BaseEntity {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 }
