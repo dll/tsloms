@@ -123,6 +123,16 @@ public class PahoMqttGateway implements ApplicationRunner, DeviceAccessService.G
         }
     }
 
+    @Override
+    public boolean isConnected() {
+        return client != null && client.isConnected();
+    }
+
+    @Override
+    public String subscribeTopic() {
+        return props.topicPrefix() + "/+/+/+/U";
+    }
+
     /** QoS1 下行发布。 */
     @Override
     public void publish(String topic, byte[] payload) {

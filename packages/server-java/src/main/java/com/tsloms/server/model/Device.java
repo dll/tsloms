@@ -6,6 +6,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import java.time.Instant;
 
 /** 信号灯监控设备台账；hw_id 为出厂唯一硬件 ID。 */
@@ -140,4 +142,19 @@ public class Device extends BaseEntity {
 
     @Column(name = "remark", length = 255)
     public String remark;
+
+    @Column(name = "updated_at", nullable = false)
+    public Instant updatedAt;
+
+    @PrePersist
+    void prePersist() {
+        if (updatedAt == null) {
+            updatedAt = Instant.now();
+        }
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

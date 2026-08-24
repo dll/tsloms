@@ -3,6 +3,7 @@
 package com.tsloms.server.dashboard;
 
 import com.tsloms.server.model.FaultRecord;
+import com.tsloms.server.repository.AIPredictionRepository;
 import com.tsloms.server.repository.DeviceRepository;
 import com.tsloms.server.repository.FaultRecordRepository;
 import com.tsloms.server.repository.WorkOrderRepository;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,12 +37,14 @@ public class DashboardController {
     private final DeviceRepository devices;
     private final FaultRecordRepository faults;
     private final WorkOrderRepository orders;
+    private final AIPredictionRepository aiPredictions;
 
     public DashboardController(DeviceRepository devices, FaultRecordRepository faults,
-                               WorkOrderRepository orders) {
+                               WorkOrderRepository orders, AIPredictionRepository aiPredictions) {
         this.devices = devices;
         this.faults = faults;
         this.orders = orders;
+        this.aiPredictions = aiPredictions;
     }
 
     /** GET /dashboard/overview：看板总览关键指标。 */
@@ -155,6 +159,83 @@ public class DashboardController {
                 "completed_count", rows.size(),
                 "total_hours", totalHours,
                 "days", d));
+    }
+
+    /** GET /dashboard/ai-overview：AI 看板聚合（对齐 Go 版 AIDashboardOverview）。 */
+    @GetMapping("/ai-overview")
+    public ApiResponse<Map<String, Object>> aiOverview() {
+        // 最新批次风险分布
+        List<com.tsloms.server.model.AIPrediction> all =
+                aiPredictions.findAll(Sort.by(Sort.Direction.DESC, "id"));
+        String latestBatch = all.isEmpty() ? "" : all.get(0).batchId;
+
+        String riskBatchId = "";
+        Map<String, Integer> riskDist = new LinkedHashMap<>();
+        riskDist.put("low", 0);
+        riskDist.put("medium", 0);
+        riskDist.put("high", 0);
+        riskDist.put("critical", 0);
+        List<Map<String, Object>> highRisk = new ArrayList<>();
+        if (!latestBatch.isEmpty()) {
+            long total = 0;
+            for (var p : all) {
+                if (!latestBatch.equals(p.batchId)) {
+                    continue;
+                }
+                riskDist.merge(nz(p.riskLevel), 1, Integer::sum);
+                total++;
+                if ("high".equals(p.riskLevel) || "critical".equals(p.riskLevel)) {
+                    if (highRisk.size() < 5) {
+                        Map<String, Object> hr = new LinkedHashMap<>();
+                        hr.put("device_hw_id", nz(p.deviceHwId));
+                        hr.put("intersection", nz(p.intersection));
+                        hr.put("health_score", p.healthScore == null ? 0 : p.healthScore);
+                        hr.put("risk_level", nz(p.riskLevel));
+                        hr.put("predict_type", nz(p.predictType));
+                        hr.put("remain_days", p.remainDays == null ? 0 : p.remainDays);
+                        highRisk.add(hr);
+                    }
+                }
+            }
+            // batch_id 与数值分开放（Go 版同键混排，Java 侧拆分为相邻键）
+            riskBatchId = latestBatch;
+        }
+
+        // 近 7 天批次趋势（去重设备数）
+        Instant weekAgo = Instant.now().minus(Duration.ofDays(7));
+        Map<String, java.util.HashSet<String>> batchDevices = new java.util.TreeMap<>();
+        for (var p : all) {
+            if (p.createdAt != null && !p.createdAt.isBefore(weekAgo)) {
+                batchDevices.computeIfAbsent(p.batchId, k -> new java.util.HashSet<>())
+                        .add(p.deviceHwId);
+            }
+        }
+        List<Map<String, Object>> batchTrend = new ArrayList<>();
+        batchDevices.forEach((batch, devs) -> batchTrend.add(
+                Map.of("batch_id", batch, "count", devs.size())));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("config", Map.of(
+                "enabled", false,
+                "provider", "rule",
+                "day_token_limit", 0,
+                "day_call_limit", 0));
+        data.put("today", Map.of("tokens", 0, "calls", 0));
+        data.put("risk_distribution", riskDist);
+        if (!riskBatchId.isEmpty()) {
+            data.put("risk_batch_id", riskBatchId);
+        }
+        if (!latestBatch.isEmpty()) {
+            data.put("risk_total", riskDist.values().stream().mapToInt(Integer::intValue).sum());
+        }
+        data.put("high_risk_devices", highRisk);
+        data.put("action_summary", Map.of());
+        data.put("batch_trend", batchTrend);
+        return ApiResponse.ok(data);
+    }
+
+    static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     // ------------------------------------------------------------------

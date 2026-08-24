@@ -48,7 +48,7 @@ public class PatrolRecord {
     public String checkDetail;
 
     /** 自检采集结果 JSON（灯态/errCode/电流）。 */
-    @Column(name = "selfcheck_result", columnDefinition = "text")
+    @Column(name = "self_check_result", columnDefinition = "text")
     public String selfCheckResult;
 
     /** 证据 JSON（巡查照片/多源等）。 */

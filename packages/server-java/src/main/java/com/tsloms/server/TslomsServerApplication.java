@@ -3,13 +3,14 @@ package com.tsloms.server;
 
 import com.tsloms.server.config.AppProperties;
 import com.tsloms.server.config.JwtProperties;
+import com.tsloms.server.config.EmqxProperties;
 import com.tsloms.server.config.MqttProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({AppProperties.class, JwtProperties.class, MqttProperties.class})
+@EnableConfigurationProperties({AppProperties.class, JwtProperties.class, MqttProperties.class, EmqxProperties.class})
 public class TslomsServerApplication {
 
     public static void main(String[] args) {

@@ -41,6 +41,16 @@ public class DeviceAccessService {
     /** 下行发布网关抽象（测试可注入 fake）。 */
     public interface Gateway {
         void publish(String topic, byte[] payload);
+
+        /** MQTT 是否已连接（接入页状态展示用）。 */
+        default boolean isConnected() {
+            return false;
+        }
+
+        /** 订阅 topic 模板。 */
+        default String subscribeTopic() {
+            return "trafficLight/+/+/+/U";
+        }
     }
 
     private final DeviceRepository devices;

@@ -326,10 +326,15 @@ public class PatrolController {
     @GetMapping("/ranking")
     public ApiResponse<Map<String, Object>> ranking(
             @RequestParam(name = "group_by", defaultValue = "device") String groupBy,
+            @RequestParam(name = "dimension", required = false) String dimension,
             @RequestParam(name = "days", defaultValue = "30") int days) {
         int d = days > 0 ? days : 30;
         Instant since = Instant.now().minus(Duration.ofDays(d));
-        boolean byDevice = !"patrol_by".equals(groupBy);
+        // 兼容前端 dimension=person|device 参数（优先于 group_by）
+        String effective = dimension != null && !dimension.isBlank()
+                ? ("person".equals(dimension) ? "patrol_by" : "device")
+                : groupBy;
+        boolean byDevice = !"patrol_by".equals(effective);
 
         Map<String, List<PatrolRecord>> grouped = new LinkedHashMap<>();
         for (PatrolRecord r : records.findAll()) {

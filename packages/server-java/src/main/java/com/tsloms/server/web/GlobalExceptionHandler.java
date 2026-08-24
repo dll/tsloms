@@ -30,6 +30,13 @@ public class GlobalExceptionHandler {
         this.app = app;
     }
 
+    /** 未映射路径 → 404（避免被兜底为 500） */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> onNoResource(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        return ResponseEntity.status(404).body(ApiResponse.fail("not_found", "接口不存在"));
+    }
+
     /** 路径/请求参数类型不匹配（如 id 非数字）→ 对齐 Go 版 parseUint 失败的 badRequest。 */
     @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> onTypeMismatch(
