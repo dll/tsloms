@@ -16,3 +16,7 @@ spring:
 # 测试用强密钥（jjwt 要求 HS256 ≥32 字节）
 jwt:
   secret: "unit-test-secret-key-0123456789abcdef0123456789abcdef"
+
+# 测试不连真实 broker
+mqtt:
+  enabled: false

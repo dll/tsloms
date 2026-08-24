@@ -29,3 +29,11 @@ app:
 jwt:
   # JWT_SECRET：生产至少 32 位强随机（Go 版同名变量；开发默认与 Go 版一致）
   secret: ${JWT_SECRET:tsloms-secret-key}
+
+mqtt:
+  broker: ${MQTT_BROKER:tcp://127.0.0.1:1883}
+  username: ${MQTT_USERNAME:}
+  password: ${MQTT_PASSWORD:}
+  client-id: ${MQTT_CLIENT_ID:tsloms-server}
+  topic-prefix: ${MQTT_TOPIC_PREFIX:trafficLight}
+  enabled: ${MQTT_ENABLED:true}
