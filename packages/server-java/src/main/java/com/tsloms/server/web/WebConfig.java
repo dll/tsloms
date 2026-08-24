@@ -21,6 +21,7 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         // 公开路径（Go 版 api 组内未套 auth 中间件的路由）
         // _test 前缀为测试类路径专用探针，生产无对应实现；_perm 探针需认证后判权，不排除
+        // proxy/** 公开：Cesium ImageryProvider 加载瓦片不携带 Authorization 头（对齐 Go 版）
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/v1/**")
                 .excludePathPatterns(
@@ -28,6 +29,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
                         "/api/v1/auth/captcha",
+                        "/api/v1/proxy/**",
                         "/api/v1/_test/**");
         // 权限拦截器在认证之后执行
         registry.addInterceptor(rbacInterceptor)

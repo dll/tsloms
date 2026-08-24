@@ -41,6 +41,7 @@
 import { ref, onUnmounted, nextTick } from 'vue'
 import { Search, Loading, WarningFilled } from '@element-plus/icons-vue'
 import * as Cesium from 'cesium'
+import GaodeImageryProvider from '@/views/map/GaodeImagery.js'
 import { getCrossings } from '@/api/warning'      // 复用 crossings 接口
 import { getAreasTree } from '@/api/warning'       // 复用 areas 接口
 import { getAllDevices } from '@/api/map'          // 复用设备（含路口名）
@@ -83,23 +84,16 @@ async function initMap() {
 
   try {
   if (!viewer) {
-    // 默认高德卫星瓦片（高德路网 style=8 已被上游降级为 1x1 占位图不可用，卫星 style=6 可用，故默认影像）
     viewer = new Cesium.Viewer(el, {
       baseLayer: false,
       baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
       navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
       infoBox: false, selectionIndicator: false,
     } as any)
-    // 使用 Cesium 官方 UrlTemplate provider 访问同源代理，避免自定义 ImageryProvider
-    // 在不同 Cesium 版本中因 loadImage 内部 API 变化而只显示蓝色地球。
     viewer.imageryLayers.removeAll()
-    viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
-      url: '/tsloms/api/v1/proxy/gaode?x={x}&y={y}&z={z}&style=6',
-      tilingScheme: new Cesium.WebMercatorTilingScheme({ numberOfLevelZeroTilesX: 2, numberOfLevelZeroTilesY: 2 }),
-      minimumLevel: 0,
-      maximumLevel: 18,
-      credit: '高德地图',
-    }))
+    // 统一使用大屏同款 GaodeImageryProvider：默认 2D 高德路网（style=8），
+    // 内置 GCJ-02 逐瓦片纠偏（选点坐标与 WGS-84 对齐），走同源代理+服务端磁盘缓存
+    viewer.imageryLayers.addImageryProvider(new (GaodeImageryProvider as any)({ style: 8 }))
     // 点击地图选点
     inputHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
     inputHandler.setInputAction((e: any) => {

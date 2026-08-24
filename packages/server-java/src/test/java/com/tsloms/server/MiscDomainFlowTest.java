@@ -73,6 +73,20 @@ class MiscDomainFlowTest {
     }
 
     @Test
+    void 授权_解锁码永久解锁() throws Exception {
+        String bearer = "Bearer " + adminToken();
+        mvc.perform(post("/api/v1/license/unlock/video")
+                        .header("Authorization", bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"AUTH-1234\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("模块已永久解锁"));
+        mvc.perform(get("/api/v1/license/status").header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.modules.video.unlock_by_code").value("author"));
+    }
+
+    @Test
     void 证据注入与查询() throws Exception {
         Long fid = tx.execute(s -> {
             FaultRecord f = new FaultRecord();
