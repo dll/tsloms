@@ -368,6 +368,41 @@ class FaultWorkOrderFlowTest {
     }
 
     @Test
+    void 列表筛选参数组合与404() throws Exception {
+        Long fid = seedFault("flt-filter-hw", "dim");
+        String token = adminToken();
+        String bearer = "Bearer " + token;
+
+        // 工单列表：多参数组合 + 非法 assignee_id 忽略
+        mvc.perform(get("/api/v1/work-orders").header("Authorization", bearer)
+                        .param("status", "pending")
+                        .param("assignee_id", "not-a-number")
+                        .param("order_no", "WO")
+                        .param("start_time", "2020-01-01")
+                        .param("end_time", "2030-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(1));
+
+        // 故障列表：recognition_status=active 与日期双套参数
+        mvc.perform(get("/api/v1/faults").header("Authorization", bearer)
+                        .param("hw_id", "flt-filter-hw")
+                        .param("recognition_status", "active")
+                        .param("start_date", "2020-01-01")
+                        .param("end_date", "2030-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[?(@.id==" + fid + ")]").exists());
+
+        // 不存在的资源 → 404
+        mvc.perform(get("/api/v1/work-orders/999999").header("Authorization", bearer))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/faults/999999").header("Authorization", bearer))
+                .andExpect(status().isNotFound());
+        mvc.perform(delete("/api/v1/work-orders/not-a-number")
+                        .header("Authorization", bearer))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void CSV导出_带BOM与表头() throws Exception {
         seedFault("flt-csv-hw", "lamp_off");
         String token = adminToken();

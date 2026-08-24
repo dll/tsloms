@@ -10,6 +10,9 @@ import com.tsloms.server.mqtt.protocol.FaultCodes;
 import com.tsloms.server.mqtt.protocol.HardwareIds;
 import com.tsloms.server.mqtt.protocol.ProtocolParser;
 import com.tsloms.server.model.Device;
+import com.tsloms.server.model.Warning;
+import com.tsloms.server.model.WarningConsts;
+import com.tsloms.server.model.WarningRule;
 import com.tsloms.server.model.FaultRecord;
 import com.tsloms.server.model.WorkOrder;
 import com.tsloms.server.repository.DeviceRepository;
@@ -44,18 +47,24 @@ public class DeviceAccessService {
     private final FaultRecordRepository faults;
     private final WorkOrderRepository workOrders;
     private final com.tsloms.server.repository.FirmwarePackageRepository firmwares;
+    private final com.tsloms.server.repository.WarningRepository warningsRepo;
+    private final com.tsloms.server.repository.WarningRuleRepository warningRules;
     private final Gateway gateway;
     private final com.tsloms.server.config.MqttProperties mqtt;
 
     public DeviceAccessService(DeviceRepository devices, FaultRecordRepository faults,
                                WorkOrderRepository workOrders,
                                com.tsloms.server.repository.FirmwarePackageRepository firmwares,
+                               com.tsloms.server.repository.WarningRepository warningsRepo,
+                               com.tsloms.server.repository.WarningRuleRepository warningRules,
                                Gateway gateway,
                                com.tsloms.server.config.MqttProperties mqtt) {
         this.devices = devices;
         this.faults = faults;
         this.workOrders = workOrders;
         this.firmwares = firmwares;
+        this.warningsRepo = warningsRepo;
+        this.warningRules = warningRules;
         this.gateway = gateway;
         this.mqtt = mqtt;
     }
@@ -296,6 +305,11 @@ public class DeviceAccessService {
             return;
         }
 
+        // 确认的故障 → 生成预警（幂等：同 fault 仅一条），命中忽略规则则直接忽略
+        if ("confirmed".equals(f.recognitionStatus)) {
+            createWarningFromFault(f, now);
+        }
+
         // critical 自动工单（R6）
         if ("critical".equals(f.faultLevel)) {
             ensureActiveWorkOrder(f.id, canonicalId);
@@ -335,6 +349,69 @@ public class DeviceAccessService {
             }
         });
         log.info("[TSLOMS] 已确保活跃工单 orderNo={} fault={}", effective.orderNo, faultId);
+    }
+
+    /** 确认的故障生成预警记录（幂等）+ 命中启用规则自动忽略。 */
+    private void createWarningFromFault(FaultRecord fault, Instant now) {
+        long cnt = warningsRepo.findAll().stream()
+                .filter(w -> WarningConsts.SOURCE_FAULT.equals(w.source)
+                        && fault.id.equals(w.faultId))
+                .count();
+        if (cnt > 0) {
+            return;
+        }
+        Warning w = new Warning();
+        w.deviceHwId = fault.deviceHwId;
+        w.warningCode = fault.errCode == null ? 0 : (int) fault.errCode;
+        w.warningLabel = fault.errCode == null
+                ? "unknown" : FaultCodes.faultTypeFromErrCode((byte) fault.errCode.intValue());
+        w.level = "critical".equals(fault.faultLevel)
+                ? WarningConsts.LEVEL_CRITICAL : WarningConsts.LEVEL_WARNING;
+        w.source = WarningConsts.SOURCE_FAULT;
+        w.dealState = WarningConsts.DEAL_UNHANDLED;
+        w.status = WarningConsts.UNTRANSFERRED;
+        w.faultId = fault.id;
+        w.occurredAt = now;
+        w.remark = "自动生成：故障已确认（" + fault.faultType + "）";
+        devices.findByHwId(fault.deviceHwId).ifPresent(dev -> {
+            w.crossingId = dev.crossingId;
+            w.equipmentUuid = dev.intersection == null ? "" : dev.intersection;
+        });
+        try {
+            warningsRepo.saveAndFlush(w);
+        } catch (Exception e) {
+            log.warn("[TSLOMS] 生成预警失败 faultId={}", fault.id, e);
+            return;
+        }
+        for (WarningRule rule : warningRules.findByEnabledTrue()) {
+            if (matches(rule, w)) {
+                w.dealState = WarningConsts.DEAL_IGNORED;
+                w.ignoreReason = "自动忽略规则 [" + nz(rule.name) + "]";
+                w.resolvedAt = Instant.now();
+                warningsRepo.save(w);
+                break;
+            }
+        }
+    }
+
+    /** 规则匹配：路口/设备/码值/等级 全部满足才算命中。 */
+    boolean matches(WarningRule r, Warning w) {
+        if (r.crossingId != null && !r.crossingId.equals(w.crossingId)) {
+            return false;
+        }
+        if (r.deviceHwId != null && !r.deviceHwId.isBlank()
+                && !r.deviceHwId.equals(w.deviceHwId)) {
+            return false;
+        }
+        if (r.warningCode != null && w.warningCode != null
+                && r.warningCode.intValue() != w.warningCode.intValue()) {
+            return false;
+        }
+        return r.level == null || r.level.isBlank() || r.level.equals(w.level);
+    }
+
+    static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private static long DurationUntil(Instant from, Instant to) {

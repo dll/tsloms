@@ -30,6 +30,13 @@ public class GlobalExceptionHandler {
         this.app = app;
     }
 
+    /** 路径/请求参数类型不匹配（如 id 非数字）→ 对齐 Go 版 parseUint 失败的 badRequest。 */
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> onTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.fail("bad_request", "参数错误"));
+    }
+
     /** 参数校验失败（对应 Go 版 badRequest）。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> onValidation(MethodArgumentNotValidException ex) {
