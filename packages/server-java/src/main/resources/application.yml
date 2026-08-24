@@ -37,3 +37,9 @@ mqtt:
   client-id: ${MQTT_CLIENT_ID:tsloms-server}
   topic-prefix: ${MQTT_TOPIC_PREFIX:trafficLight}
   enabled: ${MQTT_ENABLED:true}
+
+emqx:
+  api-url: ${EMQX_API_URL:http://127.0.0.1:18083}
+  token: ${EMQX_API_TOKEN:}
+  api-username: ${EMQX_API_USERNAME:}
+  api-password: ${EMQX_API_PASSWORD:}
