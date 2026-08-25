@@ -86,7 +86,7 @@ public class DeviceController {
     }
 
     /** GET /devices/{id}。 */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     public ResponseEntity<?> get(@PathVariable Long id) {
         var opt = devices.findById(id);
         if (opt.isEmpty()) {
@@ -126,7 +126,7 @@ public class DeviceController {
     }
 
     /** PUT /devices/{id}（device:update）。 */
-    @PutMapping("/{id}")
+    @PutMapping("/{id:\\d+}")
     @RequirePerm("device:update")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody DeviceRequest req,
                                     HttpServletRequest request) {
@@ -202,7 +202,7 @@ public class DeviceController {
     }
 
     /** POST /devices/{id}/retire（device:update）：报废。 */
-    @PostMapping("/{id}/retire")
+    @PostMapping("/{id:\\d+}/retire")
     @RequirePerm("device:update")
     public ResponseEntity<?> retire(@PathVariable Long id, HttpServletRequest request) {
         var opt = devices.findById(id);
@@ -219,7 +219,7 @@ public class DeviceController {
     }
 
     /** POST /devices/{id}/restore（device:update）：恢复。 */
-    @PostMapping("/{id}/restore")
+    @PostMapping("/{id:\\d+}/restore")
     @RequirePerm("device:update")
     public ResponseEntity<?> restore(@PathVariable Long id, HttpServletRequest request) {
         var opt = devices.findById(id);
@@ -236,7 +236,7 @@ public class DeviceController {
     }
 
     /** DELETE /devices/{id}（device:delete）：报废状态才可删。 */
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:\\d+}")
     @RequirePerm("device:delete")
     public ResponseEntity<?> delete(@PathVariable Long id, HttpServletRequest request) {
         var opt = devices.findById(id);
