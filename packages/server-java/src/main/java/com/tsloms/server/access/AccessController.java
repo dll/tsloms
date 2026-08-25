@@ -26,6 +26,7 @@ public class AccessController {
     private final EmqxProperties emqx;
     private final MqttProperties mqtt;
     private final HttpClient http = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(8)).build();
 
     public AccessController(EmqxProperties emqx, MqttProperties mqtt) {
@@ -68,6 +69,9 @@ public class AccessController {
 
     // ---------------- EMQX Dashboard API ----------------
 
+    private final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AccessController.class);
+
     /** 登录 EMQX Dashboard 获取 Bearer token。 */
     private String emqxLogin(String base, String username, String password) {
         try {
@@ -79,12 +83,19 @@ public class AccessController {
                     .timeout(Duration.ofSeconds(8))
                     .POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            log.info("[TSLOMS] EMQX login resp status={} body_len={}",
+                    resp.statusCode(), resp.body().length);
             if (resp.statusCode() != 200) {
+                log.warn("[TSLOMS] EMQX login 非200: {}",
+                        new String(resp.body(), java.nio.charset.StandardCharsets.UTF_8));
                 return null;
             }
             var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-            return node.path("token").asText(null);
+            String token = node.path("token").asText(null);
+            log.info("[TSLOMS] EMQX login token={}", token == null ? "null" : "OK(" + token.length() + "ch)");
+            return token;
         } catch (Exception e) {
+            log.error("[TSLOMS] EMQX login 异常: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -101,8 +112,10 @@ public class AccessController {
                     .timeout(Duration.ofSeconds(8))
                     .POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            log.info("[TSLOMS] EMQX create user resp status={}", resp.statusCode());
             return resp.statusCode();
         } catch (Exception e) {
+            log.error("[TSLOMS] EMQX create user 异常: {}", e.getMessage(), e);
             return 500;
         }
     }
