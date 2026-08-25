@@ -335,7 +335,7 @@ public class FirmwareController {
         m.put("id", r.id);
         m.put("firmware_id", r.firmwareId);
         m.put("device_hw_id", r.deviceHwId);
-        m.put("target_version", r.targetVersion);
+        m.put("target_version", r.targetVer);
         m.put("status", r.status);
         m.put("error_msg", r.errorMsg);
         m.put("started_at", r.startedAt);
@@ -379,7 +379,7 @@ public class FirmwareController {
         FirmwareUpgradeRecord rec = new FirmwareUpgradeRecord();
         rec.firmwareId = req.firmwareId();
         rec.deviceHwId = req.deviceHwId();
-        rec.targetVersion = fw.version;
+        rec.targetVer = fw.version;
         rec.status = FirmwareUpgradeStatuses.PENDING;
         rec.startedAt = now;
         upgrades.save(rec);

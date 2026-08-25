@@ -28,7 +28,7 @@ public class OperationLogService {
         log.userId = userId;
         Object uname = request.getAttribute(AuthInterceptor.ATTR_USERNAME);
         log.username = uname == null ? "" : String.valueOf(uname);
-        log.opType = opType;
+        log.action = opType;
         log.target = target;
         log.detail = detail;
         logs.save(log);

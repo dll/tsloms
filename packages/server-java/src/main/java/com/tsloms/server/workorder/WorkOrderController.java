@@ -208,7 +208,7 @@ public class WorkOrderController {
             tm.put("id", t.id);
             tm.put("user_id", t.userId);
             tm.put("username", t.username);
-            tm.put("op_type", t.opType);
+            tm.put("op_type", t.action);
             tm.put("target", t.target);
             tm.put("detail", t.detail);
             tm.put("created_at", t.createdAt);

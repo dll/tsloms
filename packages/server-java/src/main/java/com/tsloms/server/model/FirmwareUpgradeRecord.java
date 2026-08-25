@@ -29,8 +29,8 @@ public class FirmwareUpgradeRecord {
     @Column(name = "device_hw_id", nullable = false, length = 64)
     public String deviceHwId;
 
-    @Column(name = "target_version", length = 32)
-    public String targetVersion;
+    @Column(name = "target_ver", length = 32)
+    public String targetVer;
 
     /** pending/upgrading/success/failed。 */
     @Column(name = "status", nullable = false, length = 24)
